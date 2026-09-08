@@ -1,0 +1,31 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "mllite"
+version = "0.1.0"
+description = "Modular pipeline to verify the incremental value of newly proposed features"
+requires-python = ">=3.9"
+dependencies = [
+    "numpy",
+    "pandas",
+    "scipy",
+    "scikit-learn",
+    "xgboost==1.7.6",
+    "shap",
+    "joblib",
+    "pyyaml",
+]
+
+[project.optional-dependencies]
+dev = ["pytest", "pyarrow"]
+
+[project.scripts]
+mllite = "mllite.cli:main"
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]

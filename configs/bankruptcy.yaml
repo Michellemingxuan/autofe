@@ -1,0 +1,121 @@
+# Demo run: UCI Taiwanese Bankruptcy Prediction (dataset 572).
+# Scenario - the incumbent model uses profitability / leverage / growth ratios;
+# the cash-flow family is the newly proposed feature set under evaluation.
+#
+#   python data/bankruptcy/prepare.py
+#   mllite -c configs/bankruptcy.yaml
+
+run:
+  name: bankruptcy_cashflow
+  output_dir: outputs
+  seed: 42
+  gates: open         # open    -> measure everything, remove nothing (development view)
+                      # enforce -> gates filter, for running the pipeline automatically
+  n_jobs: -1
+  backend: loky
+  log_level: INFO
+
+data:
+  path: data/bankruptcy/modeling.parquet
+  target: bankrupt
+  id_cols: [row_id]
+  missing_values: []          # this source has no sentinel codes
+  split:
+    mode: random
+    stratify: true            # 3.2% positives - keep the rate stable across splits
+    valid_size: 0.2
+    test_size: 0.2
+
+features:
+  # base is left empty: everything numeric that is not a candidate, id or target
+  # becomes the incumbent set (84 ratios).
+  base: []
+  new:
+    - cash_flow_rate
+    - cash_flow_per_share
+    - cash_reinvestment_pct
+    - cash_total_assets
+    - cash_current_liability
+    - cash_turnover_rate
+    - cash_flow_to_sales
+    - cash_flow_to_total_assets
+    - cash_flow_to_liability
+    - cfo_to_assets
+    - cash_flow_to_equity
+    - cand_dup_roa_c          # planted: near-copy of an incumbent
+    - cand_noise              # planted: pure noise
+
+data_quality:
+  enabled: true               # period stability (by_col) is still the unported check
+  max_missing_rate: 0.95
+  min_unique: 2
+  max_psi: 0.25             # distribution shift a feature may not exceed
+  distribution_check: true  # compare each variable's distribution across the splits
+  distribution_reference: train
+  distribution_bins: 10               # catches net_income_flag, which is constant
+  drop_failed: true
+
+feature_selection:
+  enabled: true
+  sample_size: null           # 6.8k rows - use all of train
+  on_split: train
+  chunk_size: 4
+  spearman:
+    enabled: true
+    target_min_abs: 0.04      # ~3 sigma for n=4.1k train rows
+    redundancy_max_abs: 0.90
+  mutual_info:
+    enabled: true
+    bins: 20
+    target_method: histogram
+    target_min: 0.0
+    redundancy_max: 0.80
+    pairwise_against: all
+
+model:
+  task: binary
+  num_boost_round: 400
+  early_stopping_rounds: 40
+  verbose_eval: 0
+  save_models: true
+  variants:
+    - base
+    - base_plus_new
+    - leave_one_in
+  tuning:
+    enabled: false          # false = use model.params as given, no search
+    mode: shared            # shared -> tune on `tune_on`, reuse for variant
+                            # per_variant -> tune each variant separately
+    tune_on: base_plus_new  # which variant is tuned when mode=shared
+    n_trials: 20
+    metric: adj_gini        # scored on the valid split; test is never touched
+    seed: null              # defaults to run.seed
+    search_space: {}        # empty -> DEFAULT_SEARCH_SPACE in stages/modeling.py
+
+  params:
+    eta: 0.05
+    max_depth: 4
+    min_child_weight: 5
+    subsample: 0.8
+    colsample_bytree: 0.8
+    eval_metric: auc
+
+analysis:
+  metrics_on: [train, valid, test]
+  capture_rate_percents: [0.01, 0.05, 0.10]   # all written to metrics_by_variant_split.csv
+  comparison_capture_percents: [0.05]         # which of them reach the comparison table
+  accuracy_bins: 10
+  include_accuracy: True   # decile calibration, not classification accuracy;
+  baseline_variant: base
+  shap:
+    enabled: true
+    sample_size: 5000
+    on_split: test
+
+verdict:              # the decision protocol: four gates, then a call on the batch
+  enabled: true
+  gini_split: test          # split the gini gain is judged on
+  min_gini_gain: 0.005      # below this, the feature did not move the model
+  require_valid_too: true   # the gain has to hold on valid as well
+  max_shap_rank_pct: 0.5    # must land in the top half by mean |SHAP|
+  shap_variant: base_plus_new

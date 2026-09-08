@@ -1,0 +1,13 @@
+__pycache__/
+*.py[cod]
+*.egg-info/
+.pytest_cache/
+.ipynb_checkpoints/
+outputs/
+# Use-case folders: ignore the tables, keep the build scripts.
+# `data/**` (not `data/`) so git still descends and the negations below apply.
+data/**
+!data/**/
+!data/**/*.py
+!data/**/*.md
+.DS_Store

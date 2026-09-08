@@ -1,0 +1,184 @@
+"""Covers the three config surfaces added for pre-split data and MI ranking."""
+
+import numpy as np
+import pandas as pd
+import pytest
+
+from mllite.config import Config, load_config
+from mllite.data import prepare_dataset, prepare_dataset_from_frames
+from mllite.stages.data_quality import run_data_quality
+from mllite.stages.feature_selection import run_feature_selection
+
+xgb = pytest.importorskip("xgboost")
+
+from data.synthetic.make import make_frame  # noqa: E402
+from mllite.pipeline import Pipeline  # noqa: E402
+
+
+@pytest.fixture(scope="module")
+def frame():
+    return make_frame(n_rows=9_000, seed=4)
+
+
+def _config(tmp_path, **data_overrides):
+    payload = {
+        "run": {"name": "t", "output_dir": str(tmp_path), "n_jobs": 2, "log_level": "ERROR"},
+        "data": {"target": "y", "id_cols": ["row_id"], **data_overrides},
+        "features": {"base_prefix": "old_", "new_prefix": "new_"},
+        "feature_selection": {"chunk_size": 2, "spearman": {"target_min_abs": 0.04}},
+        "model": {"num_boost_round": 40, "early_stopping_rounds": 10,
+                  "variants": ["base", "base_plus_new"]},
+        "analysis": {"shap": {"enabled": False}},
+    }
+    return Config.from_dict(payload)
+
+
+# --------------------------------------------------------------------------- #
+# 1. skipping the data quality stage
+# --------------------------------------------------------------------------- #
+def test_data_quality_enabled_false_skips_the_stage(frame, tmp_path):
+    cfg = _config(tmp_path)
+    assert cfg.data_quality.enabled is False       # skipping is the default
+    dataset = prepare_dataset(frame, cfg)
+
+    result = run_data_quality(dataset, cfg)
+    assert result.skipped is True
+    assert result.report.empty and result.failed == []
+
+
+def test_data_quality_enabled_true_reports_and_can_drop(frame, tmp_path):
+    frame = frame.assign(old_constant=1.0)
+    cfg = _config(tmp_path)
+    cfg.data_quality.enabled = True
+    cfg.data_quality.drop_failed = True
+    dataset = prepare_dataset(frame, cfg)
+
+    result = run_data_quality(dataset, cfg)
+    assert result.skipped is False
+    assert "old_constant" in result.failed          # min_unique catches it
+    assert set(result.report.columns) >= {"feature", "missing_rate", "n_unique", "passed"}
+
+
+# --------------------------------------------------------------------------- #
+# 2. inputs that are already split
+# --------------------------------------------------------------------------- #
+def _split_frames(frame):
+    return {name: frame[frame["split"] == name].drop(columns="split").reset_index(drop=True)
+            for name in ("train", "valid", "test")}
+
+
+def test_prepare_dataset_from_frames_takes_the_splits_as_given(frame, tmp_path):
+    frames = _split_frames(frame)
+    dataset = prepare_dataset_from_frames(frames, _config(tmp_path))
+
+    for name, given in frames.items():
+        assert len(dataset.split(name)) == len(given)
+    assert dataset.available_splits() == ["train", "valid", "test"]
+
+
+def test_frames_route_matches_the_split_column_route(frame, tmp_path):
+    """Splitting one table by a column and passing three frames must agree."""
+    by_column = Pipeline(_config(tmp_path, split={"mode": "column", "column": "split"})).run(frame=frame)
+    by_frames = Pipeline(_config(tmp_path)).run(frames=_split_frames(frame))
+
+    assert by_frames.feature_selection.selected == by_column.feature_selection.selected
+    left = by_column.analysis.comparison.set_index("variant")["adj_gini_test"]
+    right = by_frames.analysis.comparison.set_index("variant")["adj_gini_test"]
+    pd.testing.assert_series_equal(left, right, atol=1e-9)
+
+
+def test_data_paths_reads_three_files(frame, tmp_path):
+    paths = {}
+    for name, part in _split_frames(frame).items():
+        path = tmp_path / f"{name}.parquet"
+        part.to_parquet(path, index=False)
+        paths[name] = str(path)
+
+    cfg = _config(tmp_path, paths=paths)
+    result = Pipeline(cfg).run()
+    assert result.dataset.available_splits() == ["train", "valid", "test"]
+    assert all(m.error is None for m in result.models)
+
+
+def test_paths_requires_train_and_rejects_unknown_keys(tmp_path):
+    with pytest.raises(ValueError, match="must include a 'train'"):
+        Config.from_dict({"data": {"paths": {"valid": "v.parquet"}}}).validate()
+    with pytest.raises(ValueError, match="train/valid/test"):
+        Config.from_dict({"data": {"paths": {"train": "t.parquet", "holdout": "h.parquet"}}}).validate()
+
+
+def test_paths_makes_the_split_config_irrelevant(tmp_path):
+    """A time split with no time_col is an error normally, but not when pre-split."""
+    cfg = Config.from_dict({"data": {"paths": {"train": "t.parquet"}, "split": {"mode": "time"}}})
+    cfg.validate()   # must not raise
+
+
+def test_mismatched_columns_across_splits_are_reported(frame, tmp_path):
+    frames = _split_frames(frame)
+    frames["test"] = frames["test"].drop(columns="old_3")
+    with pytest.raises(KeyError, match="old_3"):
+        prepare_dataset_from_frames(frames, _config(tmp_path))
+
+
+def test_frames_without_train_are_rejected(frame, tmp_path):
+    frames = _split_frames(frame)
+    del frames["train"]
+    with pytest.raises(ValueError, match="train"):
+        prepare_dataset_from_frames(frames, _config(tmp_path))
+
+
+# --------------------------------------------------------------------------- #
+# 3. relevance vs. redundancy
+# --------------------------------------------------------------------------- #
+def test_both_mi_directions_are_reported(frame, tmp_path):
+    dataset = prepare_dataset(frame, _config(tmp_path))
+    result = run_feature_selection(dataset, _config(tmp_path))
+    stats = result.target_stats.set_index("feature")
+
+    # relevance (vs. the outcome) and redundancy (vs. the incumbents), side by side
+    assert {"mi_target", "nmi_target", "mi_redundancy_base", "mrmr_score"} <= set(stats.columns)
+    assert (stats["mi_target"] >= 0).all()
+    assert stats["nmi_target"].between(0, 1).all()
+    assert stats["mi_redundancy_base"].between(0, 1).all()
+
+    # new_dup_old0 duplicates an incumbent: high relevance AND high redundancy
+    assert stats.loc["new_dup_old0", "mi_redundancy_base"] > stats.loc["new_signal_a", "mi_redundancy_base"]
+    # new_noise is neither relevant nor redundant
+    assert stats.loc["new_noise", "nmi_target"] < stats.loc["new_signal_a", "nmi_target"]
+
+
+def test_mrmr_score_is_relevance_minus_redundancy(frame, tmp_path):
+    cfg = _config(tmp_path)
+    cfg.feature_selection.mutual_info.redundancy_stat = "mean"
+    result = run_feature_selection(prepare_dataset(frame, cfg), cfg)
+    stats = result.target_stats
+
+    expected = stats["nmi_target"] - stats["mi_redundancy_base"]
+    pd.testing.assert_series_equal(stats["mrmr_score"], expected, check_names=False)
+
+    # Both planted controls rank below the genuine signal, for opposite reasons:
+    # new_noise has almost no relevance, new_dup_old0 has high relevance but pays
+    # for it in redundancy. Which of the two lands last depends on how big the
+    # incumbent pool is, so only their position relative to real signal is stable.
+    scores = stats.set_index("feature")["mrmr_score"]
+    assert scores["new_noise"] < scores["new_signal_a"]
+    assert scores["new_dup_old0"] < scores["new_signal_a"]
+
+
+def test_mrmr_ranking_still_drops_the_planted_controls(frame, tmp_path):
+    cfg = _config(tmp_path)
+    cfg.feature_selection.ranking = "mrmr"
+    cfg.feature_selection.mutual_info.redundancy_stat = "mean"
+    cfg.feature_selection.spearman.redundancy_max_abs = 0.9
+
+    result = run_feature_selection(prepare_dataset(frame, cfg), cfg)
+    assert "new_dup_old0" in result.dropped     # max-based gate still catches the duplicate
+    assert "new_noise" in result.dropped
+    assert "new_signal_a" in result.selected
+
+
+def test_ranking_choice_is_validated():
+    with pytest.raises(ValueError, match="ranking"):
+        Config.from_dict({"feature_selection": {"ranking": "greedy"}}).validate()
+    with pytest.raises(ValueError, match="redundancy_stat"):
+        Config.from_dict({"feature_selection": {"mutual_info": {"redundancy_stat": "median"}}}).validate()

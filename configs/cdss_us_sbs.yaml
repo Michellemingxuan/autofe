@@ -1,0 +1,95 @@
+# cdss_us_sbs - internal use case. The split is done upstream, so the three sets
+# arrive already separated and `data.split` below is never consulted.
+#
+#   1. python data/cdss_us_sbs/prepare.py --inspect --train ... --valid ... --test ...
+#         -> reports what is in the extracts and prints the block to fill in here
+#   2. fill in `target`, `id_cols`, `missing_values` and the candidate features
+#   3. python data/cdss_us_sbs/prepare.py -c configs/cdss_us_sbs.yaml --train ... --valid ... --test ...
+#         -> writes the three modeling tables to the paths declared below
+#   4. mllite -c configs/cdss_us_sbs.yaml
+
+run:
+  name: cdss_us_sbs
+  output_dir: outputs
+  seed: 42
+  n_jobs: -1
+  backend: loky
+  log_level: INFO
+  gates: open           # measure everything, remove nothing, while we learn the data
+
+data:
+  paths:                # prepare.py writes these; the pipeline reads them
+    train: data/cdss_us_sbs/train.parquet
+    valid: data/cdss_us_sbs/valid.parquet
+    test:  data/cdss_us_sbs/test.parquet
+  target: TODO_target_column
+  id_cols: []           # e.g. [acct_id, as_of_date] - enables the leakage check
+  missing_values: [-9999]
+  weight_col: null
+
+features:
+  base: []              # empty = every other numeric column
+  new: []               # list the candidates, or use new_prefix
+  new_prefix: null
+  exclude: []           # non-numeric columns the pipeline should ignore
+
+data_quality:
+  enabled: true
+  drop_failed: false    # report only while gates are open
+  max_missing_rate: 0.99
+  min_unique: 2
+  max_psi: 0.25             # distribution shift a feature may not exceed
+  distribution_check: true  # compare each variable's distribution across the splits
+  distribution_reference: train
+  distribution_bins: 10
+
+feature_selection:
+  enabled: true
+  sample_size: 200000
+  on_split: train
+  chunk_size: 25
+  ranking: spearman
+  spearman:
+    enabled: true
+    target_min_abs: 0.01
+    redundancy_max_abs: 0.90
+  mutual_info:
+    enabled: true
+    bins: 20
+    redundancy_max: 0.80
+    redundancy_stat: max
+
+model:
+  task: binary
+  num_boost_round: 500
+  early_stopping_rounds: 50
+  variants: [base, base_plus_new, leave_one_in]
+  tuning:
+    enabled: false
+    mode: shared
+    tune_on: base_plus_new
+    n_trials: 20
+  params:
+    eta: 0.05
+    max_depth: 5
+    min_child_weight: 10
+    subsample: 0.8
+    colsample_bytree: 0.8
+    eval_metric: auc
+
+analysis:
+  metrics_on: [train, valid, test]
+  capture_rate_percents: [0.01, 0.05, 0.10]
+  comparison_capture_percents: [0.05]
+  baseline_variant: base
+  shap:
+    enabled: true
+    sample_size: 20000
+    on_split: test
+
+verdict:
+  enabled: true
+  gini_split: test
+  min_gini_gain: 0.005
+  require_valid_too: true
+  max_shap_rank_pct: 0.5
