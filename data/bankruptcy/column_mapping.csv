@@ -1,0 +1,97 @@
+original,column
+Bankrupt?,bankrupt
+ ROA(C) before interest and depreciation before interest,roa_c_before_interest_and_depreciation_before_interest
+ ROA(A) before interest and % after tax,roa_a_before_interest_and_pct_after_tax
+ ROA(B) before interest and depreciation after tax,roa_b_before_interest_and_depreciation_after_tax
+ Operating Gross Margin,operating_gross_margin
+ Realized Sales Gross Margin,realized_sales_gross_margin
+ Operating Profit Rate,operating_profit_rate
+ Pre-tax net Interest Rate,pre_tax_net_interest_rate
+ After-tax net Interest Rate,after_tax_net_interest_rate
+ Non-industry income and expenditure/revenue,non_industry_income_and_expenditure_revenue
+ Continuous interest rate (after tax),continuous_interest_rate_after_tax
+ Operating Expense Rate,operating_expense_rate
+ Research and development expense rate,research_and_development_expense_rate
+ Cash flow rate,cash_flow_rate
+ Interest-bearing debt interest rate,interest_bearing_debt_interest_rate
+ Tax rate (A),tax_rate_a
+ Net Value Per Share (B),net_value_per_share_b
+ Net Value Per Share (A),net_value_per_share_a
+ Net Value Per Share (C),net_value_per_share_c
+ Persistent EPS in the Last Four Seasons,persistent_eps_in_the_last_four_seasons
+ Cash Flow Per Share,cash_flow_per_share
+ Revenue Per Share (Yuan ¥),revenue_per_share_yuan
+ Operating Profit Per Share (Yuan ¥),operating_profit_per_share_yuan
+ Per Share Net profit before tax (Yuan ¥),per_share_net_profit_before_tax_yuan
+ Realized Sales Gross Profit Growth Rate,realized_sales_gross_profit_growth_rate
+ Operating Profit Growth Rate,operating_profit_growth_rate
+ After-tax Net Profit Growth Rate,after_tax_net_profit_growth_rate
+ Regular Net Profit Growth Rate,regular_net_profit_growth_rate
+ Continuous Net Profit Growth Rate,continuous_net_profit_growth_rate
+ Total Asset Growth Rate,total_asset_growth_rate
+ Net Value Growth Rate,net_value_growth_rate
+ Total Asset Return Growth Rate Ratio,total_asset_return_growth_rate_ratio
+ Cash Reinvestment %,cash_reinvestment_pct
+ Current Ratio,current_ratio
+ Quick Ratio,quick_ratio
+ Interest Expense Ratio,interest_expense_ratio
+ Total debt/Total net worth,total_debt_total_net_worth
+ Debt ratio %,debt_ratio_pct
+ Net worth/Assets,net_worth_assets
+ Long-term fund suitability ratio (A),long_term_fund_suitability_ratio_a
+ Borrowing dependency,borrowing_dependency
+ Contingent liabilities/Net worth,contingent_liabilities_net_worth
+ Operating profit/Paid-in capital,operating_profit_paid_in_capital
+ Net profit before tax/Paid-in capital,net_profit_before_tax_paid_in_capital
+ Inventory and accounts receivable/Net value,inventory_and_accounts_receivable_net_value
+ Total Asset Turnover,total_asset_turnover
+ Accounts Receivable Turnover,accounts_receivable_turnover
+ Average Collection Days,average_collection_days
+ Inventory Turnover Rate (times),inventory_turnover_rate_times
+ Fixed Assets Turnover Frequency,fixed_assets_turnover_frequency
+ Net Worth Turnover Rate (times),net_worth_turnover_rate_times
+ Revenue per person,revenue_per_person
+ Operating profit per person,operating_profit_per_person
+ Allocation rate per person,allocation_rate_per_person
+ Working Capital to Total Assets,working_capital_to_total_assets
+ Quick Assets/Total Assets,quick_assets_total_assets
+ Current Assets/Total Assets,current_assets_total_assets
+ Cash/Total Assets,cash_total_assets
+ Quick Assets/Current Liability,quick_assets_current_liability
+ Cash/Current Liability,cash_current_liability
+ Current Liability to Assets,current_liability_to_assets
+ Operating Funds to Liability,operating_funds_to_liability
+ Inventory/Working Capital,inventory_working_capital
+ Inventory/Current Liability,inventory_current_liability
+ Current Liabilities/Liability,current_liabilities_liability
+ Working Capital/Equity,working_capital_equity
+ Current Liabilities/Equity,current_liabilities_equity
+ Long-term Liability to Current Assets,long_term_liability_to_current_assets
+ Retained Earnings to Total Assets,retained_earnings_to_total_assets
+ Total income/Total expense,total_income_total_expense
+ Total expense/Assets,total_expense_assets
+ Current Asset Turnover Rate,current_asset_turnover_rate
+ Quick Asset Turnover Rate,quick_asset_turnover_rate
+ Working capitcal Turnover Rate,working_capitcal_turnover_rate
+ Cash Turnover Rate,cash_turnover_rate
+ Cash Flow to Sales,cash_flow_to_sales
+ Fixed Assets to Assets,fixed_assets_to_assets
+ Current Liability to Liability,current_liability_to_liability
+ Current Liability to Equity,current_liability_to_equity
+ Equity to Long-term Liability,equity_to_long_term_liability
+ Cash Flow to Total Assets,cash_flow_to_total_assets
+ Cash Flow to Liability,cash_flow_to_liability
+ CFO to Assets,cfo_to_assets
+ Cash Flow to Equity,cash_flow_to_equity
+ Current Liability to Current Assets,current_liability_to_current_assets
+ Liability-Assets Flag,liability_assets_flag
+ Net Income to Total Assets,net_income_to_total_assets
+ Total assets to GNP price,total_assets_to_gnp_price
+ No-credit Interval,no_credit_interval
+ Gross Profit to Sales,gross_profit_to_sales
+ Net Income to Stockholder's Equity,net_income_to_stockholder_s_equity
+ Liability to Equity,liability_to_equity
+ Degree of Financial Leverage (DFL),degree_of_financial_leverage_dfl
+ Interest Coverage Ratio (Interest expense to EBIT),interest_coverage_ratio_interest_expense_to_ebit
+ Net Income Flag,net_income_flag
+ Equity to Liability,equity_to_liability

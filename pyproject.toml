@@ -8,7 +8,10 @@ version = "0.1.0"
 description = "Modular pipeline to verify the incremental value of newly proposed features"
 requires-python = ">=3.9"
 dependencies = [
-    "numpy",
+    # Tested on both numpy generations: 1.26.4 and 2.0.0, full suite green on each.
+    # No upper bound on purpose - the constraint that bites in locked environments
+    # is a *compiled* dependency built against the other generation, not numpy itself.
+    "numpy>=1.24",
     "pandas",
     "scipy",
     "scikit-learn",

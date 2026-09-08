@@ -11,6 +11,36 @@ data ─▶ 1. data quality ─▶ 2. feature selection ─▶ 3. model builds �
 Every stage is an independent module with a single `run_*` entry point, driven by
 one YAML config, and fans its work out across processes.
 
+## Environment
+
+XGBoost is pinned to **1.7.6**; nothing else is. The full suite is green on both
+numpy generations, so the pipeline itself does not force the choice:
+
+| | numpy | pandas | scipy | scikit-learn | shap |
+| --- | --- | --- | --- | --- | --- |
+| tested | 1.26.4 | 3.0.5 | 1.17.1 | 1.9.0 | 0.49.1 |
+| tested | 2.0.0 | 2.3.2 | 1.16.2 | 1.7.2 | 0.49.1 |
+
+### "A module that was compiled using NumPy 1.x cannot be run in NumPy 2.0.0"
+
+This is an ABI mismatch in the *environment*, not in mllite — some package with a
+compiled extension was built against numpy 1.x while numpy 2.x is installed. The
+traceback names the culprit a few lines below the warning. In this stack the
+candidates are `shap`, `scikit-learn`, `scipy`, `pandas` and `numba`; `xgboost` is
+not one, because it reaches its native library through `ctypes` rather than the
+numpy C API.
+
+To identify it:
+
+```bash
+for m in numpy pandas scipy sklearn shap numba xgboost; do
+    python -c "import $m; print('$m', $m.__version__)" 2>&1 | tail -2
+done
+```
+
+Then either upgrade that package to a build that supports numpy 2, or pin
+`numpy<2` — both work, since mllite uses no numpy-2-only API.
+
 ## Install
 
 ```bash
