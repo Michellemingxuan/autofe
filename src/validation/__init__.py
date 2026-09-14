@@ -1,4 +1,11 @@
-"""mllite: a modular, parallel pipeline for evaluating newly proposed features."""
+"""Validation: decide whether newly proposed features earn their place.
+
+The second half of the loop. `discovery` proposes candidate features; this
+package puts them through data quality, screening, per-feature model builds,
+outcome analysis and the verdict gates, and says which survive.
+
+Distributed as the `mllite` package; imported as `validation`.
+"""
 
 from validation.config import Config, load_config
 from validation.data import (

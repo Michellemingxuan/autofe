@@ -52,6 +52,29 @@ class SplitConfig:
 
 
 @dataclass
+class MissingIndicatorConfig:
+    """Add a 0/1 column recording where a feature was missing.
+
+    Worth enabling when missingness is itself informative rather than incidental -
+    a ratio undefined because its denominator is zero, a field only populated for
+    one product. The value is unknown either way, but *that* it is unknown can
+    carry signal, and a NaN alone throws that away.
+
+    Indicators are derived after sentinels and infinities have been converted, so
+    they capture every route to missing rather than only literal nulls.
+    """
+    enabled: bool = False
+    scope: str = "candidates"        # candidates | all
+    min_missing_rate: float = 0.01   # skip columns barely ever missing
+    suffix: str = "_is_missing"
+    treat_as: str = "new"
+    # ^ new    : indicators are candidates in their own right, which is usually
+    #            right - the incumbent model did not carry them either.
+    #   source : an indicator joins whichever list its source column is in, for
+    #            when the incumbent model already had these flags.
+
+
+@dataclass
 class DataConfig:
     path: str = ""                 # single table, split by `split` below
     paths: Dict[str, str] = field(default_factory=dict)
@@ -64,10 +87,13 @@ class DataConfig:
     missing_values: List[float] = field(default_factory=lambda: [-9999])
     nrows: Optional[int] = None    # cap rows read (csv only), for smoke runs
     split: SplitConfig = field(default_factory=SplitConfig)
+    missing_indicators: MissingIndicatorConfig = field(default_factory=MissingIndicatorConfig)
 
     def __post_init__(self):
         if isinstance(self.split, dict):
             self.split = _subset(SplitConfig, self.split)
+        if isinstance(self.missing_indicators, dict):
+            self.missing_indicators = _subset(MissingIndicatorConfig, self.missing_indicators)
 
 
 @dataclass
@@ -221,10 +247,120 @@ class VerdictConfig:
 
 
 @dataclass
+class LLMConfig:
+    """Which model discovery asks, and how patient to be with it.
+
+    Model choice is configuration, not environment: it belongs in the run's YAML
+    where git tracks it, so a finished run says what produced it. Only the
+    credential lives in .env.
+    """
+    backend: str = "openai"           # openai | safechain
+    model: str = "gpt-4o-mini"        # an openai name, or a safechain key
+    reasoning_effort: Optional[str] = None
+    # ^ low | medium | high, or None. ONLY reasoning models accept it; gpt-4o
+    #   rejects it outright with a 400, so it must stay None alongside one.
+    system_prompt: str = ""
+    # Calls stall rather than slow down: a call still running at stall_retry_s is
+    # re-issued, and timeout_s stays generous enough that the retry can outlast a
+    # stall that does resolve. See discovery/llm.py.
+    timeout_s: float = 180.0
+    stall_retry_s: float = 40.0
+    max_attempts: int = 3
+    backoff_s: float = 5.0
+
+
+@dataclass
+class DiscoveryConfig:
+    """Propose candidate features, then screen them on a small sample.
+
+    The screen is deliberately cheap and approximate: a generation loop needs a
+    signal every round, while the real decision is made later by leave_one_in
+    and the verdict gates over the full splits.
+    """
+    enabled: bool = False
+    strategy: str = "caafe"           # caafe | elfgym | ferg | featllm | promptfe
+    task_description: str = ""        # what the dataset is, in domain terms
+
+    # Each round asks for a batch and screens it one feature at a time, folding
+    # every outcome into the history the next round sees.
+    batch_size: int = 4
+
+    # --- stopping rule ----------------------------------------------------
+    # max_rounds always applies; the rest end a run early when continuing cannot
+    # help. One round by default: propose a batch, screen it, stop. Raise it to
+    # let the proposer react to its own feedback.
+    max_rounds: int = 1
+    target_features: Optional[int] = None   # stop once this many are worth keeping
+    patience: Optional[int] = None          # stop after N rounds that kept nothing
+    max_candidates: Optional[int] = None    # hard cap on proposals screened
+
+    # Which metric the screen scores with. Kept separate from the analysis
+    # metrics on purpose: the screen needs one cheap number for feedback, while
+    # analysis reports the whole bundle.
+    metric: str = "adj_gini"          # adj_gini | capture_rate
+    capture_percent: float = 0.05     # used when metric is capture_rate
+
+    # What the screen forwards to the expensive stages.
+    #
+    # None (the default) forwards every candidate that RAN, filtering only the
+    # broken ones. That is deliberate: the screen's delta comes from one small
+    # held-out sample, so for a feature a boosted model can already approximate
+    # it is noise-dominated and lands negative about half the time. Filtering on
+    # it would discard good features by coin flip before leave_one_in and the
+    # verdict gates - the stages that exist to decide - ever saw them.
+    #
+    # Set a number to pre-filter anyway, e.g. to cap how many candidates reach
+    # the expensive stages on a large batch.
+    min_delta: Optional[float] = None
+    # The small sampling dataset the screen fits on.
+    sample_size: int = 2000
+    sample_split: str = "train"
+    # Rows inside the sample held back for scoring. Without a holdout the delta is
+    # meaningless: a boosted fit reconstructs a ratio from its own inputs, so the
+    # in-sample baseline saturates. See discovery/screen.py.
+    sample_eval_fraction: float = 0.3
+    sample_balance: bool = True
+    screen_boost_rounds: int = 200
+    # What the columns mean. Without this a proposer sees "X36" and can only
+    # guess; with it, real-world knowledge becomes usable, which is the whole
+    # premise of an LLM proposing features at all. Either inline, or a JSON file
+    # of {column: description}.
+    column_descriptions: Dict[str, str] = field(default_factory=dict)
+    column_descriptions_path: Optional[str] = None
+    # Which columns are coded categories rather than measurements, so the prompt
+    # shows their levels instead of a meaningless range. Declare whichever list
+    # is shorter: a clinical table is mostly coded categories with a dozen real
+    # measurements, so naming the 12 continuous ones beats naming 99 categorical.
+    categorical_columns: List[str] = field(default_factory=list)
+    # None means "not declared"; an empty list means "no column is continuous",
+    # which is a real declaration - a permissions table is 86 binary flags and
+    # every one of them must be shown as levels rather than a range.
+    continuous_columns: Optional[List[str]] = None
+
+    # Rows shown to the proposer as concrete examples, and how many batches of
+    # them to rotate through so successive rounds do not see identical data.
+    shots: int = 32
+    shot_batches: int = 10
+    # A candidate whose largest magnitude exceeds this multiple of its own 99th
+    # percentile is rejected before it can reach a model. See discovery/guards.py.
+    spike_factor: float = 1000.0
+    # Screen-level redundancy limit. None inherits
+    # feature_selection.spearman.redundancy_max_abs, so the screen enforces the
+    # rule the gate will apply rather than a second, divergent one.
+    redundancy_max_abs: Optional[float] = None
+    llm: LLMConfig = field(default_factory=LLMConfig)
+
+    def __post_init__(self):
+        if isinstance(self.llm, dict):
+            self.llm = _subset(LLMConfig, self.llm)
+
+
+@dataclass
 class Config:
     run: RunConfig = field(default_factory=RunConfig)
     data: DataConfig = field(default_factory=DataConfig)
     features: FeatureConfig = field(default_factory=FeatureConfig)
+    discovery: DiscoveryConfig = field(default_factory=DiscoveryConfig)
     data_quality: DataQualityConfig = field(default_factory=DataQualityConfig)
     feature_selection: FeatureSelectionConfig = field(default_factory=FeatureSelectionConfig)
     model: ModelConfig = field(default_factory=ModelConfig)
@@ -238,6 +374,7 @@ class Config:
             run=_subset(RunConfig, payload.pop("run", None)),
             data=_subset(DataConfig, payload.pop("data", None)),
             features=_subset(FeatureConfig, payload.pop("features", None)),
+            discovery=_subset(DiscoveryConfig, payload.pop("discovery", None)),
             data_quality=_subset(DataQualityConfig, payload.pop("data_quality", None)),
             feature_selection=_subset(FeatureSelectionConfig, payload.pop("feature_selection", None)),
             model=_subset(ModelConfig, payload.pop("model", None)),
@@ -256,6 +393,49 @@ class Config:
         return self.run.gates == "enforce"
 
     def validate(self) -> None:
+        if self.discovery.enabled:
+            if self.discovery.llm.backend not in ("openai", "safechain"):
+                raise ValueError("discovery.llm.backend must be openai|safechain, "
+                                 f"got {self.discovery.llm.backend!r}")
+            if self.discovery.sample_split not in ("train", "valid", "test"):
+                raise ValueError("discovery.sample_split must be train|valid|test, "
+                                 f"got {self.discovery.sample_split!r}")
+            if self.discovery.max_rounds < 1:
+                raise ValueError("discovery.max_rounds must be >= 1, got "
+                                 f"{self.discovery.max_rounds}")
+            if self.discovery.batch_size < 1:
+                raise ValueError("discovery.batch_size must be >= 1, got "
+                                 f"{self.discovery.batch_size}")
+            known = ("caafe", "elfgym", "ferg", "featllm", "promptfe")
+            if self.discovery.strategy not in known:
+                raise ValueError(f"discovery.strategy must be one of {known}, got "
+                                 f"{self.discovery.strategy!r}")
+            if self.discovery.metric not in ("adj_gini", "capture_rate"):
+                raise ValueError("discovery.metric must be adj_gini|capture_rate, got "
+                                 f"{self.discovery.metric!r}")
+            if not 0.0 < self.discovery.sample_eval_fraction < 1.0:
+                raise ValueError("discovery.sample_eval_fraction must be in (0, 1), got "
+                                 f"{self.discovery.sample_eval_fraction}")
+            if self.discovery.categorical_columns and self.discovery.continuous_columns is not None:
+                raise ValueError(
+                    "set either discovery.categorical_columns or "
+                    "discovery.continuous_columns, not both"
+                )
+            if not self.discovery.task_description.strip():
+                raise ValueError("discovery.task_description is required when discovery is "
+                                 "enabled: the proposer needs to know what the data is about.")
+        indicators = self.data.missing_indicators
+        if indicators.scope not in ("candidates", "all"):
+            raise ValueError("data.missing_indicators.scope must be candidates|all, "
+                             f"got {indicators.scope!r}")
+        if indicators.treat_as not in ("new", "source"):
+            raise ValueError("data.missing_indicators.treat_as must be new|source, "
+                             f"got {indicators.treat_as!r}")
+        if not 0.0 <= indicators.min_missing_rate < 1.0:
+            raise ValueError("data.missing_indicators.min_missing_rate must be in [0, 1), "
+                             f"got {indicators.min_missing_rate}")
+        if not indicators.suffix:
+            raise ValueError("data.missing_indicators.suffix must not be empty")
         if self.data_quality.distribution_reference not in ("train", "valid", "test"):
             raise ValueError("data_quality.distribution_reference must be train|valid|test, "
                              f"got {self.data_quality.distribution_reference!r}")

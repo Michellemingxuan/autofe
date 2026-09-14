@@ -23,6 +23,9 @@ dependencies = [
 
 [project.optional-dependencies]
 dev = ["pytest", "pyarrow"]
+# Only the discovery package needs an LLM client; the validation stages do not,
+# so these stay out of the core install.
+discovery = ["openai", "python-dotenv", "nest_asyncio"]
 
 [project.scripts]
 mllite = "validation.cli:main"

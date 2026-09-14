@@ -64,10 +64,17 @@ def pairwise_complete_corr(x: np.ndarray, y: np.ndarray) -> np.ndarray:
     """
     x = np.asarray(x, dtype=np.float64)
     y = np.asarray(y, dtype=np.float64)
-    mx = (~np.isnan(x)).astype(np.float64)
-    my = (~np.isnan(y)).astype(np.float64)
-    zx = np.nan_to_num(x)
-    zy = np.nan_to_num(y)
+
+    # Non-finite values are excluded pairwise, exactly like NaN. Using isfinite
+    # rather than isnan matters: np.nan_to_num maps +inf to 1.8e308, squaring that
+    # overflows to inf, and the mask's zeros then give 0 * inf = NaN inside the
+    # matmul - which surfaces as an "invalid value encountered in matmul" warning
+    # and silently poisons the correlation with NaN.
+    finite_x, finite_y = np.isfinite(x), np.isfinite(y)
+    mx = finite_x.astype(np.float64)
+    my = finite_y.astype(np.float64)
+    zx = np.where(finite_x, x, 0.0)
+    zy = np.where(finite_y, y, 0.0)
 
     n = mx.T @ my
     sx = zx.T @ my

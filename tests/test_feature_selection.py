@@ -125,3 +125,30 @@ def test_redundancy_summary_accounts_for_every_candidate(frame):
     assert summary.loc["new_dup", "reached_screen"] == "redundancy"
     assert summary.loc["new_dup", "max_abs_spearman"] > 0.9
     assert summary.loc["new_signal", "reached_screen"] == "redundancy"
+
+
+def test_correlation_kernel_is_immune_to_infinities():
+    """+/-inf must be excluded pairwise like NaN, not turned into 1.8e308 - squaring
+    that overflows and poisons the matmul with NaN."""
+    import warnings
+
+    rng = np.random.default_rng(0)
+    n = 500
+    column = rng.normal(size=n)
+    column[:5] = np.inf
+    column[5:10] = -np.inf
+    column[10:15] = np.nan
+    values = np.column_stack([rng.normal(size=n), column])
+
+    with warnings.catch_warnings(record=True) as caught:
+        warnings.simplefilter("always")
+        corr = pairwise_complete_corr(values, values)
+
+    assert not [w for w in caught if issubclass(w.category, RuntimeWarning)]
+    assert np.isfinite(corr).all()
+    assert corr[1, 1] == pytest.approx(1.0)          # a column still correlates with itself
+
+    # the answer matches simply dropping the non-finite rows first
+    finite = np.isfinite(values).all(axis=1)
+    expected = np.corrcoef(values[finite].T)[0, 1]
+    assert corr[0, 1] == pytest.approx(expected, abs=1e-9)

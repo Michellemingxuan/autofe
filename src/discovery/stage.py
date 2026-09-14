@@ -1,0 +1,382 @@
+"""Stage 0.5: propose features, screen them, hand the survivors to validation.
+
+This is the seam between the two halves. Discovery produces *code*; the
+validation stages consume *columns already in the table*. So the stage's real
+work, beyond running the loop, is materialising the surviving code onto every
+split and returning the column names - after which nothing downstream knows or
+cares that a language model was involved.
+
+Two properties worth protecting:
+
+* The same code is applied to every split. A feature computed one way on train
+  and another on test is not a feature, it is a bug, so the blocks run through
+  one function over all frames rather than being recomputed per split.
+* Screening only ever sees train. Validation's whole job is to judge these
+  columns on data that had no hand in proposing them, which is void if the
+  proposer was shown test rows.
+"""
+
+from __future__ import annotations
+
+from dataclasses import dataclass, field
+from pathlib import Path
+from typing import Any, Optional
+
+import pandas as pd
+
+from discovery.loop import Candidate, DiscoveryRun, StoppingRule, run_discovery
+from discovery.prompt import describe_columns, low_variation_columns
+from discovery.sandbox import apply_code
+from discovery.screen import Screener, build_sample
+from discovery.shots import build_shot_batches
+from discovery.strategies import REGISTRY as STRATEGIES, LLMSettings, PromptContext
+from validation.data import Dataset
+from validation.logging_utils import get_logger
+from validation.metrics import calc_adj_gini, capture_rate
+
+logger = get_logger(__name__)
+
+__all__ = ["DiscoveryResult", "run_discovery_stage", "STRATEGIES"]
+
+# Strategies are registered in discovery.strategies.REGISTRY; the framework
+# around them does not change when one is added.
+
+
+@dataclass
+class DiscoveryResult:
+    """What discovery contributed, and everything it tried on the way."""
+
+    dataset: Optional[Dataset] = None
+    kept_features: list[str] = field(default_factory=list)
+    records: list[dict[str, Any]] = field(default_factory=list)
+    rounds: list[dict[str, Any]] = field(default_factory=list)
+    stopped_because: str = ""
+    base_score: Optional[float] = None
+    enabled: bool = True
+
+    def to_frame(self) -> pd.DataFrame:
+        """One row per proposal: rationale beside the numbers."""
+        return pd.DataFrame(self.records)
+
+    def summary(self) -> dict[str, Any]:
+        return {
+            "enabled": self.enabled,
+            "proposed": len(self.records),
+            "kept": len(self.kept_features),
+            "kept_features": list(self.kept_features),
+            "rounds": len(self.rounds),
+            "stopped_because": self.stopped_because,
+            "screen_base_score": self.base_score,
+        }
+
+
+def _column_descriptions(discovery_cfg: Any) -> dict[str, str]:
+    """Inline descriptions, optionally merged with a JSON file."""
+    descriptions = dict(discovery_cfg.column_descriptions or {})
+    path = discovery_cfg.column_descriptions_path
+    if path:
+        import json
+
+        loaded = json.loads(Path(path).read_text(encoding="utf-8"))
+        if not isinstance(loaded, dict):
+            raise ValueError(
+                f"{path} must hold a JSON object of {{column: description}}, "
+                f"got {type(loaded).__name__}"
+            )
+        # Inline entries win, so a config can correct one line of a mapping file.
+        descriptions = {**{str(k): str(v) for k, v in loaded.items()}, **descriptions}
+    return descriptions
+
+
+def _categorical_columns(discovery_cfg: Any, base_features: list[str],
+                         known: list[str] | None = None) -> list[str]:
+    """
+    Which columns the prompt should present as coded categories.
+
+    A config declares whichever list is shorter. Naming the continuous columns
+    means everything else is categorical, which is the natural way round for a
+    clinical table where 99 of 111 columns are coded categories and only a dozen
+    are real measurements - and getting it right matters: a column shown as a
+    range invites arithmetic on it, so a coded category presented as continuous
+    is an invitation to compute the mean of an ICD code.
+    """
+    if discovery_cfg.continuous_columns is not None:
+        continuous = set(discovery_cfg.continuous_columns)
+        # Checked against every column in the table, not just the incumbents: a
+        # config rightly declares the type of a candidate column too, and only a
+        # name matching nothing at all is a mistake worth reporting.
+        unknown = continuous - set(known if known is not None else base_features)
+        if unknown:
+            logger.warning(
+                "discovery.continuous_columns names %d column(s) that are not in "
+                "the table at all; check for a typo: %s",
+                len(unknown), ", ".join(sorted(unknown)),
+            )
+        return [c for c in base_features if c not in continuous]
+    return [c for c in discovery_cfg.categorical_columns if c in base_features]
+
+
+def _metric(name: str, percent: float):
+    """Resolve the screen's score function from a metric name."""
+    if name == "adj_gini":
+        return calc_adj_gini, "adjusted Gini", ""
+    if name.startswith("capture_rate"):
+        explanation = (
+            f" Capture rate is the share of all positive cases falling in the "
+            f"highest-scoring {percent * 100:g}% of rows once ranked by predicted "
+            "score, so only the ranking at the very top matters."
+        )
+        return (lambda df, y, p: capture_rate(df, y, p, percent)), \
+               f"capture rate at the top {percent * 100:g}%", explanation
+    raise ValueError(f"Unsupported discovery metric {name!r}; use adj_gini or capture_rate")
+
+
+def run_discovery_stage(
+    cfg: Any,
+    dataset: Dataset,
+    output_dir: str | Path | None = None,
+) -> DiscoveryResult:
+    """
+    Run discovery and return a dataset carrying the surviving columns.
+
+    The returned dataset's ``new_features`` are the proposals worth forwarding;
+    ``base_features`` is untouched. Stages 1-5 then treat them exactly as they
+    would a hand-written candidate set - screened for quality, modelled one at a
+    time by leave_one_in, and judged by the verdict gates.
+    """
+    discovery_cfg = cfg.discovery
+    if not discovery_cfg.enabled:
+        return DiscoveryResult(dataset=dataset, enabled=False,
+                               stopped_because="discovery disabled")
+
+    if discovery_cfg.strategy not in STRATEGIES:
+        raise ValueError(
+            f"Unknown discovery strategy {discovery_cfg.strategy!r}; "
+            f"available: {sorted(STRATEGIES)}"
+        )
+
+    score_fn, metric_name, metric_explanation = _metric(
+        discovery_cfg.metric, discovery_cfg.capture_percent
+    )
+
+    # The screen enforces the threshold the selection gate will use, so a
+    # candidate cannot pass here and be rejected there for redundancy - which is
+    # exactly what happened before: 6 of 7 forwarded features died at that gate
+    # after the expensive stages had already run on them.
+    redundancy_max_abs = discovery_cfg.redundancy_max_abs
+    if redundancy_max_abs is None and cfg.feature_selection.enabled:
+        spearman = cfg.feature_selection.spearman
+        if getattr(spearman, "enabled", False):
+            redundancy_max_abs = spearman.redundancy_max_abs
+
+
+    # --- the small sampling dataset ------------------------------------------
+    source_split = discovery_cfg.sample_split
+    frame = dataset.split(source_split)
+    base_features = list(dataset.base_features)
+    sample = build_sample(
+        frame[[dataset.target, *base_features]],
+        dataset.target,
+        size=discovery_cfg.sample_size,
+        seed=cfg.run.seed,
+        balance=discovery_cfg.sample_balance,
+    )
+    positives = int(sample[dataset.target].sum())
+    logger.info(
+        "discovery: redundancy limit |rho|<=%s (from %s)",
+        f"{redundancy_max_abs:.2f}" if redundancy_max_abs is not None else "off",
+        "discovery.redundancy_max_abs" if discovery_cfg.redundancy_max_abs is not None
+        else "feature_selection.spearman",
+    )
+    logger.info(
+        "discovery: strategy=%s backend=%s model=%s metric=%s",
+        discovery_cfg.strategy, discovery_cfg.llm.backend,
+        discovery_cfg.llm.model, metric_name,
+    )
+    logger.info(
+        "discovery: %d-row %s sample from %s (%d rows, %d positives), "
+        "%d base features, %.0f%% held out for scoring",
+        len(sample), "balanced" if discovery_cfg.sample_balance else "random",
+        source_split, len(frame), positives, len(base_features),
+        discovery_cfg.sample_eval_fraction * 100,
+    )
+
+    subsampled = [k for k in ("colsample_bytree", "colsample_bylevel", "colsample_bynode")
+                  if (cfg.model.params or {}).get(k, 1.0) != 1.0]
+    if subsampled:
+        # The screen strips these for its own measurement, but the validation
+        # variants cannot: base and leave_one_in differ in column count, so their
+        # gini gain carries the same content-independent offset. Left alone rather
+        # than overridden, because changing the model is the user's call.
+        logger.warning(
+            "model.params sets %s < 1: base and leave_one_in variants differ in "
+            "column count, so their gini gain includes an offset unrelated to any "
+            "feature (a constant column measured -0.0055 on this data). The screen "
+            "strips it for its own delta; set these to 1.0 to remove it from the "
+            "verdict too.",
+            ", ".join(subsampled),
+        )
+
+    screener = Screener(
+        sample,
+        dataset.target,
+        base_features,
+        cfg.model.params or {},
+        score=score_fn,
+        num_boost_round=discovery_cfg.screen_boost_rounds,
+        nthread=1,
+        spike_factor=discovery_cfg.spike_factor,
+        redundancy_max_abs=redundancy_max_abs,
+        # Description -> identifier, so indexing by meaning is answered with the
+        # key to use rather than a KeyError.
+        column_aliases={v: k for k, v in _column_descriptions(discovery_cfg).items()},
+        eval_fraction=discovery_cfg.sample_eval_fraction,
+        seed=cfg.run.seed,
+    )
+
+    # --- the proposer --------------------------------------------------------
+    descriptions = _column_descriptions(discovery_cfg)
+    flat_columns = low_variation_columns(sample, base_features)
+    if flat_columns:
+        logger.info(
+            "discovery: %d/%d columns barely vary across rows and are flagged in the "
+            "prompt; a ratio pairing one with a varying column reproduces that "
+            "column and is rejected as redundant",
+            len(flat_columns), len(base_features),
+        )
+    described = sum(1 for c in base_features if descriptions.get(c))
+    if described < len(base_features):
+        logger.warning(
+            "discovery: %d/%d columns have no description; a proposer cannot use "
+            "real-world knowledge about a column it only knows by name",
+            len(base_features) - described, len(base_features),
+        )
+    categorical_columns = _categorical_columns(
+        discovery_cfg, base_features,
+        known=[*base_features, *dataset.new_features],
+    )
+    if categorical_columns:
+        logger.info(
+            "discovery: %d/%d columns presented as coded categories (levels, not ranges)",
+            len(categorical_columns), len(base_features),
+        )
+    # One batch of example rows per round, each spread across the feature space
+    # rather than drawn at random, so a later round reasons from new evidence
+    # instead of re-reading the same 32 rows.
+    shot_batches = build_shot_batches(
+        sample,
+        dataset.target,
+        columns=base_features,
+        categorical=categorical_columns,
+        shots=discovery_cfg.shots,
+        batches=max(1, min(discovery_cfg.shot_batches, discovery_cfg.max_rounds)),
+        seed=cfg.run.seed,
+        logger=logger,
+    )
+    context = PromptContext(
+        task_description=discovery_cfg.task_description,
+        column_contexts=[
+            describe_columns(
+                batch,
+                base_features,
+                descriptions=descriptions,
+                categorical=categorical_columns,
+                # Computed on the whole sample, not the handful of rows shown,
+                # since a few values cannot reveal that a column barely moves.
+                low_variation=flat_columns,
+            )
+            for batch in shot_batches
+        ],
+        metric_name=metric_name,
+        metric_explanation=metric_explanation,
+        n_rows=len(frame),
+        redundancy_max_abs=redundancy_max_abs,
+    )
+    proposer = STRATEGIES[discovery_cfg.strategy](
+        context,
+        LLMSettings.from_config(discovery_cfg.llm),
+        output_dir=Path(output_dir) / "discovery" if output_dir else None,
+    )
+
+    run: DiscoveryRun = run_discovery(
+        proposer,
+        screener,
+        batch_size=discovery_cfg.batch_size,
+        stopping=StoppingRule(
+            max_rounds=discovery_cfg.max_rounds,
+            target_features=discovery_cfg.target_features,
+            patience=discovery_cfg.patience,
+            max_candidates=discovery_cfg.max_candidates,
+        ),
+        min_delta=discovery_cfg.min_delta,
+        logger=logger,
+    )
+
+    kept = run.kept
+    failed = [c for c in run.candidates if not c.ok]
+    logger.info(
+        "discovery: %d proposed over %d round(s) - %d forwarded, %d rejected",
+        len(run.candidates), len(run.rounds), len(kept), len(failed),
+    )
+    if failed:
+        # Surfaced rather than buried: a run where most blocks would not execute
+        # is a prompt problem, and the reasons are the evidence for fixing it.
+        reasons: dict[str, int] = {}
+        for candidate in failed:
+            head = (candidate.screen.error or "unknown").split(":")[0]
+            reasons[head] = reasons.get(head, 0) + 1
+        logger.info("discovery: rejection reasons: %s",
+                    ", ".join(f"{k} x{v}" for k, v in sorted(reasons.items())))
+    logger.info(
+        "discovery: handing %d feature(s) to validation: %s",
+        len(kept), ", ".join(c.feature_name or "?" for c in kept) or "none",
+    )
+
+    return DiscoveryResult(
+        dataset=_materialise(dataset, kept),
+        kept_features=[c.feature_name for c in kept if c.feature_name],
+        records=run.records(),
+        rounds=[vars(r) for r in run.rounds],
+        stopped_because=run.stopped_because,
+        base_score=run.base_score,
+    )
+
+
+def _materialise(dataset: Dataset, kept: list[Candidate]) -> Dataset:
+    """
+    Compute the kept features on every split and return the widened dataset.
+
+    Applied per split through the same sandbox that screened them, so the column
+    in test is computed by exactly the code that was screened on train. A
+    candidate that fails here - a value present in train but not in test can do
+    it - is dropped rather than allowed to half-exist across splits.
+    """
+    if not kept:
+        return dataset
+
+    blocks = [c.code for c in kept]
+    names = [c.feature_name for c in kept if c.feature_name]
+
+    widened: dict[str, pd.DataFrame] = {}
+    for split, frame in dataset.frames.items():
+        widened[split] = apply_code(frame, blocks)
+
+    missing = [n for n in names if any(n not in f.columns for f in widened.values())]
+    if missing:
+        raise RuntimeError(
+            f"features {missing} did not materialise on every split; "
+            "this should have been caught while screening"
+        )
+
+    # Appended, not replaced: a config may already list hand-written candidates,
+    # and validating those beside the discovered ones is the useful behaviour.
+    combined = [*dataset.new_features, *(n for n in names if n not in dataset.new_features)]
+
+    return Dataset(
+        frames=widened,
+        target=dataset.target,
+        base_features=list(dataset.base_features),
+        new_features=combined,
+        weight_col=dataset.weight_col,
+        meta={**dataset.meta, "discovered_features": names},
+    )

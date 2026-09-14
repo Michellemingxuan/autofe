@@ -44,6 +44,7 @@ class PipelineResult:
     config: Config
     output_dir: Path
     dataset: Optional[Dataset] = None
+    discovery: Optional[Any] = None      # discovery.stage.DiscoveryResult, when enabled
     data_quality: Optional[DataQualityResult] = None
     feature_selection: Optional[FeatureSelectionResult] = None
     models: List[ModelResult] = field(default_factory=list)
@@ -57,6 +58,7 @@ class PipelineResult:
             "run": self.config.run.name,
             "gates": self.config.run.gates,
             "output_dir": str(self.output_dir),
+            **({"discovery": self.discovery.summary()} if self.discovery is not None else {}),
             "elapsed_seconds": round(self.elapsed_seconds, 1),
             "dataset": self.dataset.describe() if self.dataset else {},
             "data_quality": self.data_quality.summary() if self.data_quality else {},
@@ -125,6 +127,27 @@ class Pipeline:
                 else:
                     dataset = build_dataset(self.cfg)
 
+        if self.cfg.discovery.enabled:
+            with timed(logger, "stage 0.5: feature discovery"):
+                # Imported here, not at module scope, for two reasons: `discovery`
+                # imports `validation`, so a top-level import would close a cycle;
+                # and its LLM dependencies are an optional extra, so a
+                # validation-only install must not need them present.
+                from discovery.stage import run_discovery_stage
+
+                discovered = run_discovery_stage(self.cfg, dataset, self.output_dir)
+                dataset = discovered.dataset
+                result.discovery = discovered
+                if discovered.records:
+                    # The ledger: what was proposed, why, and what it scored.
+                    self._write_csv("discovered_features.csv", discovered.to_frame())
+                self._write_json("discovery_summary.json", discovered.summary())
+                logger.info("discovery contributed %d feature(s): %s",
+                            len(discovered.kept_features),
+                            ", ".join(discovered.kept_features) or "none")
+
+        # After discovery, so the candidate set it contributed is measured at
+        # every later stage exactly like a hand-written one.
         candidates = list(dataset.new_features)   # before any stage narrows them
 
         with timed(logger, "stage 1: data quality & stability"):

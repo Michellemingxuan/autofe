@@ -111,13 +111,35 @@ def resolve_features(df: pd.DataFrame, cfg: FeatureConfig, data_cfg: DataConfig)
 
 
 def clean_missing(df: pd.DataFrame, columns: List[str], sentinels: List[float]) -> pd.DataFrame:
-    """Replace sentinel codes with NaN so XGBoost treats them as missing."""
-    if not sentinels or not columns:
+    """Replace sentinel codes and infinities with NaN, so they read as missing.
+
+    Sentinels are configured; infinities are not, because there is no case where
+    +/-inf is a meaningful model input. They arrive from ratio features with a zero
+    denominator, and left alone they corrupt quantile binning, the PSI reference
+    edges, and the correlation kernel - where squaring a near-DBL_MAX value
+    overflows and turns the result into NaN.
+    """
+    if not columns:
         return df
-    df = df.copy()
     numeric = [c for c in columns if pd.api.types.is_numeric_dtype(df[c])]
-    if numeric:
+    if not numeric:
+        return df
+
+    df = df.copy()
+    if sentinels:
         df[numeric] = df[numeric].replace(list(sentinels), np.nan)
+
+    block = df[numeric].to_numpy(dtype=np.float64, na_value=np.nan, copy=True)
+    non_finite = ~np.isfinite(block)
+    n_non_finite = int(non_finite.sum()) - int(df[numeric].isna().to_numpy().sum())
+    if n_non_finite > 0:
+        affected = [numeric[i] for i in np.where(non_finite.any(axis=0))[0]
+                    if not df[numeric[i]].isna().all()]
+        block[non_finite] = np.nan
+        df[numeric] = block
+        logger.warning("converted %d infinite value(s) to NaN across %d column(s): %s",
+                       n_non_finite, len(affected),
+                       affected[:5] + (["..."] if len(affected) > 5 else []))
     return df
 
 
@@ -237,6 +259,62 @@ def prepare_dataset_from_frames(frames: Dict[str, pd.DataFrame], cfg: Config) ->
     return _assemble(ordered, cfg)
 
 
+def add_missing_indicators(
+    frames: Dict[str, pd.DataFrame],
+    base: List[str],
+    new: List[str],
+    cfg: Config,
+) -> tuple[Dict[str, pd.DataFrame], List[str], List[str]]:
+    """Append a 0/1 column per eligible feature, recording where it was missing.
+
+    Eligibility is decided on **train** and the same columns are then added to every
+    split, so the feature set cannot differ between them. A column that is never
+    missing, or always missing, is skipped: its indicator would be constant and
+    carry nothing.
+    """
+    indicators = cfg.data.missing_indicators
+    if not indicators.enabled:
+        return frames, base, new
+
+    train = frames["train"]
+    source = list(new) if indicators.scope == "candidates" else list(base) + list(new)
+
+    made: List[tuple] = []
+    for column in source:
+        rate = float(train[column].isna().mean())
+        if not 0.0 < rate < 1.0 or rate < indicators.min_missing_rate:
+            continue
+        name = f"{column}{indicators.suffix}"
+        if name in train.columns:
+            logger.warning("missing indicator %r already exists as a column; skipping", name)
+            continue
+        made.append((column, name, rate))
+
+    if not made:
+        logger.info("missing indicators enabled, but no column qualified "
+                    "(need %.1f%% <= missing rate < 100%%)", indicators.min_missing_rate * 100)
+        return frames, base, new
+
+    prepared = {
+        split: frame.assign(**{name: frame[column].isna().astype("int8")
+                               for column, name, _ in made})
+        for split, frame in frames.items()
+    }
+
+    if indicators.treat_as == "new":
+        new = list(new) + [name for _, name, _ in made]
+    else:
+        in_base = set(base)
+        base = list(base) + [n for c, n, _ in made if c in in_base]
+        new = list(new) + [n for c, n, _ in made if c not in in_base]
+
+    logger.info("added %d missing indicator(s) as %s feature(s): %s",
+                len(made), indicators.treat_as,
+                ", ".join(f"{n} ({r:.1%})" for _, n, r in made[:5])
+                + (", ..." if len(made) > 5 else ""))
+    return prepared, base, new
+
+
 def _assemble(frames: Dict[str, pd.DataFrame], cfg: Config) -> Dataset:
     """Resolve features against train, then subset and clean every split alike."""
     reference = frames["train"]
@@ -254,6 +332,9 @@ def _assemble(frames: Dict[str, pd.DataFrame], cfg: Config) -> Dataset:
         if absent:
             raise KeyError(f"the {name!r} split is missing column(s) present in train: {absent}")
         prepared[name] = clean_missing(frame[keep], base + new, cfg.data.missing_values)
+
+    # After cleaning, so indicators capture sentinels and infinities too.
+    prepared, base, new = add_missing_indicators(prepared, base, new, cfg)
 
     dataset = Dataset(
         frames=prepared,
