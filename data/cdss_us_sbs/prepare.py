@@ -194,7 +194,7 @@ def main() -> int:
         return 0
 
     sys.path.insert(0, str(ROOT / "src"))
-    from mllite import load_config
+    from validation import load_config
 
     cfg = load_config(args.config)
     if not cfg.data.paths:

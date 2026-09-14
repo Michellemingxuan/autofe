@@ -4,6 +4,7 @@
 #
 #   python data/bankruptcy/prepare.py
 #   mllite -c configs/bankruptcy.yaml
+#   mllite -c configs/bankruptcy.yaml --set discovery.enabled=true
 
 run:
   name: bankruptcy_cashflow
@@ -20,6 +21,12 @@ data:
   target: bankrupt
   id_cols: [row_id]
   missing_values: []          # this source has no sentinel codes
+  missing_indicators:       # add a 0/1 column recording where a feature was missing
+    enabled: false          # enable when missingness itself may carry signal
+    scope: candidates       # candidates | all
+    min_missing_rate: 0.01  # skip columns barely ever missing
+    suffix: _is_missing
+    treat_as: new           # new | source - which feature list the indicators join
   split:
     mode: random
     stratify: true            # 3.2% positives - keep the rate stable across splits
@@ -44,6 +51,65 @@ features:
     - cash_flow_to_equity
     - cand_dup_roa_c          # planted: near-copy of an incumbent
     - cand_noise              # planted: pure noise
+
+# ---------------------------------------------------------------------------
+# Feature discovery. Off by default: the run then evaluates exactly the
+# candidates declared in `features.new` above, which is the original scenario.
+#
+# Turn it on and an LLM proposes further candidates over the incumbent set,
+# screens them on a small sample, and APPENDS the survivors to `features.new` -
+# so one run judges the declared batch and the proposed one side by side, at the
+# same four gates.
+#
+#   mllite -c configs/bankruptcy.yaml --set discovery.enabled=true
+#
+# Needs OPENAI_API_KEY in the environment or a .env at or above the working
+# directory. The two planted controls double as a check on the screens: a
+# proposal as redundant as cand_dup_roa_c should be rejected, and one as
+# uninformative as cand_noise should score near zero.
+# ---------------------------------------------------------------------------
+discovery:
+  enabled: false
+  strategy: caafe          # caafe | elfgym | ferg | featllm | promptfe
+  task_description: >
+    Financial statement data for Taiwanese companies collected from the Taiwan
+    Economic Journal between 1999 and 2009. Each row is one company-year, with
+    ratios covering profitability, leverage, liquidity, cash flow, turnover and
+    growth. The task is to predict bankruptcy, declared according to Taiwan
+    Stock Exchange business regulations. Bankruptcies are rare, about 3% of rows.
+
+  # A round asks for a batch and screens each block in turn, folding every
+  # outcome into the history the next round sees.
+  batch_size: 5
+  max_rounds: 2            # the stopping control; 1 is a single batch
+
+  # The small sample the screen fits on. Balanced because a uniform draw at a
+  # 3% base rate would be almost all solvent companies, and held out in part
+  # because an in-sample delta saturates and stops meaning anything.
+  sample_size: 1500
+  sample_split: train
+  sample_balance: true
+  sample_eval_fraction: 0.3
+  screen_boost_rounds: 150
+  metric: adj_gini
+
+  # The example rows shown under each column - the only concrete data the
+  # proposer ever sees of the table. Chosen per class by KMeans, one row per
+  # cluster, so all 32 do not land in whichever region happens to be dense and
+  # both classes appear even at a low base rate. Each round gets its own batch,
+  # so a second round reasons from rows the first one did not show.
+  shots: 32
+  shot_batches: 2          # capped at max_rounds; more is wasted work
+
+  # What each column means. Written by prepare.py from the archive's own
+  # headers: a proposer that only knows a column by name cannot bring any
+  # real-world knowledge to it.
+  column_descriptions_path: data/bankruptcy/column_descriptions.json
+
+  llm:
+    backend: openai
+    model: gpt-4o
+    reasoning_effort: null # gpt-4o rejects this parameter with a 400
 
 data_quality:
   enabled: true               # period stability (by_col) is still the unported check

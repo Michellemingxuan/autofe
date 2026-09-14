@@ -58,7 +58,7 @@ reaches the network.
 
 ```bash
 python data/bankruptcy/prepare.py             # downloads the demo dataset
-mllite -c configs/bankruptcy.yaml                      # or: python -m mllite.cli -c ...
+mllite -c configs/bankruptcy.yaml                      # or: python -m validation.cli -c ...
 mllite -c configs/bankruptcy.yaml --set run.n_jobs=8   # dotted overrides, repeatable
 ```
 
@@ -66,13 +66,15 @@ Two demos ship with the repo:
 
 | Config | Data | Purpose |
 | --- | --- | --- |
-| `configs/bankruptcy.yaml` | UCI Taiwanese Bankruptcy Prediction (real, binary, 3.2% event rate) | Realistic end-to-end run |
+| `configs/bankruptcy.yaml` | UCI Taiwanese Bankruptcy Prediction (real, binary, 3.2% event rate) | Realistic end-to-end run; rare events, all-continuous ratios |
+| `configs/malware.yaml` | UCI NATICUSdroid Android permissions (29,332 apps, 50% positive) | Balanced target, and every feature a 0/1 flag - so a useful feature has to combine flags, not transform one |
+| `configs/myocardial.yaml` | UCI Myocardial Infarction Complications (1,700 patients, 23% positive) | Small, 7.6% of cells missing, 98 of 110 features coded categories - the hard case |
 | `configs/example_synthetic.yaml` | `data/synthetic/make.py` (regression, known ground truth) | Fast sanity check that the screens find what is really there |
 
 From Python:
 
 ```python
-from mllite import run_pipeline
+from validation import run_pipeline
 
 result = run_pipeline("configs/bankruptcy.yaml")
 print(result.analysis.comparison)          # gini gain per variant
@@ -82,7 +84,7 @@ print(result.feature_selection.selected)   # new features that survived screenin
 Candidates engineered in a session never need to round-trip through a file:
 
 ```python
-from mllite import Pipeline, load_config
+from validation import Pipeline, load_config
 
 frame["cand_x"] = frame["a"] / frame["b"]
 cfg = load_config("configs/bankruptcy.yaml")
@@ -90,7 +92,7 @@ cfg.features.new = ["cand_x"]
 result = Pipeline(cfg).run(frame=frame)     # or run(dataset=...) for a prebuilt one
 ```
 
-**Start here:** [`notebooks/usage_walkthrough.ipynb`](notebooks/usage_walkthrough.ipynb)
+**Start here:** [`notebooks/usage.ipynb`](notebooks/usage.ipynb)
 is a fully executed walkthrough — the one-line run, how to read each artifact,
 the stage-by-stage API, and a worked discover -> verify -> keep-or-shift-out loop.
 
@@ -132,19 +134,19 @@ Two caveats that the demo makes concrete, and that apply to any run:
 
 | Path | What it does |
 | --- | --- |
-| `src/mllite/config.py` | Typed config dataclasses; unknown keys are errors, not silent no-ops |
-| `src/mllite/data.py` | Load, resolve base/new feature lists, clean sentinels, split |
-| `src/mllite/parallel.py` | The only place that talks to joblib; also budgets XGBoost threads |
-| `src/mllite/metrics.py` | Adjusted Gini, decile accuracy, capture rate |
-| `src/mllite/stages/data_quality.py` | **Placeholder** — port AIME_DataStability here |
-| `src/mllite/stages/feature_selection.py` | Spearman + mutual information screens |
-| `src/mllite/stages/modeling.py` | Variant construction and XGBoost training |
-| `src/mllite/stages/analysis.py` | Metrics, Gini gain vs. baseline, SHAP ranking |
-| `src/mllite/stages/verdict.py` | The four-gate cascade and the batch decision |
-| `src/mllite/pipeline.py` | Sequences the stages, writes every artifact |
-| `notebooks/usage_walkthrough.ipynb` | Executed walkthrough, including the discover/verify loop |
+| `src/validation/config.py` | Typed config dataclasses; unknown keys are errors, not silent no-ops |
+| `src/validation/data.py` | Load, resolve base/new feature lists, clean sentinels, split |
+| `src/validation/parallel.py` | The only place that talks to joblib; also budgets XGBoost threads |
+| `src/validation/metrics.py` | Adjusted Gini, decile accuracy, capture rate |
+| `src/validation/stages/data_quality.py` | **Placeholder** — port AIME_DataStability here |
+| `src/validation/stages/feature_selection.py` | Spearman + mutual information screens |
+| `src/validation/stages/modeling.py` | Variant construction and XGBoost training |
+| `src/validation/stages/analysis.py` | Metrics, Gini gain vs. baseline, SHAP ranking |
+| `src/validation/stages/verdict.py` | The four-gate cascade and the batch decision |
+| `src/validation/pipeline.py` | Sequences the stages, writes every artifact |
+| `notebooks/usage.ipynb` | Executed walkthrough, including the discover/verify loop |
 | `data/<use case>/` | A use case: its build script, raw input, and shaped table |
-| `data/` | Every table the pipeline reads or writes (git-ignored) |
+| `data/` | Every table the pipeline reads or writes (tables git-ignored, build scripts tracked) |
 | `configs/` | Run configs |
 
 ## Project layout
@@ -154,13 +156,18 @@ configs/            run configs - one file fully describes a run
 data/               one folder per use case - the script and its output together
   bankruptcy/
     prepare.py      downloads + shapes the UCI table
-    raw/            the downloaded archive, before shaping
-    modeling.parquet
+    raw/            the downloaded archive, before shaping  (ignored)
+    modeling.parquet                                        (ignored)
     column_mapping.csv
+    column_descriptions.json   what each column means, for a discovery run
+  malware/          same shape: prepare.py + mapping + descriptions
+  myocardial/
   synthetic/
     make.py         generates the ground-truth table
-    modeling.parquet
-src/mllite/         the pipeline
+    modeling.parquet                                        (ignored)
+src/validation/     the pipeline: data, quality, screening, models, verdict
+src/discovery/      proposing candidate features and screening them cheaply
+src/preprocessing/  what every data/<use case>/prepare.py shares
 notebooks/          executed walkthrough
 outputs/            one timestamped directory per run
 tests/
@@ -181,10 +188,15 @@ repeated on a command line. The scripts own only what a config cannot express �
 how the raw source becomes a table — and then verify that what they built matches
 what the config declares.
 
-`data/` is git-ignored, so nothing large or confidential is ever committed — which
-is also why the build scripts live under `scripts/<use case>/` rather than beside
-their output. They are code: they need to survive a fresh clone, and
+The tables themselves are git-ignored — `modeling.parquet`, any pre-split
+train/valid/test parquet, and `raw/` — so nothing large or confidential is
+committed. What is tracked is everything needed to rebuild them: each use case's
+`prepare.py`, its `column_mapping.csv`, and its `column_descriptions.json`.
+Those are code and documentation, they must survive a fresh clone, and
 `data/synthetic/make.py` is imported by the test suite.
+
+So a fresh clone runs `python data/<use case>/prepare.py` once, which downloads
+the source, rebuilds the table and checks it against the config.
 
 Paths in a config are relative to where you run from, so run from the project
 root (the notebook does `os.chdir(ROOT)` in its first cell for the same reason).

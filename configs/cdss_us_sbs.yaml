@@ -25,6 +25,12 @@ data:
   target: TODO_target_column
   id_cols: []           # e.g. [acct_id, as_of_date] - enables the leakage check
   missing_values: [-9999]
+  missing_indicators:       # add a 0/1 column recording where a feature was missing
+    enabled: false          # enable when missingness itself may carry signal
+    scope: candidates       # candidates | all
+    min_missing_rate: 0.01  # skip columns barely ever missing
+    suffix: _is_missing
+    treat_as: new           # new | source - which feature list the indicators join
   weight_col: null
 
 features:

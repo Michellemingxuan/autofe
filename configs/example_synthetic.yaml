@@ -11,6 +11,12 @@ data:
   target: y
   id_cols: [row_id]
   missing_values: [-9999]
+  missing_indicators:       # add a 0/1 column recording where a feature was missing
+    enabled: false          # enable when missingness itself may carry signal
+    scope: candidates       # candidates | all
+    min_missing_rate: 0.01  # skip columns barely ever missing
+    suffix: _is_missing
+    treat_as: new           # new | source - which feature list the indicators join
   split:
     mode: column
     column: split

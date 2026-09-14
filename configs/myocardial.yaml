@@ -1,0 +1,228 @@
+# Demo run: UCI Myocardial Infarction Complications (dataset 579).
+# Scenario - the incumbent model uses what routine admission records (history,
+# examination, ECG, treatment); the serum laboratory panel is the newly proposed
+# feature set. A lab panel must be ordered, costs money and comes back late, so
+# whether it adds anything over admission data is a real decision.
+#
+#   python data/myocardial/prepare.py
+#   mllite -c configs/myocardial.yaml
+#   mllite -c configs/myocardial.yaml --set discovery.enabled=true
+#
+# The hardest of the three demo tables: 1,700 rows (small), 7.6% of cells
+# missing (very uneven), and 98 of 110 features are coded categories rather than
+# measurements.
+
+run:
+  name: myocardial_lab_panel
+  output_dir: outputs
+  seed: 42
+  gates: open         # open    -> measure everything, remove nothing (development view)
+                      # enforce -> gates filter, for running the pipeline automatically
+  n_jobs: -1
+  backend: loky
+  log_level: INFO
+
+data:
+  path: data/myocardial/modeling.parquet
+  target: chf
+  id_cols: [id]             # the archive's own record id
+  missing_values: []        # "?" is already resolved to NaN by prepare.py
+  missing_indicators:
+    # Turned ON here, unlike the other two demos. Which labs were ordered is a
+    # clinical decision, so a value being absent carries information about the
+    # patient that the value itself cannot. This is the dataset where that is
+    # worth testing rather than assumed.
+    enabled: true
+    scope: candidates       # the lab panel, which is where the missingness is
+    min_missing_rate: 0.01
+    suffix: _is_missing
+    treat_as: new           # judged at the same gates as the labs themselves
+  split:
+    mode: random
+    stratify: true          # 394 positives in 1,700 rows - keep the rate stable
+    valid_size: 0.2
+    test_size: 0.2
+
+features:
+  # base is left empty: every column that is not a candidate, id or target
+  # becomes the incumbent set (the 101 admission / history / ECG / treatment
+  # columns).
+  base: []
+  new:
+    # The serum laboratory panel. gipo_k and giper_na are threshold flags derived
+    # from k_blood and na_blood, so the redundancy screen has a real pair to
+    # catch here with nothing planted.
+    - gipo_k                # hypokalemia, k_blood < 4 mmol/L
+    - k_blood               # serum potassium
+    - giper_na              # hypernatremia, na_blood > 150 mmol/L
+    - na_blood              # serum sodium
+    - alt_blood             # serum AlAT
+    - ast_blood             # serum AsAT
+    - kfk_blood             # serum CPK - 99.8% missing, the missingness gate should drop it
+    - l_blood               # white cell count
+    - roe                   # erythrocyte sedimentation rate
+
+# ---------------------------------------------------------------------------
+# Feature discovery. Off by default: the run then evaluates exactly the
+# candidates declared in `features.new` above, which is the original scenario.
+#
+# Turn it on and an LLM proposes further candidates over the incumbent set,
+# screens them on a small sample, and APPENDS the survivors to `features.new` -
+# so one run judges the declared batch and the proposed one side by side, at the
+# same four gates.
+#
+#   mllite -c configs/myocardial.yaml --set discovery.enabled=true
+#
+# This is the dataset where domain knowledge should pay off most: the columns are
+# clinical findings whose relationships are documented in the literature, not
+# anonymous ratios. It is also the one where a proposer is most likely to do
+# something meaningless, because most columns are ordinal codes - which is why
+# the continuous columns are declared explicitly below.
+# ---------------------------------------------------------------------------
+discovery:
+  enabled: false
+  strategy: caafe          # caafe | elfgym | ferg | featllm | promptfe
+  task_description: >
+    Clinical records of 1,700 patients admitted to hospital with acute
+    myocardial infarction, collected at Krasnoyarsk Interdistrict Clinical
+    Hospital. Each row is one patient. The columns record the cardiac history
+    and anamnesis, the examination and blood pressures on admission and in
+    intensive care, the ECG findings, the serum laboratory results, and which
+    drugs were administered in the first three days. The task is to predict
+    chronic heart failure as a complication of the infarction, which occurred in
+    23% of patients. Most columns are ordinal or binary clinical codes rather
+    than measurements, so read each column's description for its coding scheme
+    before combining it with another - a grade, a count and a flag cannot be
+    added together meaningfully. Many values are missing because a test was
+    never ordered, and that is not an error to be filled in.
+
+  # A round asks for a batch and screens each block in turn, folding every
+  # outcome into the history the next round sees.
+  batch_size: 5
+  max_rounds: 2            # the stopping control; 1 is a single batch
+
+  # Only ~1,020 train rows exist, so the sample is most of them. Not rebalanced:
+  # at a 23% base rate a uniform draw already carries plenty of positives, and
+  # balancing would have to discard most of the negatives to do it.
+  sample_size: 1000
+  sample_split: train
+  sample_balance: false
+  sample_eval_fraction: 0.3
+  screen_boost_rounds: 150
+  metric: adj_gini         # only ~79 test positives, so a top-5% capture rate
+                           # moves in steps of more than a percentage point
+
+  # The example rows shown under each column - the only concrete data the
+  # proposer ever sees of the table. Chosen per class by KMeans, one row per
+  # cluster, so all 32 do not land in whichever region happens to be dense and
+  # both classes appear even at a low base rate. Each round gets its own batch,
+  # so a second round reasons from rows the first one did not show.
+  shots: 32
+  shot_batches: 2          # capped at max_rounds; more is wasted work
+
+  # The 12 real measurements. Everything else - 98 columns of clinical codes -
+  # is presented to the proposer as levels rather than a range, so it does not
+  # try to do arithmetic on an ECG finding. Declared this way round because
+  # naming 12 columns beats naming 98.
+  continuous_columns:
+    - age
+    - s_ad_kbrig           # systolic BP, emergency team
+    - d_ad_kbrig           # diastolic BP, emergency team
+    - s_ad_orit            # systolic BP, intensive care
+    - d_ad_orit            # diastolic BP, intensive care
+    - k_blood
+    - na_blood
+    - alt_blood
+    - ast_blood
+    - kfk_blood
+    - l_blood
+    - roe
+
+  # What each column means, including its coding scheme. Written by prepare.py
+  # from the archive's own published variable list - without it a proposer
+  # cannot tell an angina grade from a drug-administration flag.
+  column_descriptions_path: data/myocardial/column_descriptions.json
+
+  llm:
+    backend: openai
+    model: gpt-4o
+    reasoning_effort: null # gpt-4o rejects this parameter with a 400
+
+data_quality:
+  enabled: true
+  max_missing_rate: 0.95    # drops kfk_blood, missing for 99.8% of patients
+  min_unique: 2
+  max_psi: 0.25
+  distribution_check: true
+  distribution_reference: train
+  distribution_bins: 10
+  drop_failed: true
+
+feature_selection:
+  enabled: true
+  sample_size: null         # ~1,020 train rows - use all of them
+  on_split: train
+  chunk_size: 4
+  spearman:
+    enabled: true
+    target_min_abs: 0.09    # ~3 sigma for n=1,020 train rows
+    redundancy_max_abs: 0.90
+  mutual_info:
+    enabled: true
+    bins: 20
+    target_method: histogram
+    target_min: 0.0
+    redundancy_max: 0.80
+    pairwise_against: all
+
+model:
+  task: binary
+  # Shallower and slower than the other two demos: 1,020 training rows with 110
+  # features overfits readily, so the trees are kept small and the learning rate
+  # low, with early stopping to find the round count rather than fixing it.
+  num_boost_round: 600
+  early_stopping_rounds: 50
+  verbose_eval: 0
+  save_models: true
+  variants:
+    - base
+    - base_plus_new
+    - leave_one_in
+  tuning:
+    enabled: false          # false = use model.params as given, no search
+    mode: shared
+    tune_on: base_plus_new
+    n_trials: 20
+    metric: adj_gini
+    seed: null
+    search_space: {}
+
+  params:
+    eta: 0.03
+    max_depth: 3
+    min_child_weight: 10
+    subsample: 0.8
+    colsample_bytree: 1.0   # keep at 1.0: with it below 1 the column COUNT moves
+                            # the score, so base and leave_one_in differ by an
+                            # offset that has nothing to do with the feature
+    eval_metric: auc
+
+analysis:
+  metrics_on: [train, valid, test]
+  capture_rate_percents: [0.05, 0.10, 0.20]
+  comparison_capture_percents: [0.20]   # 23% base rate, 340 test rows
+  accuracy_bins: 10
+  include_accuracy: True    # decile calibration, not classification accuracy
+  baseline_variant: base
+  shap:
+    enabled: true
+    sample_size: 5000       # more than the whole table; all of test is used
+    on_split: test
+
+verdict:              # the decision protocol: four gates, then a call on the batch
+  enabled: true
+  gini_split: test
+  min_gini_gain: 0.005
+  require_valid_too: true
+  max_shap_rank_pct: 0.5
+  shap_variant: base_plus_new
