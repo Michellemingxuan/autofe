@@ -11,7 +11,7 @@ from typing import Callable, Iterable, List, Sequence, TypeVar
 
 from joblib import Parallel, delayed
 
-from mllite.logging_utils import get_logger
+from validation.logging_utils import get_logger
 
 T = TypeVar("T")
 R = TypeVar("R")

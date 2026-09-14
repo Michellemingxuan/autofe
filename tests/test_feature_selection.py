@@ -2,9 +2,9 @@ import numpy as np
 import pandas as pd
 import pytest
 
-from mllite.config import Config
-from mllite.data import Dataset
-from mllite.stages.feature_selection import (
+from validation.config import Config
+from validation.data import Dataset
+from validation.stages.feature_selection import (
     mutual_info_codes,
     pairwise_complete_corr,
     quantile_codes,

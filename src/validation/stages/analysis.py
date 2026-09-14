@@ -18,12 +18,12 @@ from typing import Dict, List, Optional
 import numpy as np
 import pandas as pd
 
-from mllite.config import Config
-from mllite.data import Dataset
-from mllite.logging_utils import get_logger, timed
-from mllite.metrics import evaluate_predictions, gini_gain
-from mllite.parallel import parallel_map
-from mllite.stages.modeling import ModelResult
+from validation.config import Config
+from validation.data import Dataset
+from validation.logging_utils import get_logger, timed
+from validation.metrics import evaluate_predictions, gini_gain
+from validation.parallel import parallel_map
+from validation.stages.modeling import ModelResult
 
 logger = get_logger(__name__)
 
@@ -196,7 +196,7 @@ def _run_shap(dataset: Dataset, cfg: Config, results: List[ModelResult]) -> pd.D
     if not explainable:
         return pd.DataFrame()
 
-    from mllite.parallel import threads_per_worker
+    from validation.parallel import threads_per_worker
     with timed(logger, f"shap on {len(frame)} {split} row(s)"):
         frames = parallel_map(
             _shap_for_variant, explainable,

@@ -22,11 +22,11 @@ from typing import Dict, List, Optional
 import numpy as np
 import pandas as pd
 
-from mllite.config import Config
-from mllite.logging_utils import get_logger
-from mllite.stages.analysis import AnalysisResult
-from mllite.stages.data_quality import DataQualityResult
-from mllite.stages.feature_selection import FeatureSelectionResult
+from validation.config import Config
+from validation.logging_utils import get_logger
+from validation.stages.analysis import AnalysisResult
+from validation.stages.data_quality import DataQualityResult
+from validation.stages.feature_selection import FeatureSelectionResult
 
 logger = get_logger(__name__)
 

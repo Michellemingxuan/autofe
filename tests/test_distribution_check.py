@@ -4,10 +4,10 @@ import numpy as np
 import pandas as pd
 import pytest
 
-from mllite.config import Config
-from mllite.data import prepare_dataset
-from mllite.stages.data_quality import population_stability_index as psi
-from mllite.stages.data_quality import run_data_quality
+from validation.config import Config
+from validation.data import prepare_dataset
+from validation.stages.data_quality import population_stability_index as psi
+from validation.stages.data_quality import run_data_quality
 
 
 # --------------------------------------------------------------------------- #
@@ -175,7 +175,7 @@ def test_tightening_a_threshold_rejects_more(frame):
 def test_thresholds_appear_in_the_report_file(tmp_path):
     """The run must record the thresholds it actually applied."""
     import pandas as pd
-    from mllite.pipeline import Pipeline
+    from validation.pipeline import Pipeline
 
     rng = np.random.default_rng(5)
     n = 4000

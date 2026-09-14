@@ -1,7 +1,7 @@
 import pytest
 import yaml
 
-from mllite.config import Config, load_config
+from validation.config import Config, load_config
 
 
 def test_nested_sections_become_dataclasses():

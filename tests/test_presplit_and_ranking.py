@@ -4,15 +4,15 @@ import numpy as np
 import pandas as pd
 import pytest
 
-from mllite.config import Config, load_config
-from mllite.data import prepare_dataset, prepare_dataset_from_frames
-from mllite.stages.data_quality import run_data_quality
-from mllite.stages.feature_selection import run_feature_selection
+from validation.config import Config, load_config
+from validation.data import prepare_dataset, prepare_dataset_from_frames
+from validation.stages.data_quality import run_data_quality
+from validation.stages.feature_selection import run_feature_selection
 
 xgb = pytest.importorskip("xgboost")
 
 from data.synthetic.make import make_frame  # noqa: E402
-from mllite.pipeline import Pipeline  # noqa: E402
+from validation.pipeline import Pipeline  # noqa: E402
 
 
 @pytest.fixture(scope="module")

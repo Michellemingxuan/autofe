@@ -13,8 +13,8 @@ from typing import Dict, List, Optional
 import numpy as np
 import pandas as pd
 
-from mllite.config import Config, DataConfig, FeatureConfig
-from mllite.logging_utils import get_logger
+from validation.config import Config, DataConfig, FeatureConfig
+from validation.logging_utils import get_logger
 
 logger = get_logger(__name__)
 

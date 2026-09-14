@@ -21,18 +21,18 @@ import numpy as np
 import pandas as pd
 import yaml
 
-from mllite.config import Config, load_config
-from mllite.data import Dataset, build_dataset, prepare_dataset, prepare_dataset_from_frames
-from mllite.logging_utils import get_logger, setup_logging, timed
-from mllite.stages.analysis import AnalysisResult, run_analysis
-from mllite.stages.data_quality import DataQualityResult, run_data_quality
-from mllite.stages.feature_selection import (
+from validation.config import Config, load_config
+from validation.data import Dataset, build_dataset, prepare_dataset, prepare_dataset_from_frames
+from validation.logging_utils import get_logger, setup_logging, timed
+from validation.stages.analysis import AnalysisResult, run_analysis
+from validation.stages.data_quality import DataQualityResult, run_data_quality
+from validation.stages.feature_selection import (
     FeatureSelectionResult,
     build_verdict_table,
     run_feature_selection,
 )
-from mllite.stages.modeling import ModelResult, run_modeling
-from mllite.stages.verdict import BatchVerdict, run_verdict
+from validation.stages.modeling import ModelResult, run_modeling
+from validation.stages.verdict import BatchVerdict, run_verdict
 
 logger = get_logger(__name__)
 

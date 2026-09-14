@@ -2,8 +2,8 @@ import numpy as np
 import pandas as pd
 import pytest
 
-from mllite.config import Config
-from mllite.data import assign_splits, build_dataset, clean_missing, resolve_features
+from validation.config import Config
+from validation.data import assign_splits, build_dataset, clean_missing, resolve_features
 
 
 @pytest.fixture

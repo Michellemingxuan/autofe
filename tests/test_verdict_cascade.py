@@ -4,8 +4,8 @@ import numpy as np
 import pandas as pd
 import pytest
 
-from mllite.config import Config
-from mllite.stages.verdict import (
+from validation.config import Config
+from validation.stages.verdict import (
     FAIL,
     NOT_EVALUABLE,
     NOT_REACHED,
@@ -13,14 +13,14 @@ from mllite.stages.verdict import (
     build_verdicts,
     decide_batch,
 )
-from mllite.stages.analysis import AnalysisResult
-from mllite.stages.data_quality import DataQualityResult
-from mllite.stages.feature_selection import FeatureSelectionResult
+from validation.stages.analysis import AnalysisResult
+from validation.stages.data_quality import DataQualityResult
+from validation.stages.feature_selection import FeatureSelectionResult
 
 xgb = pytest.importorskip("xgboost")
 
 from data.synthetic.make import make_frame  # noqa: E402
-from mllite.pipeline import Pipeline  # noqa: E402
+from validation.pipeline import Pipeline  # noqa: E402
 
 
 def _cfg(**verdict):

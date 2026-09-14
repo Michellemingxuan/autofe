@@ -3,13 +3,13 @@
 import pandas as pd
 import pytest
 
-from mllite.config import Config
-from mllite.stages.verdict import FAIL, NOT_REACHED, PASS
+from validation.config import Config
+from validation.stages.verdict import FAIL, NOT_REACHED, PASS
 
 xgb = pytest.importorskip("xgboost")
 
 from data.synthetic.make import make_frame  # noqa: E402
-from mllite.pipeline import Pipeline  # noqa: E402
+from validation.pipeline import Pipeline  # noqa: E402
 
 
 @pytest.fixture(scope="module")

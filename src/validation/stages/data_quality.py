@@ -22,10 +22,10 @@ from typing import Dict, List
 import numpy as np
 import pandas as pd
 
-from mllite.config import Config
-from mllite.data import Dataset
-from mllite.logging_utils import get_logger, timed
-from mllite.parallel import chunked, parallel_map, resolve_n_jobs
+from validation.config import Config
+from validation.data import Dataset
+from validation.logging_utils import get_logger, timed
+from validation.parallel import chunked, parallel_map, resolve_n_jobs
 
 logger = get_logger(__name__)
 

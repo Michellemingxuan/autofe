@@ -4,10 +4,10 @@ import numpy as np
 import pandas as pd
 import pytest
 
-from mllite.config import Config
-from mllite.data import Dataset, build_dataset, prepare_dataset
-from mllite.pipeline import Pipeline
-from mllite.stages.modeling import build_variants
+from validation.config import Config
+from validation.data import Dataset, build_dataset, prepare_dataset
+from validation.pipeline import Pipeline
+from validation.stages.modeling import build_variants
 
 xgb = pytest.importorskip("xgboost")
 
@@ -187,7 +187,7 @@ def test_report_never_truncates_away_a_new_feature(data_path, tmp_path, monkeypa
     The cut is shrunk to 2 so truncation is guaranteed on this small dataset:
     with three selected candidates, at least one must fall below it.
     """
-    import mllite.pipeline as pipeline_module
+    import validation.pipeline as pipeline_module
 
     monkeypatch.setattr(pipeline_module, "REPORT_TOP_N", 2)
     result = Pipeline(_config(data_path, tmp_path)).run()

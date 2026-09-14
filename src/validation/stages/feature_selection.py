@@ -23,10 +23,10 @@ from typing import Dict, List, Optional, Tuple
 import numpy as np
 import pandas as pd
 
-from mllite.config import Config
-from mllite.data import Dataset
-from mllite.logging_utils import get_logger, timed
-from mllite.parallel import chunked, parallel_map
+from validation.config import Config
+from validation.data import Dataset
+from validation.logging_utils import get_logger, timed
+from validation.parallel import chunked, parallel_map
 
 logger = get_logger(__name__)
 

@@ -6,13 +6,13 @@ import numpy as np
 import pandas as pd
 import pytest
 
-from mllite.config import Config
-from mllite.stages.modeling import DEFAULT_SEARCH_SPACE, sample_params
+from validation.config import Config
+from validation.stages.modeling import DEFAULT_SEARCH_SPACE, sample_params
 
 xgb = pytest.importorskip("xgboost")
 
 from data.synthetic.make import make_frame  # noqa: E402
-from mllite.pipeline import Pipeline  # noqa: E402
+from validation.pipeline import Pipeline  # noqa: E402
 
 
 # --------------------------------------------------------------------------- #

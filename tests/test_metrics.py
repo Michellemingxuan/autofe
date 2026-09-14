@@ -2,7 +2,7 @@ import numpy as np
 import pandas as pd
 import pytest
 
-from mllite.metrics import (
+from validation.metrics import (
     calc_accuracy,
     calc_adj_gini,
     capture_rate,

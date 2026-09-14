@@ -25,7 +25,7 @@ dependencies = [
 dev = ["pytest", "pyarrow"]
 
 [project.scripts]
-mllite = "mllite.cli:main"
+mllite = "validation.cli:main"
 
 [tool.setuptools.packages.find]
 where = ["src"]

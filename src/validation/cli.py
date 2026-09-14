@@ -9,9 +9,9 @@ from typing import Any, Dict, List, Optional
 
 import yaml
 
-from mllite.logging_utils import setup_logging
-from mllite.pipeline import Pipeline
-from mllite.config import load_config
+from validation.logging_utils import setup_logging
+from validation.pipeline import Pipeline
+from validation.config import load_config
 
 
 def _parse_override(text: str) -> tuple[str, Any]:

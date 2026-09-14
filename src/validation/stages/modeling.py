@@ -23,11 +23,11 @@ from typing import Dict, List, Optional
 import numpy as np
 import pandas as pd
 
-from mllite.config import Config
-from mllite.data import Dataset
-from mllite.logging_utils import get_logger, timed
-from mllite.metrics import calc_adj_gini
-from mllite.parallel import parallel_map, resolve_n_jobs, threads_per_worker
+from validation.config import Config
+from validation.data import Dataset
+from validation.logging_utils import get_logger, timed
+from validation.metrics import calc_adj_gini
+from validation.parallel import parallel_map, resolve_n_jobs, threads_per_worker
 
 logger = get_logger(__name__)
 

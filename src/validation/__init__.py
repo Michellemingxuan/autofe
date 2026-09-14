@@ -1,13 +1,13 @@
 """mllite: a modular, parallel pipeline for evaluating newly proposed features."""
 
-from mllite.config import Config, load_config
-from mllite.data import (
+from validation.config import Config, load_config
+from validation.data import (
     Dataset,
     build_dataset,
     prepare_dataset,
     prepare_dataset_from_frames,
 )
-from mllite.pipeline import Pipeline, PipelineResult, run_pipeline
+from validation.pipeline import Pipeline, PipelineResult, run_pipeline
 
 __all__ = [
     "Config",
