@@ -27,6 +27,7 @@ from validation.config import Config
 from validation.data import Dataset
 from validation.logging_utils import get_logger, timed
 from validation.metrics import calc_adj_gini
+from validation.model import fit_booster
 from validation.parallel import parallel_map, resolve_n_jobs, threads_per_worker
 
 logger = get_logger(__name__)
@@ -135,54 +136,26 @@ def _train_variant(
     model_dir: Optional[str],
     tuned: bool = False,
 ) -> ModelResult:
-    import xgboost as xgb
-
     result = ModelResult(name=spec.name, features=list(spec.features), note=spec.note)
     try:
         cols = [column_index[f] for f in spec.features]
-        run_params = dict(params_by_variant[spec.name])
-        run_params["nthread"] = nthread
-        result.params = {k: v for k, v in run_params.items() if k != "nthread"}
-        result.tuned = tuned
-
-        dmatrices = {}
-        for split, matrix in matrices.items():
-            dmatrices[split] = xgb.DMatrix(
-                np.asarray(matrix[:, cols], dtype=np.float32),
-                label=targets[split],
-                weight=weights.get(split),
-                feature_names=list(spec.features),
-                missing=np.nan,
-                nthread=nthread,
-            )
-
-        watchlist = [(dmatrices["train"], "train")]
-        stopping = None
-        if "valid" in dmatrices:
-            watchlist.append((dmatrices["valid"], "valid"))
-            stopping = early_stopping_rounds
-
-        evals_result: Dict[str, Dict[str, List[float]]] = {}
-        booster = xgb.train(
-            run_params,
-            dmatrices["train"],
+        fitted = fit_booster(
+            {split: matrix[:, cols] for split, matrix in matrices.items()},
+            targets,
+            spec.features,
+            params_by_variant[spec.name],
             num_boost_round=num_boost_round,
-            evals=watchlist,
-            early_stopping_rounds=stopping,
-            evals_result=evals_result,
-            verbose_eval=verbose_eval or False,
+            early_stopping_rounds=early_stopping_rounds,
+            weights=weights,
+            nthread=nthread,
+            verbose_eval=verbose_eval,
         )
-
-        best_iteration = getattr(booster, "best_iteration", None)
-        result.best_iteration = int(best_iteration) if best_iteration is not None else None
-        best_score = getattr(booster, "best_score", None)
-        result.best_score = float(best_score) if best_score is not None else None
-
-        predict_kwargs = {}
-        if result.best_iteration is not None:
-            predict_kwargs["iteration_range"] = (0, result.best_iteration + 1)
-        for split, dmatrix in dmatrices.items():
-            result.predictions[split] = booster.predict(dmatrix, **predict_kwargs)
+        booster = fitted.booster
+        result.params = fitted.params
+        result.tuned = tuned
+        result.best_iteration = fitted.best_iteration
+        result.best_score = fitted.best_score
+        result.predictions = dict(fitted.predictions)
 
         result.importance = _importance_frame(booster, spec.features)
 
