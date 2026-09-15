@@ -168,9 +168,18 @@ def run_discovery(
     min_delta: float | None = None,
     on_candidate: Callable[[Candidate], None] | None = None,
     logger: Any = None,
+    prior_history: Sequence[dict[str, Any]] = (),
+    round_offset: int = 0,
 ) -> DiscoveryRun:
     """
     Run the loop and return everything it learned.
+
+    ``prior_history`` is what earlier runs proposed, each with its final verdict
+    and the reason. The proposer reads it ahead of this run's own records, and
+    its names are refused as duplicates, so an idea already judged is not simply
+    proposed again. Round numbers continue after ``round_offset``, so a strategy
+    that rotates its example rows by round keeps rotating across runs instead of
+    restarting at the first batch.
 
     ``min_delta`` decides what is carried forward to the expensive stages. It is
     not an acceptance decision - that belongs to the verdict gates, over full
@@ -202,6 +211,8 @@ def run_discovery(
             len(getattr(screener, "sample", [])),
         )
 
+    prior_names = [str(r["feature_name"]) for r in prior_history if r.get("feature_name")]
+
     while True:
         reason = stopping.should_stop(run)
         if reason:
@@ -210,7 +221,7 @@ def run_discovery(
                 logger.info("discovery loop stopped: %s", reason)
             break
 
-        round_index = len(run.rounds) + 1
+        round_index = round_offset + len(run.rounds) + 1
         record = RoundRecord(index=round_index, requested=batch_size,
                              returned=0, kept=0, rejected=0)
 
@@ -218,8 +229,10 @@ def run_discovery(
             # The LLM call dominates a round's wall time, so say what is being
             # waited on before waiting on it - a silent minute reads as a hang.
             logger.info(
-                "round %d/%s: asking for %d feature(s) (%d proposed so far, %d forwarded)",
+                "round %d (%d of %s this run): asking for %d feature(s) "
+                "(%d proposed so far, %d forwarded)",
                 round_index,
+                len(run.rounds) + 1,
                 stopping.max_rounds,
                 batch_size,
                 len(run.candidates),
@@ -229,8 +242,9 @@ def run_discovery(
         started = time.perf_counter()
         try:
             blocks, call = proposer.propose(
-                history=run.records(),
-                proposed_names=[c.feature_name for c in run.candidates if c.feature_name],
+                history=[*prior_history, *run.records()],
+                proposed_names=[*prior_names,
+                                *(c.feature_name for c in run.candidates if c.feature_name)],
                 n_features=batch_size,
                 round_index=round_index,
             )
@@ -254,7 +268,8 @@ def run_discovery(
             # cannot smuggle the same feature through twice. A block that failed
             # does not reserve its name: nothing was recorded under it, and the
             # idea may well be right with the code fixed.
-            reserved = [c.feature_name for c in run.candidates if c.ok and c.feature_name]
+            reserved = [*prior_names,
+                        *(c.feature_name for c in run.candidates if c.ok and c.feature_name)]
             result = screener.evaluate(code, reserved_names=reserved)
             parsed = parse_candidate(code)
 

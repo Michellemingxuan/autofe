@@ -57,6 +57,7 @@ discovery:
   continuous_columns: null # TODO: the real measurements (or list categorical_columns)
   column_descriptions_path: data/cdss_us_sbs/column_descriptions.json   # prepare.ipynb
   few_shot_path: data/cdss_us_sbs/few_shot.csv                          # prepare.ipynb
+  history_path: outputs/discovery_history/cdss_us_sbs.csv   # every proposal + verdict, fed back
   llm:
     backend: openai        # openai | safechain
     model: gpt-4o

@@ -147,6 +147,21 @@ def test_disabled_discovery_leaves_the_pipeline_untouched(tmp_path, frames, few_
     assert [m.name for m in result.models]          # the rest of the run still happened
 
 
+def test_the_history_accumulates_verdicts_across_runs(tmp_path, frames, few_shot, fake_llm):
+    history = tmp_path / "history.csv"
+    Pipeline(_config(tmp_path, few_shot, history_path=str(history))).run(frames=frames)
+    rows = pd.read_csv(history)
+    assert set(rows["feature_name"]) == {"ratio", "dead"}
+    assert set(rows["outcome"]) <= {"accepted", "rejected"}
+    assert rows.loc[rows["outcome"] == "rejected", "reason"].notna().all()
+
+    second = Pipeline(_config(tmp_path, few_shot, history_path=str(history))).run(frames=frames)
+    assert len(pd.read_csv(history)) == 4
+    # the second run continues the round numbers, and is told the verdicts
+    prompt = (second.output_dir / "discovery" / "round_002" / "prompt.txt").read_text()
+    assert "Validated on the full data" in prompt
+
+
 def test_discovery_needs_the_precomputed_few_shot_rows(tmp_path, few_shot):
     cfg = _config(tmp_path, few_shot)
     cfg.discovery.few_shot_path = None

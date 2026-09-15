@@ -26,7 +26,7 @@ from __future__ import annotations
 
 from typing import Any, Sequence
 
-from discovery.prompt import extract_blocks
+from discovery.prompt import extract_blocks, verdict_line
 from discovery.strategies.base import StrategyBase
 
 __all__ = ["PromptFeProposer", "OPERATORS"]
@@ -130,7 +130,10 @@ df["<name>"] = <expression>
         lines = ["Features tried so far, best score first:"]
         for record in scored:
             expression = record.get("expression") or record.get("feature_name") or "?"
-            lines.append(f"\nFeature\n{expression}\nScore\n{record['delta']:+.4f}")
+            # An earlier run's feature also carries what validation made of it.
+            note = verdict_line(record)
+            lines.append(f"\nFeature\n{expression}\nScore\n{record['delta']:+.4f}"
+                         + (f"\n{note}" if note else ""))
 
         if failed:
             lines.append("\nThese were rejected before they could be scored:")

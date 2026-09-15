@@ -138,8 +138,8 @@ def _read_rows(cfg: Any, dataset: Dataset, path: str | Path,
 
     Read and cleaned exactly as the validation tables are - sentinel codes and
     infinities become NaN - so the screen and the prompt see what the models
-    see. A column the file lacks but the dataset carries - one kept by an earlier
-    iteration of the discovery loop, or a missing indicator - is joined in by id.
+    see. A column the file lacks but the dataset carries - a missing indicator the
+    pipeline derived, say - is joined in by id.
     Rows from the test split are refused: test never reaches discovery.
     """
     frame = read_frame(cfg.data, str(path))
@@ -187,11 +187,12 @@ def _load_shot_batches(cfg: Any, dataset: Dataset) -> list[pd.DataFrame]:
         raise ValueError(f"{path} must have a 'batch' column saying which round shows "
                          "each row")
 
+    # Every batch, not just this run's rounds: round numbers continue across runs
+    # when a history is kept, so the rotation picks up where the last run stopped.
     batches = [group.reset_index(drop=True)
                for _, group in shots.groupby("batch", sort=True)]
-    batches = batches[:max(1, cfg.discovery.max_rounds)]
-    logger.info("discovery: %d example row(s) per round x %d round(s), from %s",
-                len(batches[0]), len(batches), path)
+    logger.info("discovery: %d batch(es) of %d example row(s) from %s; round r "
+                "shows batch r, cycling", len(batches), len(batches[0]), path)
     return batches
 
 
@@ -228,6 +229,74 @@ def _screen_frames(cfg: Any, dataset: Dataset) -> tuple[pd.DataFrame, pd.DataFra
     return (picked["train"][columns].reset_index(drop=True),
             picked["valid"][columns].reset_index(drop=True),
             f"{paths['train']} and {paths['valid']}")
+
+
+# --------------------------------------------------------------------------- #
+# The history: every proposal across runs, with its final verdict
+# --------------------------------------------------------------------------- #
+HISTORY_COLUMNS = [
+    "run", "round", "feature_name", "display_name", "description", "rationale",
+    "input_columns", "expression", "code", "base_score", "candidate_score", "delta",
+    "error", "outcome", "failed_at", "reason",
+]
+
+
+def _read_history(path: str | Path | None) -> list[dict[str, Any]]:
+    """Every proposal earlier runs made, with its verdict, oldest first."""
+    if not path or not Path(path).exists():
+        return []
+    frame = pd.read_csv(path)
+    return frame.astype(object).where(frame.notna(), None).to_dict("records")
+
+
+def append_history(
+    path: str | Path,
+    discovered: DiscoveryResult,
+    verdicts: pd.DataFrame,
+    run: str,
+) -> int:
+    """
+    Add this run's proposals to the history, each with its final outcome.
+
+    ``accepted`` means the feature cleared every gate: it stays a candidate,
+    judged as base vs base plus that one feature, and never joins the incumbent
+    set - there are still steps before it can. ``rejected`` carries the gate it
+    fell at - ``screen`` when it never reached validation - and the reason, which
+    the next run's prompt repeats so the idea is not simply tried again.
+    """
+    table = (verdicts.set_index("feature")
+             if len(verdicts) and "feature" in verdicts.columns else pd.DataFrame())
+    rows = []
+    for record in discovered.records:
+        row = {"run": run, **{k: record.get(k) for k in HISTORY_COLUMNS if k in record}}
+        name, error = record.get("feature_name"), record.get("error")
+        if error:
+            gate = "full splits" if str(error).startswith("Dropped on the full splits") else "screen"
+            row.update(outcome="rejected", failed_at=gate, reason=error)
+        elif name in table.index:
+            verdict = table.loc[name]
+            passed = verdict.get("verdict") in ("PASS", "IN")
+            row.update(
+                outcome="accepted" if passed else "rejected",
+                failed_at="" if passed else (verdict.get("failed_at")
+                                             or verdict.get("decided_by") or ""),
+                reason=verdict.get("reason") or "",
+            )
+        else:
+            row.update(outcome="rejected", failed_at="screen",
+                       reason=f"its screen change {record.get('delta'):+.4f} is below "
+                              "discovery.min_delta")
+        rows.append(row)
+    if not rows:
+        return 0
+
+    frame = pd.DataFrame(rows, columns=HISTORY_COLUMNS)
+    path = Path(path)
+    path.parent.mkdir(parents=True, exist_ok=True)
+    if path.exists():
+        frame = pd.concat([pd.read_csv(path), frame], ignore_index=True)
+    frame.to_csv(path, index=False)
+    return len(rows)
 
 
 def run_discovery_stage(
@@ -377,6 +446,16 @@ def run_discovery_stage(
         output_dir=Path(output_dir) / "discovery" if output_dir else None,
     )
 
+    # Every proposal earlier runs made, with its verdict: read into the prompt so
+    # an idea already judged is not proposed again, and counted so the round
+    # numbers - and with them the rotation through the few-shot batches - carry on.
+    prior = _read_history(discovery_cfg.history_path)
+    round_offset = max((int(r["round"]) for r in prior if r.get("round") is not None),
+                       default=0)
+    if prior:
+        logger.info("discovery: %d earlier proposal(s) read from %s; rounds continue "
+                    "from %d", len(prior), discovery_cfg.history_path, round_offset + 1)
+
     run: DiscoveryRun = run_discovery(
         proposer,
         screener,
@@ -389,6 +468,8 @@ def run_discovery_stage(
         ),
         min_delta=discovery_cfg.min_delta,
         logger=logger,
+        prior_history=prior,
+        round_offset=round_offset,
     )
 
     widened, dropped = _materialise(dataset, run.kept, discovery_cfg.spike_factor)
@@ -403,7 +484,7 @@ def run_discovery_stage(
         candidate.screen.ok = False
         candidate.screen.extras["kept"] = False
         candidate.screen.error = f"Dropped on the full splits: {reason}"
-        round_record = run.rounds[candidate.round_index - 1]
+        round_record = run.rounds[candidate.round_index - 1 - round_offset]
         round_record.kept -= 1
         round_record.rejected += 1
 

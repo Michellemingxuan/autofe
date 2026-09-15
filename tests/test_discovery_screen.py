@@ -212,6 +212,20 @@ def test_history_reports_scores_and_failures():
     assert "not present in `df`" in text
 
 
+def test_history_carries_the_final_verdict_and_its_reason():
+    """Earlier runs' proposals come back with what validation made of them."""
+    scored = {"round": 1, "code": 'df["x"] = 1', "base_score": 0.5,
+              "candidate_score": 0.52, "delta": 0.02}
+    text = format_history([
+        {**scored, "outcome": "accepted"},
+        {**scored, "round": 2, "outcome": "rejected", "failed_at": "feature selection",
+         "reason": "redundant with a (|rho|=0.970)"},
+    ], "adjusted Gini")
+    assert "ACCEPTED" in text and "kept as a candidate feature" in text
+    assert "REJECTED at the feature selection gate - redundant with a (|rho|=0.970)" in text
+    assert "not present in `df`" in text
+
+
 def test_history_is_explicit_when_there_is_none():
     assert "No previous code blocks" in format_history([], "adjusted Gini")
 

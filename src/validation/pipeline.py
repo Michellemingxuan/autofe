@@ -200,6 +200,17 @@ class Pipeline:
             else:
                 result.verdicts = selection_verdicts
 
+        if result.discovery is not None and self.cfg.discovery.history_path:
+            # Only now does each proposal have its final verdict - the thing the
+            # next run's prompt most needs to know about it.
+            from discovery.stage import append_history
+
+            added = append_history(self.cfg.discovery.history_path, result.discovery,
+                                   result.verdicts,
+                                   run=f"{self.cfg.run.name}/{self.output_dir.name}")
+            logger.info("discovery history: %d proposal(s) and their verdicts appended "
+                        "to %s", added, self.cfg.discovery.history_path)
+
         result.elapsed_seconds = time.perf_counter() - start
         self._write_json("summary.json", {**result.summary(), "environment": _environment()})
         self._write_report(result)

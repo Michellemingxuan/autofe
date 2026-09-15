@@ -198,6 +198,39 @@ def test_a_negative_delta_is_still_forwarded_by_default(screener):
     assert [c.feature_name for c in run.kept] == ["ratio"]
 
 
+# --------------------------------------------------------------------------- #
+# across runs: earlier verdicts come first, and round numbers carry on
+# --------------------------------------------------------------------------- #
+EARLIER = {"round": 4, "feature_name": "ratio", "code": USEFUL, "base_score": 0.5,
+           "candidate_score": 0.55, "delta": 0.05, "outcome": "rejected",
+           "failed_at": "gini gain", "reason": "gini gain +0.0010 on test"}
+
+
+def test_earlier_runs_are_shown_ahead_of_this_runs_records(screener):
+    proposer = ScriptedProposer([[DEAD], [USEFUL2]])
+    run_discovery(proposer, screener, batch_size=1, stopping=StoppingRule(max_rounds=2),
+                  prior_history=[EARLIER], round_offset=4)
+    assert proposer.seen_history[0] == [EARLIER]
+    assert [r["feature_name"] for r in proposer.seen_history[1]] == ["ratio", "dead"]
+    assert proposer.seen_names[0] == ["ratio"]
+
+
+def test_round_numbers_continue_after_the_offset(screener):
+    proposer = ScriptedProposer([[DEAD], [USEFUL2]])
+    run = run_discovery(proposer, screener, batch_size=1, stopping=StoppingRule(max_rounds=2),
+                        round_offset=4)
+    assert [r.index for r in run.rounds] == [5, 6]
+    assert [c.round_index for c in run.candidates] == [5, 6]
+    assert "max_rounds reached (2)" in run.stopped_because    # max_rounds counts this run only
+
+
+def test_an_earlier_runs_name_is_refused(screener):
+    run = run_discovery(ScriptedProposer([[USEFUL]]), screener, batch_size=1,
+                        prior_history=[EARLIER])
+    assert not run.candidates[0].ok
+    assert "earlier round" in run.candidates[0].screen.error
+
+
 def test_min_delta_controls_what_is_carried_forward(screener):
     permissive = run_discovery(ScriptedProposer([[USEFUL, DEAD]]), screener,
                                batch_size=2, min_delta=0.0)

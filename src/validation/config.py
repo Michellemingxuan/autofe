@@ -331,6 +331,15 @@ class DiscoveryConfig:
     # appears (see preprocessing/shots.py).
     # Round r shows batch r, so successive rounds see different rows.
     few_shot_path: Optional[str] = None
+    # A running record of every proposal across discovery runs: its code, the
+    # screen's score, and the final verdict with the reason - accepted as a
+    # candidate, or rejected at which gate and why. Each run reads it into the
+    # prompt, so an idea already judged is not proposed again, and appends its
+    # own proposals once the verdict is in. Round numbers continue from it, and
+    # so does the rotation through few_shot_path's batches. Accepted features
+    # stay candidates: the incumbent set never changes. Unset, a run starts with
+    # no memory; delete the file to start a fresh study.
+    history_path: Optional[str] = None
     # A candidate whose largest magnitude exceeds this multiple of its own 99th
     # percentile is rejected before it can reach a model. See discovery/guards.py.
     spike_factor: float = 1000.0

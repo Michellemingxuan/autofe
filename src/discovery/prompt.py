@@ -159,7 +159,7 @@ def format_history(records: Sequence[Mapping[str, Any]], metric_name: str) -> st
     pieces: list[str] = []
     for record in records:
         index = record.get("round")
-        code = str(record.get("code", "")).strip()
+        code = str(record.get("code") or "").strip()
         if not code:
             continue
         header = f"Previous code block {index}:\n```python\n{code}\n```end"
@@ -178,11 +178,34 @@ def format_history(records: Sequence[Mapping[str, Any]], metric_name: str) -> st
             f"Score without the feature ({metric_name}): {base:.4f}\n"
             f"Score with the feature ({metric_name}): {cand:.4f}\n"
             f"Change ({metric_name}): {delta:+.4f}\n"
-            "This column was recorded as a proposal. It is not present in `df` for "
-            "later blocks: every block starts from the same original columns."
+            + (verdict_line(record) or "This column was recorded as a proposal.")
+            + " It is not present in `df` for later blocks: every block starts from "
+            "the same original columns."
         )
 
     return "\n\n".join(pieces) or "No previous code blocks or feedback are available."
+
+
+def verdict_line(record: Mapping[str, Any]) -> str:
+    """
+    The final verdict on an earlier proposal, once validation has judged it.
+
+    Empty for a proposal of the current run, which has only its screen score so
+    far. Earlier runs' proposals come from the discovery history with an outcome,
+    and saying why one failed is what stops the next proposal repeating it.
+    """
+    outcome, failed_at = record.get("outcome"), record.get("failed_at")
+    if outcome == "accepted":
+        return ("Validated on the full data: ACCEPTED - it cleared every gate and is "
+                "kept as a candidate feature. Do not propose it, or a close variant, "
+                "again.")
+    if outcome == "rejected" and failed_at == "screen":
+        return f"It was not forwarded to validation: {record.get('reason')}."
+    if outcome == "rejected" and failed_at:
+        return (f"Validated on the full data: REJECTED at the {failed_at} gate - "
+                f"{record.get('reason') or 'no reason recorded'}. Do not repeat this "
+                "idea; propose something that avoids the reason it failed.")
+    return ""
 
 
 def build_prompt(

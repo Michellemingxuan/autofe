@@ -314,7 +314,7 @@ def test_sample_files_are_cleaned_like_the_splits(cfg, dataset, tmp_path):
 
 
 def test_a_column_the_files_lack_is_joined_from_the_splits(cfg, dataset, tmp_path):
-    """The discovery loop: a column kept last iteration is only in the carried frames."""
+    """A column the dataset derives - a missing indicator, say - is not in the file."""
     from discovery.stage import _screen_frames
 
     frames = {name: frame.assign(carried=frame["a"] * 2)
@@ -351,6 +351,92 @@ def test_the_screen_never_scores_on_rows_it_fit(cfg, dataset, tmp_path):
     _use_files(cfg, tmp_path, rows, rows.iloc[:50])
     with pytest.raises(ValueError, match="in both screen files"):
         _screen_frames(cfg, dataset)
+
+
+# --------------------------------------------------------------------------- #
+# across runs: the history of verdicts, and the rotation through example rows
+# --------------------------------------------------------------------------- #
+EARLIER = {"run": "earlier", "round": 3, "feature_name": "old_idea",
+           "code": 'df["old_idea"] = df["a"] + df["b"]', "base_score": 0.5,
+           "candidate_score": 0.51, "delta": 0.01, "outcome": "rejected",
+           "failed_at": "gini gain", "reason": "gini gain +0.0010 on test, below +0.0050"}
+
+
+def _history(tmp_path, rows):
+    path = tmp_path / "history.csv"
+    pd.DataFrame(rows).to_csv(path, index=False)
+    return str(path)
+
+
+def test_earlier_verdicts_and_their_reasons_reach_the_prompt(cfg, dataset, tmp_path, fake_llm):
+    cfg.discovery.history_path = _history(tmp_path, [EARLIER])
+    run_discovery_stage(cfg, dataset)
+    prompt = fake_llm[0]["prompt"]
+    assert 'df["old_idea"]' in prompt
+    assert "REJECTED at the gini gain gate - gini gain +0.0010 on test, below +0.0050" in prompt
+
+
+def test_round_numbers_continue_after_the_history(cfg, dataset, tmp_path, fake_llm):
+    cfg.discovery.history_path = _history(tmp_path, [EARLIER])
+    out = run_discovery_stage(cfg, dataset, output_dir=tmp_path / "run")
+    assert {r["round"] for r in out.records} == {4}
+    assert (tmp_path / "run" / "discovery" / "round_004").exists()
+
+
+def test_an_earlier_name_is_not_reused(cfg, dataset, tmp_path, fake_llm):
+    cfg.discovery.history_path = _history(tmp_path, [{**EARLIER, "feature_name": "ratio"}])
+    out = run_discovery_stage(cfg, dataset)
+    # refused before its name is recorded, so find it by the message
+    errors = [r.get("error") or "" for r in out.records]
+    assert any("'ratio' was already proposed in an earlier round" in e for e in errors)
+
+
+@pytest.fixture
+def three_batches(tmp_path, dataset):
+    batches = build_shot_batches(dataset.split("train"), "y",
+                                 columns=["a", "b", "noise"], shots=8, batches=3)
+    path = tmp_path / "few_shot_3.csv"
+    pd.concat([b.assign(batch=i) for i, b in enumerate(batches)]).to_csv(path, index=False)
+    return str(path)
+
+
+def test_the_example_rows_keep_rotating_across_runs(cfg, dataset, tmp_path,
+                                                    three_batches, fake_llm):
+    def shown(prompt):
+        return [line for line in prompt.splitlines() if "Samples [" in line]
+
+    cfg.discovery.few_shot_path = three_batches
+    run_discovery_stage(cfg, dataset)                            # round 1: batch 0
+    first = fake_llm[-1]["prompt"]
+    cfg.discovery.history_path = _history(tmp_path, [{**EARLIER, "round": 1}])
+    run_discovery_stage(cfg, dataset)                            # round 2: batch 1
+    second = fake_llm[-1]["prompt"]
+    assert shown(first) and shown(second) and shown(first) != shown(second)
+
+
+def test_the_history_records_each_proposals_verdict_and_reason(tmp_path):
+    from discovery.stage import _read_history, append_history
+
+    discovered = DiscoveryResult(records=[
+        {"round": 1, "feature_name": "kept_one", "code": "c1", "delta": 0.02},
+        {"round": 1, "feature_name": "weak_one", "code": "c2", "delta": 0.01},
+        {"round": 1, "feature_name": "broken", "code": "c3", "error": "Forbidden syntax"},
+    ])
+    verdicts = pd.DataFrame({"feature": ["kept_one", "weak_one"], "verdict": ["PASS", "FAIL"],
+                             "failed_at": ["", "gini gain"],
+                             "reason": ["", "gini gain +0.0010 on test"]})
+    path = tmp_path / "history.csv"
+    assert append_history(path, discovered, verdicts, run="r1") == 3
+    append_history(path, discovered, verdicts, run="r2")        # appends, never overwrites
+
+    rows = pd.DataFrame(_read_history(path))
+    assert list(rows["run"]) == ["r1"] * 3 + ["r2"] * 3
+    first = rows[rows["run"] == "r1"].set_index("feature_name")
+    assert first.loc["kept_one", "outcome"] == "accepted"
+    assert (first.loc["weak_one", "outcome"], first.loc["weak_one", "failed_at"],
+            first.loc["weak_one", "reason"]) == ("rejected", "gini gain", "gini gain +0.0010 on test")
+    assert (first.loc["broken", "failed_at"], first.loc["broken", "reason"]) == \
+        ("screen", "Forbidden syntax")
 
 
 def test_screen_files_need_a_train_and_a_valid_path():

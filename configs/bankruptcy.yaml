@@ -101,6 +101,12 @@ discovery:
   # base rate. Round r shows batch r, so a second round reasons from new rows.
   few_shot_path: data/bankruptcy/few_shot.csv
 
+  # Every proposal across runs, with its verdict and the reason, read back into
+  # the next run's prompt so it does not repeat an idea already judged. Round
+  # numbers and the rotation through the few-shot batches continue from it.
+  # Delete the file to start a fresh study.
+  history_path: outputs/discovery_history/bankruptcy.csv
+
   # What each column means. Written by prepare.ipynb from the archive's own
   # headers: a proposer that only knows a column by name cannot bring any
   # real-world knowledge to it.
