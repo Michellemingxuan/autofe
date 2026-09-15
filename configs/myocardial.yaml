@@ -5,8 +5,8 @@
 # whether it adds anything over admission data is a real decision.
 #
 #   run data/myocardial/prepare.ipynb    -> the fixed splits and few-shot rows
-#   mllite -c configs/myocardial.yaml
-#   mllite -c configs/myocardial.yaml --set discovery.enabled=true
+#   autofe -c configs/myocardial.yaml
+#   autofe -c configs/myocardial.yaml --set discovery.enabled=true
 #
 # The hardest of the three demo tables: 1,700 rows (small), 7.6% of cells
 # missing (very uneven), and 98 of 110 features are coded categories rather than
@@ -71,7 +71,7 @@ features:
 # so one run judges the declared batch and the proposed one side by side, at the
 # same four gates.
 #
-#   mllite -c configs/myocardial.yaml --set discovery.enabled=true
+#   autofe -c configs/myocardial.yaml --set discovery.enabled=true
 #
 # This is the dataset where domain knowledge should pay off most: the columns are
 # clinical findings whose relationships are documented in the literature, not

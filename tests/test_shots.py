@@ -140,7 +140,7 @@ def test_batches_reuse_rows_only_once_a_cluster_runs_out(caplog):
 
 
 # --------------------------------------------------------------------------- #
-# missing values - mllite keeps them, unlike the benchmark this came from
+# missing values - autofe keeps them, unlike the benchmark this came from
 # --------------------------------------------------------------------------- #
 def test_missing_values_do_not_break_the_clustering():
     """The ported original raised on any NaN; myocardial is 8.5% missing."""

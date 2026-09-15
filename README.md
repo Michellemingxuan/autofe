@@ -1,4 +1,4 @@
-# mllite
+# autofe
 
 A modular pipeline for answering one question: **do the newly proposed features
 actually add anything on top of the incumbent feature set?**
@@ -23,7 +23,7 @@ numpy generations, so the pipeline itself does not force the choice:
 
 ### "A module that was compiled using NumPy 1.x cannot be run in NumPy 2.0.0"
 
-This is an ABI mismatch in the *environment*, not in mllite — some package with a
+This is an ABI mismatch in the *environment*, not in autofe — some package with a
 compiled extension was built against numpy 1.x while numpy 2.x is installed. The
 traceback names the culprit a few lines below the warning. In this stack the
 candidates are `shap`, `scikit-learn`, `scipy`, `pandas` and `numba`; `xgboost` is
@@ -39,7 +39,7 @@ done
 ```
 
 Then either upgrade that package to a build that supports numpy 2, or pin
-`numpy<2` — both work, since mllite uses no numpy-2-only API.
+`numpy<2` — both work, since autofe uses no numpy-2-only API.
 
 ## Install
 
@@ -58,8 +58,8 @@ reaches the network.
 
 ```bash
 python data/bankruptcy/prepare.py             # downloads the demo dataset
-mllite -c configs/bankruptcy.yaml                      # or: python -m validation.cli -c ...
-mllite -c configs/bankruptcy.yaml --set run.n_jobs=8   # dotted overrides, repeatable
+autofe -c configs/bankruptcy.yaml                      # or: python -m validation.cli -c ...
+autofe -c configs/bankruptcy.yaml --set run.n_jobs=8   # dotted overrides, repeatable
 ```
 
 Two demos ship with the repo:

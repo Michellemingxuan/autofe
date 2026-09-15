@@ -71,7 +71,7 @@ def _encode(
     One numeric matrix for clustering: standardised numbers, one-hot codes.
 
     Written out rather than delegated to a ColumnTransformer because the input
-    can be missing anything: KMeans cannot take NaN, and mllite - unlike the
+    can be missing anything: KMeans cannot take NaN, and autofe - unlike the
     benchmark this came from - does not impute its tables. Continuous columns
     are filled with their median and categorical ones get an explicit "missing"
     level, so a column that is 99% absent contributes "absent" as a real

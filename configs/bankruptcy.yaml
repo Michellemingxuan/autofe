@@ -3,8 +3,8 @@
 # the cash-flow family is the newly proposed feature set under evaluation.
 #
 #   run data/bankruptcy/prepare.ipynb    -> the fixed splits and few-shot rows
-#   mllite -c configs/bankruptcy.yaml
-#   mllite -c configs/bankruptcy.yaml --set discovery.enabled=true
+#   autofe -c configs/bankruptcy.yaml
+#   autofe -c configs/bankruptcy.yaml --set discovery.enabled=true
 
 run:
   name: bankruptcy_cashflow
@@ -61,7 +61,7 @@ features:
 # so one run judges the declared batch and the proposed one side by side, at the
 # same four gates.
 #
-#   mllite -c configs/bankruptcy.yaml --set discovery.enabled=true
+#   autofe -c configs/bankruptcy.yaml --set discovery.enabled=true
 #
 # Needs OPENAI_API_KEY in the environment or a .env at or above the working
 # directory. The two planted controls double as a check on the screens: a

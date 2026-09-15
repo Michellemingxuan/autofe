@@ -4,7 +4,7 @@
 #   1. open data/cdss_us_sbs/prepare.ipynb, point it at the three extracts, and
 #      use its profile to fill in the TODOs below (target, id_cols, candidates)
 #   2. run it to the end -> the three tables, column descriptions, few-shot rows
-#   3. mllite -c configs/cdss_us_sbs.yaml
+#   3. autofe -c configs/cdss_us_sbs.yaml
 #      (add --set discovery.enabled=true once discovery.task_description is written)
 
 run:

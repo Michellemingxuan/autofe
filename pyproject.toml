@@ -3,7 +3,7 @@ requires = ["setuptools>=68"]
 build-backend = "setuptools.build_meta"
 
 [project]
-name = "mllite"
+name = "autofe"
 version = "0.1.0"
 description = "Modular pipeline to verify the incremental value of newly proposed features"
 requires-python = ">=3.9"
@@ -28,7 +28,7 @@ dev = ["pytest", "pyarrow"]
 discovery = ["openai", "python-dotenv", "nest_asyncio"]
 
 [project.scripts]
-mllite = "validation.cli:main"
+autofe = "validation.cli:main"
 
 [tool.setuptools.packages.find]
 where = ["src"]

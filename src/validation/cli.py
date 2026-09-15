@@ -1,4 +1,4 @@
-"""Command line entry point: ``mllite -c configs/bankruptcy.yaml``."""
+"""Command line entry point: ``autofe -c configs/bankruptcy.yaml``."""
 
 from __future__ import annotations
 
@@ -22,7 +22,7 @@ def _parse_override(text: str) -> tuple[str, Any]:
 
 
 def build_parser() -> argparse.ArgumentParser:
-    parser = argparse.ArgumentParser(prog="mllite", description=__doc__)
+    parser = argparse.ArgumentParser(prog="autofe", description=__doc__)
     parser.add_argument("-c", "--config", required=True, help="path to the YAML run config")
     parser.add_argument("--set", dest="overrides", action="append", default=[],
                         help="dotted override, e.g. --set run.n_jobs=8 (repeatable)")

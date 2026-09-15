@@ -4,7 +4,7 @@ The second half of the loop. `discovery` proposes candidate features; this
 package puts them through data quality, screening, per-feature model builds,
 outcome analysis and the verdict gates, and says which survive.
 
-Distributed as the `mllite` package; imported as `validation`.
+Distributed as the `autofe` package; imported as `validation`.
 """
 
 from validation.config import Config, load_config

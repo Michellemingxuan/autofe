@@ -168,7 +168,7 @@ async def _build_openai(
         from openai import AsyncOpenAI
     except ImportError as error:
         raise NotImplementedError(
-            "The openai package is not installed. pip install 'mllite[discovery]', "
+            "The openai package is not installed. pip install 'autofe[discovery]', "
             "or set the backend to 'safechain'."
         ) from error
 
