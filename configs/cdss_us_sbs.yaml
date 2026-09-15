@@ -104,7 +104,9 @@ model:
     max_depth: 5
     min_child_weight: 10
     subsample: 0.8
-    colsample_bytree: 0.8
+    colsample_bytree: 1.0   # keep at 1.0: with it below 1 the column COUNT moves
+                            # the score, so base and leave_one_in differ by an
+                            # offset that has nothing to do with the feature
     eval_metric: auc
 
 analysis:
