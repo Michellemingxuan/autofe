@@ -8,3 +8,4 @@ joblib
 pyyaml
 pyarrow
 pytest
+matplotlib

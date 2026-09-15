@@ -22,7 +22,7 @@ dependencies = [
 ]
 
 [project.optional-dependencies]
-dev = ["pytest", "pyarrow"]
+dev = ["pytest", "pyarrow", "matplotlib"]   # matplotlib: the usage notebook's charts
 # Only the discovery package needs an LLM client; the validation stages do not,
 # so these stay out of the core install.
 discovery = ["openai", "python-dotenv", "nest_asyncio"]
