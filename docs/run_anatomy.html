@@ -1,0 +1,1087 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>autofe Run Anatomy</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Archivo:wdth,wght@62..125,500..800&family=IBM+Plex+Mono:wght@400;500;600&family=IBM+Plex+Sans:wght@400;500;600&display=swap">
+<style>
+:root {
+  --ground: #F1F4F3;
+  --panel: #FFFFFF;
+  --sunken: #F6F8F7;
+  --ink: #15212B;
+  --ink-2: #33434C;
+  --muted: #5E6D74;
+  --rule: #D3DBD9;
+  --rule-strong: #9EACAC;
+  --code-bg: #EBF0EE;
+  --llm: #6C42BD;
+  --llm-tint: #F2ECFB;
+  --ok: #2A7849;
+  --ok-tint: #E2F1E7;
+  --warn: #97600F;
+  --warn-tint: #F8EDD8;
+  --fail: #AD3A2F;
+  --fail-tint: #F8E4E1;
+  --skip: #74838A;
+  --skip-tint: #E6ECEB;
+  --display: "Archivo", "Helvetica Neue", Arial, sans-serif;
+  --sans: "IBM Plex Sans", system-ui, -apple-system, "Segoe UI", sans-serif;
+  --mono: "IBM Plex Mono", ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --ground: #0F1517;
+    --panel: #161E21;
+    --sunken: #131A1D;
+    --ink: #E3EBEB;
+    --ink-2: #C1CDCE;
+    --muted: #8E9FA4;
+    --rule: #2A3639;
+    --rule-strong: #4A5B60;
+    --code-bg: #1C2629;
+    --llm: #B89AF3;
+    --llm-tint: #221B33;
+    --ok: #5EC48A;
+    --ok-tint: #14281D;
+    --warn: #E4AE55;
+    --warn-tint: #2D2312;
+    --fail: #F08272;
+    --fail-tint: #321A17;
+    --skip: #8F9DA2;
+    --skip-tint: #1E282B;
+  }
+}
+:root[data-theme="dark"] {
+  --ground: #0F1517;
+  --panel: #161E21;
+  --sunken: #131A1D;
+  --ink: #E3EBEB;
+  --ink-2: #C1CDCE;
+  --muted: #8E9FA4;
+  --rule: #2A3639;
+  --rule-strong: #4A5B60;
+  --code-bg: #1C2629;
+  --llm: #B89AF3;
+  --llm-tint: #221B33;
+  --ok: #5EC48A;
+  --ok-tint: #14281D;
+  --warn: #E4AE55;
+  --warn-tint: #2D2312;
+  --fail: #F08272;
+  --fail-tint: #321A17;
+  --skip: #8F9DA2;
+  --skip-tint: #1E282B;
+}
+
+* { box-sizing: border-box; }
+html { color-scheme: light dark; }
+body { margin: 0; }
+img { max-width: 100%; }
+body {
+  background: var(--ground);
+  color: var(--ink);
+  font: 15px/1.55 var(--sans);
+  -webkit-font-smoothing: antialiased;
+}
+.wrap { max-width: 1160px; margin: 0 auto; padding-inline: 20px; padding-block: 40px 72px; }
+
+/* ---------- layout + contents ---------- */
+.layout { display: grid; grid-template-columns: minmax(0, 1fr); grid-template-areas: "head" "toc" "main" "foot"; }
+.page-head { grid-area: head; }
+.layout > main { grid-area: main; }
+.layout > footer { grid-area: foot; }
+[id] { scroll-margin-top: 20px; }
+.toc { grid-area: toc; margin: 0 0 36px; border-top: 2px solid var(--ink); padding-top: 12px; }
+.toc-h { font: 600 11px/1 var(--mono); letter-spacing: .12em; text-transform: uppercase; color: var(--muted); margin: 0 0 8px; }
+.toc ul { list-style: none; margin: 0; padding: 0; }
+.toc > ul { display: grid; grid-template-columns: repeat(auto-fill, minmax(240px, 1fr)); gap: 0 24px; }
+.toc a {
+  display: flex; align-items: baseline; gap: 8px; padding: 5px 8px; border-radius: 3px;
+  color: var(--ink-2); text-decoration: none; font-size: 13.5px; line-height: 1.35;
+}
+.toc a:hover { background: var(--code-bg); color: var(--ink); }
+.toc a[aria-current="true"] { background: var(--code-bg); color: var(--ink); font-weight: 600; }
+.toc .k { font: 500 11px/1.35 var(--mono); color: var(--muted); min-width: 30px; flex: none; }
+.toc a .g { margin-left: auto; font-size: 11.5px; }
+.toc ul ul a { font-size: 12.5px; color: var(--muted); padding-left: 46px; }
+.toc ul ul a[aria-current="true"] { color: var(--ink); }
+@media (min-width: 1180px) {
+  .wrap { max-width: 1440px; }
+  .layout { grid-template-columns: 216px minmax(0, 1fr); column-gap: 40px; grid-template-areas: "toc head" "toc main" "toc foot"; }
+  .toc {
+    position: sticky; top: calc(env(safe-area-inset-top, 0px) + 24px); align-self: start;
+    max-height: calc(100vh - 48px); overflow-y: auto; margin: 0;
+  }
+  .toc > ul { display: block; }
+}
+code, .mono { font-family: var(--mono); font-size: 0.86em; }
+p code, li code, dd code, td code { background: var(--code-bg); padding: 1px 4px; border-radius: 3px; overflow-wrap: anywhere; }
+a { color: inherit; }
+a:focus-visible { outline: 2px solid var(--llm); outline-offset: 2px; }
+
+/* ---------- page head ---------- */
+.eyebrow { font: 500 12px/1 var(--mono); letter-spacing: .1em; text-transform: uppercase; color: var(--muted); margin: 0 0 14px; }
+h1 {
+  font-family: var(--display); font-stretch: 120%; font-weight: 760;
+  font-size: clamp(30px, 4.6vw, 44px); line-height: 1.02; letter-spacing: -0.015em;
+  margin: 0 0 14px; text-wrap: balance;
+}
+.dek { max-width: 68ch; color: var(--ink-2); font-size: 16.5px; margin: 0 0 28px; }
+
+.runs { display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 12px 28px; margin-bottom: 28px; }
+.run { border-top: 2px solid var(--ink); padding-top: 10px; }
+.run .tag { font: 600 12px/1 var(--mono); letter-spacing: .06em; }
+.run .path { font: 12.5px/1.4 var(--mono); color: var(--muted); overflow-wrap: anywhere; margin: 6px 0; }
+.run p { margin: 0; font-size: 14px; color: var(--ink-2); }
+.gates-note { font-size: 14px; color: var(--ink-2); margin: 0 0 22px; max-width: 80ch; }
+
+.board-wrap { background: var(--panel); border: 1px solid var(--rule); border-radius: 6px; padding: 16px 18px; margin-bottom: 14px; }
+.board-label { font: 500 11px/1 var(--mono); letter-spacing: .1em; text-transform: uppercase; color: var(--muted); margin-bottom: 12px; }
+.board { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 6px; }
+.board a {
+  display: inline-flex; align-items: baseline; gap: 7px;
+  padding: 7px 10px; border: 1px solid var(--rule-strong); border-radius: 3px;
+  text-decoration: none; color: var(--ink); font: 13px/1 var(--mono); background: var(--panel);
+}
+.board a:hover { border-color: var(--ink-2); }
+.board .t { color: var(--muted); font-size: 11.5px; }
+.board .arrow { color: var(--muted); font: 13px/1 var(--mono); }
+.board-foot { display: flex; flex-wrap: wrap; gap: 6px 18px; margin-top: 14px; font-size: 13px; color: var(--ink-2); }
+.board-foot strong { font-family: var(--mono); font-weight: 600; font-size: 12.5px; }
+
+.g { font-weight: 600; font-family: var(--mono); }
+.g.ok { color: var(--ok); } .g.warn { color: var(--warn); } .g.skip { color: var(--skip); } .g.fail { color: var(--fail); }
+
+.legend { display: flex; flex-wrap: wrap; gap: 6px 16px; font-size: 12.5px; color: var(--muted); margin: 0 0 40px; }
+.legend span { white-space: nowrap; }
+
+/* ---------- stages ---------- */
+.stage { background: var(--panel); border: 1px solid var(--rule); border-radius: 6px; scroll-margin-top: 16px; }
+.stage.offline { background: var(--sunken); border-style: dashed; }
+.stage > header {
+  display: flex; flex-wrap: wrap; align-items: baseline; gap: 6px 14px;
+  padding: 16px 20px 14px; border-bottom: 1px solid var(--rule);
+}
+.num { font: 500 11.5px/1 var(--mono); letter-spacing: .1em; text-transform: uppercase; color: var(--muted); min-width: 7.5em; }
+.stage h2 { font-family: var(--display); font-stretch: 116%; font-weight: 720; font-size: 23px; line-height: 1.1; margin: 0; }
+.where { font: 12px/1.3 var(--mono); color: var(--muted); overflow-wrap: anywhere; }
+.chips { margin-left: auto; display: flex; flex-wrap: wrap; gap: 6px; }
+.chip { font: 500 12px/1 var(--mono); padding: 5px 8px; border-radius: 3px; border: 1px solid currentColor; white-space: nowrap; }
+.chip.ok { color: var(--ok); background: var(--ok-tint); }
+.chip.warn { color: var(--warn); background: var(--warn-tint); }
+.chip.skip { color: var(--skip); background: var(--skip-tint); }
+.chip.fail { color: var(--fail); background: var(--fail-tint); }
+.chip.llm { color: var(--llm); background: var(--llm-tint); }
+.chip.plain { color: var(--ink-2); background: transparent; border-color: var(--rule-strong); }
+
+.io { display: grid; grid-template-columns: 1fr 1.1fr 1.25fr; }
+.io > div { padding: 16px 20px 18px; min-width: 0; }
+.io > div + div { border-left: 1px solid var(--rule); }
+.label { font: 600 11px/1 var(--mono); letter-spacing: .12em; text-transform: uppercase; color: var(--muted); margin: 0 0 10px; }
+.io ul { margin: 0; padding-left: 1.05em; }
+.io li { margin: 0 0 6px; font-size: 14px; }
+.io li::marker { color: var(--rule-strong); }
+.io p { margin: 0 0 8px; font-size: 14px; }
+
+.files { display: grid; grid-template-columns: fit-content(15em) minmax(0, 1fr); gap: 6px 12px; margin: 0; font-size: 13.5px; }
+.files dt { font: 500 12.5px/1.45 var(--mono); color: var(--ink); overflow-wrap: anywhere; }
+.files dd { margin: 0; color: var(--ink-2); }
+.files dd .shape { font-family: var(--mono); font-size: 12.5px; color: var(--ink); font-variant-numeric: tabular-nums; }
+
+.schema { font: 12.5px/1.55 var(--mono); background: var(--code-bg); border-radius: 4px; padding: 10px 12px; margin: 8px 0 0; overflow-x: auto; white-space: pre; color: var(--ink-2); }
+.schema b { color: var(--ink); font-weight: 600; }
+
+.result { border-top: 1px solid var(--rule); padding: 16px 20px 20px; }
+.result .label { color: var(--ink-2); }
+.result p { margin: 0 0 10px; max-width: 90ch; font-size: 14.5px; }
+.stats { display: flex; flex-wrap: wrap; gap: 10px 28px; margin: 0 0 12px; }
+.stat { display: flex; flex-direction: column; gap: 2px; }
+.stat .v { font: 600 19px/1.1 var(--mono); font-variant-numeric: tabular-nums; }
+.stat .k { font-size: 12.5px; color: var(--muted); }
+.checklist { display: flex; flex-wrap: wrap; gap: 6px; margin: 4px 0 0; padding: 0; list-style: none; }
+.checklist li { font: 12px/1 var(--mono); padding: 5px 7px; border-radius: 3px; background: var(--ok-tint); color: var(--ok); }
+.checklist li.bad { background: var(--warn-tint); color: var(--warn); }
+
+.pairs { display: grid; grid-template-columns: max-content 1fr; gap: 6px 14px; margin: 0; font-size: 14px; }
+.pairs dt { font: 600 12px/1.6 var(--mono); }
+.pairs dd { margin: 0; }
+.pairs dt.in { color: var(--ok); } .pairs dt.out { color: var(--fail); }
+
+/* ---------- connectors ---------- */
+.hand { display: grid; grid-template-columns: 44px 1fr; min-height: 52px; }
+.hand .line { justify-self: center; width: 2px; background: var(--rule-strong); position: relative; }
+.hand .line::after {
+  content: ""; position: absolute; left: 50%; bottom: 0; transform: translateX(-50%);
+  border-left: 5px solid transparent; border-right: 5px solid transparent; border-top: 7px solid var(--rule-strong);
+}
+.hand .obj { align-self: center; font: 12.5px/1.4 var(--mono); color: var(--ink-2); padding: 8px 0; }
+.hand .obj em { font-style: normal; color: var(--muted); font-family: var(--sans); font-size: 13px; }
+
+/* ---------- figures, tables ---------- */
+figure { margin: 0; }
+.fig { border-top: 1px solid var(--rule); padding: 18px 20px 20px; }
+.scroll { overflow-x: auto; }
+.fig svg { display: block; width: 100%; min-width: 900px; height: auto; }
+.chart svg { min-width: 620px; max-width: 760px; }
+figcaption { font-size: 13.5px; color: var(--ink-2); margin-top: 10px; max-width: 90ch; }
+
+.formats { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 16px; border-top: 1px solid var(--rule); padding: 18px 20px 20px; }
+.formats pre { margin: 6px 0 0; font: 11.5px/1.5 var(--mono); background: var(--code-bg); border-radius: 4px; padding: 10px 12px; overflow-x: auto; color: var(--ink-2); }
+.formats .cap { font-size: 13px; color: var(--muted); margin: 6px 0 0; }
+
+.tbl { border-collapse: collapse; width: 100%; font-size: 13px; }
+.tbl th { font: 600 10.5px/1.3 var(--mono); letter-spacing: .08em; text-transform: uppercase; color: var(--muted); text-align: left; padding: 6px 10px; border-bottom: 1px solid var(--rule-strong); white-space: nowrap; }
+.tbl td { padding: 6px 10px; border-bottom: 1px solid var(--rule); vertical-align: top; }
+.tbl td.n { text-align: right; font-family: var(--mono); font-size: 12.5px; font-variant-numeric: tabular-nums; white-space: nowrap; }
+.tbl td.f { font-family: var(--mono); font-size: 12.5px; white-space: nowrap; }
+.tbl td.x { font-family: var(--mono); font-size: 12px; color: var(--ink-2); }
+.tbl tr:last-child td { border-bottom: 0; }
+.pill { display: inline-block; font: 500 11px/1 var(--mono); padding: 4px 6px; border-radius: 3px; white-space: nowrap; }
+.pill.ok { background: var(--ok-tint); color: var(--ok); }
+.pill.fail { background: var(--fail-tint); color: var(--fail); }
+.pill.skip { background: var(--skip-tint); color: var(--skip); }
+.pill.warn { background: var(--warn-tint); color: var(--warn); }
+.note { display: block; font-size: 12px; color: var(--warn); margin-top: 3px; }
+.gate-cell { text-align: center; }
+
+.batch { display: flex; flex-wrap: wrap; align-items: baseline; gap: 6px 18px; margin: 16px 0 6px; }
+.batch .call { font-family: var(--display); font-stretch: 122%; font-weight: 780; font-size: 22px; color: var(--warn); letter-spacing: .01em; }
+.batch .sub { font-size: 14px; color: var(--ink-2); }
+
+/* svg paint, via tokens so both themes resolve */
+.s-box { fill: var(--panel); stroke: var(--rule-strong); stroke-width: 1.2; }
+.s-out { fill: var(--ok-tint); stroke: var(--ok); stroke-width: 1.2; }
+.s-zone { fill: var(--llm-tint); stroke: var(--llm); stroke-width: 1.3; stroke-dasharray: 6 4; }
+.s-zone-t { fill: var(--llm); font: 600 10.5px var(--mono); letter-spacing: .06em; }
+.s-title { fill: var(--ink); font: 600 13.5px var(--sans); }
+.s-file { fill: var(--muted); font: 10.5px var(--mono); }
+.s-line { fill: var(--ink-2); font: 11.5px var(--sans); }
+.s-lab { fill: var(--muted); font: 10.5px var(--sans); }
+.s-lab-rej { fill: var(--fail); font: 10.5px var(--sans); }
+.s-wire { stroke: var(--ink-2); stroke-width: 1.4; fill: none; }
+.s-wire-rej { stroke: var(--fail); stroke-width: 1.3; fill: none; stroke-dasharray: 4 3; }
+.s-wire-loop { stroke: var(--muted); stroke-width: 1.3; fill: none; stroke-dasharray: 2 3; }
+.s-ah { fill: var(--ink-2); }
+.s-ah-rej { fill: var(--fail); }
+.s-ah-loop { fill: var(--muted); }
+.c-grid { stroke: var(--rule); stroke-width: 1; }
+.c-zero { stroke: var(--rule-strong); stroke-width: 1.2; }
+.c-gate { stroke: var(--warn); stroke-width: 1.4; stroke-dasharray: 4 3; }
+.c-gate-t { fill: var(--warn); font: 500 10.5px var(--mono); }
+.c-lbl { fill: var(--ink-2); font: 11px var(--mono); }
+.c-lbl-dim { fill: var(--muted); font: 11px var(--mono); }
+.c-tick { fill: var(--muted); font: 10.5px var(--mono); }
+.c-axis-t { fill: var(--muted); font: 11px var(--sans); }
+.c-seg { stroke: var(--rule-strong); stroke-width: 2; }
+.c-test { fill: var(--ink); }
+.c-valid { fill: var(--panel); stroke: var(--ink); stroke-width: 1.5; }
+
+footer.every { margin-top: 44px; border-top: 2px solid var(--ink); padding-top: 14px; }
+footer.every h2 { font-family: var(--display); font-stretch: 116%; font-weight: 720; font-size: 20px; margin: 0 0 12px; }
+
+@media (max-width: 860px) {
+  .io { grid-template-columns: 1fr; }
+  .io > div + div { border-left: 0; border-top: 1px solid var(--rule); }
+  .formats { grid-template-columns: 1fr; }
+  .chips { margin-left: 0; }
+}
+@media (max-width: 480px) {
+  .files { grid-template-columns: 1fr; gap: 2px 0; }
+  .files dd { margin-bottom: 8px; }
+  .pairs { grid-template-columns: 1fr; }
+}
+@media (prefers-reduced-motion: no-preference) {
+  html { scroll-behavior: smooth; }
+}
+</style>
+</head>
+<body>
+<div class="wrap">
+<div class="layout">
+
+<header class="page-head" id="top">
+  <p class="eyebrow">autofe · bankruptcy demo · src/</p>
+  <h1>autofe Run Anatomy</h1>
+  <p class="dek">Each box is one stage of a run: what it reads, what it does, what it writes and in which format, and what it reported on the Taiwanese bankruptcy data. The numbers come from two real runs.</p>
+
+  <div class="runs">
+    <div class="run">
+      <div class="tag">RUN A</div>
+      <div class="path">outputs/bankruptcy_cashflow/20260915_182648</div>
+      <p>The 13 declared cash-flow candidates, discovery off. Finished <code>succeeded_with_warnings</code> after 53&nbsp;s of stage time.</p>
+    </div>
+    <div class="run">
+      <div class="tag">RUN B</div>
+      <div class="path">outputs/bankruptcy_discovery/20260914_153319</div>
+      <p>Discovery on (caafe, gpt-4o): 10 proposed, 6 forwarded. Recorded on 14 Sep, before the screen files, the NaN rule and <code>pipeline_status.json</code> existed, so it indexes columns as <code>X1…X95</code>.</p>
+    </div>
+  </div>
+  <p class="gates-note">Both runs used <code>run.gates: open</code>: every stage measures every candidate and removes nothing, so each candidate has a result at every gate. Under <code>enforce</code>, each gate removes what fails it and later gates show <code>not reached</code>.</p>
+
+  <nav class="board-wrap" aria-label="Run A stage board">
+    <div class="board-label">Run A · the stage board from run.log</div>
+    <div class="board">
+      <a href="#s-data"><span class="g ok">OK</span>Data<span class="t">0.4 s</span></a><span class="arrow">→</span>
+      <a href="#s-discover"><span class="g skip">-</span>Discover<span class="t">off</span></a><span class="arrow">→</span>
+      <a href="#s-quality"><span class="g warn">!</span>Quality<span class="t">3.5 s</span></a><span class="arrow">→</span>
+      <a href="#s-select"><span class="g ok">OK</span>Select<span class="t">0.5 s</span></a><span class="arrow">→</span>
+      <a href="#s-model"><span class="g ok">OK</span>Model<span class="t">36.2 s</span></a><span class="arrow">→</span>
+      <a href="#s-analyze"><span class="g ok">OK</span>Analyze<span class="t">12.6 s</span></a><span class="arrow">→</span>
+      <a href="#s-verdict"><span class="g ok">OK</span>Verdict<span class="t">0.03 s</span></a>
+    </div>
+    <div class="board-foot">
+      <span>run status <strong>succeeded_with_warnings</strong></span>
+      <span>batch call <strong>TRY A NEW BATCH</strong> · 0 of 13 passed</span>
+    </div>
+  </nav>
+  <div class="legend" aria-label="Status marks">
+    <span><span class="g ok">OK</span> passed</span>
+    <span><span class="g warn">!</span> warning: a stage check failed</span>
+    <span><span class="g skip">-</span> skipped: disabled, or not reached after a failure</span>
+    <span><span class="g fail">X</span> failed: raised an error</span>
+    <span><span class="g">&gt;</span> running</span>
+    <span><span class="g">·</span> pending</span>
+  </div>
+</header>
+
+<nav class="toc" aria-label="Contents">
+  <p class="toc-h">Contents</p>
+  <ul>
+    <li><a href="#top"><span class="k">—</span>Runs and stage board</a></li>
+    <li><a href="#s-prepare"><span class="k">prep</span>Prepare</a></li>
+    <li><a href="#s-data"><span class="k">0</span>Data<span class="g ok">OK</span></a></li>
+    <li><a href="#s-discover"><span class="k">0.5</span>Discover<span class="g skip">-</span></a>
+      <ul>
+        <li><a href="#discover-loop">One round, drawn</a></li>
+        <li><a href="#discover-formats">Prompt, reply, ScreenResult</a></li>
+        <li><a href="#discover-proposals">Run B's 10 proposals</a></li>
+      </ul>
+    </li>
+    <li><a href="#s-quality"><span class="k">1</span>Quality<span class="g warn">!</span></a></li>
+    <li><a href="#s-select"><span class="k">2</span>Select<span class="g ok">OK</span></a></li>
+    <li><a href="#s-model"><span class="k">3</span>Model<span class="g ok">OK</span></a></li>
+    <li><a href="#s-analyze"><span class="k">4</span>Analyze<span class="g ok">OK</span></a>
+      <ul>
+        <li><a href="#analyze-chart">Gain on test vs valid</a></li>
+      </ul>
+    </li>
+    <li><a href="#s-verdict"><span class="k">5</span>Verdict<span class="g ok">OK</span></a>
+      <ul>
+        <li><a href="#verdict-gates">Gate table and batch call</a></li>
+      </ul>
+    </li>
+    <li><a href="#every"><span class="k">out</span>Files every run writes</a></li>
+  </ul>
+</nav>
+
+<main>
+
+<!-- ============ PREPARE ============ -->
+<section class="stage offline" id="s-prepare" aria-labelledby="h-prepare">
+  <header>
+    <span class="num">before any run</span>
+    <h2 id="h-prepare">Prepare</h2>
+    <span class="where">data/bankruptcy/prepare.ipynb · src/preprocessing/</span>
+    <span class="chips"><span class="chip plain">once per dataset</span></span>
+  </header>
+  <div class="io">
+    <div>
+      <p class="label">In</p>
+      <ul>
+        <li>UCI archive 572, fetched once into <code>data/bankruptcy/raw/</code></li>
+        <li>The config: <code>data.paths</code>, target, <code>id_cols</code>, <code>features.new</code></li>
+      </ul>
+    </div>
+    <div>
+      <p class="label">Does</p>
+      <ul>
+        <li>Renames headers to snake_case, keeping each original as its description</li>
+        <li>Makes the one stratified 60 / 20 / 20 split (seed 42). The pipeline never re-splits.</li>
+        <li><code>write_splits</code> refuses to write if the target isn't binary, a declared candidate wasn't built, or an id appears in two splits</li>
+        <li><code>build_sample</code> draws class-balanced screen rows from train and valid</li>
+        <li><code>build_shot_batches</code> picks example rows: KMeans per class, one row per cluster</li>
+      </ul>
+    </div>
+    <div>
+      <p class="label">Out · data/bankruptcy/</p>
+      <dl class="files">
+        <dt>train.csv</dt><dd><span class="shape">4,091 × 99</span> row_id, bankrupt, 97 features</dd>
+        <dt>valid.csv</dt><dd><span class="shape">1,364 × 99</span></dd>
+        <dt>test.csv</dt><dd><span class="shape">1,364 × 99</span></dd>
+        <dt>screen_train.csv</dt><dd><span class="shape">882 × 99</span> screen fits here</dd>
+        <dt>screen_valid.csv</dt><dd><span class="shape">344 × 99</span> screen scores here</dd>
+        <dt>few_shot.csv</dt><dd><span class="shape">320 × 100</span> + <code>batch</code>: round r shows batch r</dd>
+        <dt>column_mapping.csv</dt><dd><span class="shape">96 × 2</span> original, column</dd>
+        <dt>column_descriptions.json</dt><dd><code>{column: original header}</code></dd>
+      </dl>
+    </div>
+  </div>
+</section>
+
+<div class="hand"><span class="line"></span><span class="obj">7 files under data/bankruptcy/ <em>· the same format for every split and sample</em></span></div>
+
+<!-- ============ DATA ============ -->
+<section class="stage" id="s-data" aria-labelledby="h-data">
+  <header>
+    <span class="num">stage 0</span>
+    <h2 id="h-data">Data</h2>
+    <span class="where">validation/data.py · preflight.py</span>
+    <span class="chips"><span class="chip ok">OK passed · 0.37 s</span></span>
+  </header>
+  <div class="io">
+    <div>
+      <p class="label">In</p>
+      <ul>
+        <li><code>data.paths</code>: train, valid and test CSV (or the same frames in memory)</li>
+        <li><code>features.new</code>: 13 names; <code>features.base: []</code> means every other numeric column</li>
+        <li>target <code>bankrupt</code>, <code>id_cols: [row_id]</code>, <code>missing_values: []</code></li>
+      </ul>
+    </div>
+    <div>
+      <p class="label">Does</p>
+      <ul>
+        <li>Resolves the base and candidate lists against train</li>
+        <li>Turns sentinel codes and ±inf into NaN on every split</li>
+        <li>Adds optional 0/1 <code>_is_missing</code> columns (off here)</li>
+        <li>Runs 13 preflight checks. Any FAIL stops the run before modeling.</li>
+      </ul>
+    </div>
+    <div>
+      <p class="label">Out</p>
+<pre class="schema"><b>Dataset</b>
+  frames         {train, valid, test}: DataFrame
+  target         "bankrupt"
+  base_features  [84 names]   the incumbents
+  new_features   [13 names]   the candidates
+  weight_col     None
+  meta           {}</pre>
+      <dl class="files" style="margin-top:10px">
+        <dt>preflight.json</dt><dd>one PASS / WARN / FAIL per check</dd>
+        <dt>config.resolved.yaml</dt><dd>the config with defaults filled in</dd>
+      </dl>
+    </div>
+  </div>
+  <div class="result">
+    <p class="label">In run A</p>
+    <div class="stats">
+      <div class="stat"><span class="v">4,091 · 1,364 · 1,364</span><span class="k">rows: train · valid · test</span></div>
+      <div class="stat"><span class="v">84 + 13</span><span class="k">base + candidate features</span></div>
+      <div class="stat"><span class="v">13 / 13</span><span class="k">preflight checks PASS</span></div>
+    </div>
+    <ul class="checklist" aria-label="Preflight checks">
+      <li>training split</li><li>resolved feature set</li><li>numeric model inputs</li><li>complete target</li>
+      <li>binary target</li><li>analysis splits available</li><li>ID columns present</li><li>split IDs are disjoint</li>
+      <li>candidate source</li><li>comparison baseline requested</li><li>per-candidate verdict evidence</li>
+      <li>batch verdict evidence</li><li>SHAP verdict evidence</li>
+    </ul>
+  </div>
+</section>
+
+<div class="hand"><span class="line"></span><span class="obj">Dataset <em>· 3 splits · 84 base + 13 new</em></span></div>
+
+<!-- ============ DISCOVER ============ -->
+<section class="stage" id="s-discover" aria-labelledby="h-discover">
+  <header>
+    <span class="num">stage 0.5</span>
+    <h2 id="h-discover">Discover</h2>
+    <span class="where">src/discovery/ · stage.py loop.py prompt.py sandbox.py guards.py screen.py</span>
+    <span class="chips">
+      <span class="chip llm">runs LLM-written code</span>
+      <span class="chip skip">- skipped in A</span>
+      <span class="chip plain">ran in B · loop ≈ 22 s</span>
+    </span>
+  </header>
+  <div class="io">
+    <div>
+      <p class="label">In</p>
+      <ul>
+        <li>The Dataset's <b>base</b> columns. Test rows never reach discovery; ids are checked.</li>
+        <li><code>screen_train.csv</code> (fit) and <code>screen_valid.csv</code> (score), or the whole splits with <code>screen_data: splits</code></li>
+        <li><code>few_shot.csv</code>, <code>column_descriptions.json</code>, <code>task_description</code></li>
+        <li><code>history.csv</code>: every earlier run's proposals with their verdicts</li>
+        <li>A strategy (caafe · elfgym · ferg · featllm · promptfe) and a model</li>
+      </ul>
+    </div>
+    <div>
+      <p class="label">Does</p>
+      <p>Asks for 5 features per round, runs each block, checks its values and scores it against a fixed baseline. Every outcome goes back into the next round's prompt.</p>
+      <p><code>min_delta</code> is unset, so every block that ran is forwarded. The screen only removes code that breaks or duplicates a column; the verdict judges the rest.</p>
+      <p>Forwarded code is rerun on all three splits and checked again. A feature that fails there is dropped and recorded as rejected.</p>
+    </div>
+    <div>
+      <p class="label">Out</p>
+      <dl class="files">
+        <dt>Dataset</dt><dd><code>new_features</code> += forwarded columns, after the declared ones</dd>
+        <dt>discovered_features.csv</dt><dd>one row per proposal, 13 columns (below)</dd>
+        <dt>discovery_summary.json</dt><dd>proposed, kept, kept_features, rounds, stopped_because, screen_base_score</dd>
+        <dt>discovery/round_NNN/</dt><dd><code>prompt.txt</code>, <code>reply.txt</code></dd>
+        <dt>history.csv</dt><dd>after the verdict: + <code>outcome</code> accepted | rejected, <code>failed_at</code>, <code>reason</code></dd>
+      </dl>
+    </div>
+  </div>
+
+  <figure class="fig" id="discover-loop">
+    <div class="scroll">
+      <svg viewBox="0 0 1100 432" role="img" aria-label="One discovery round. A prompt built from example rows, column descriptions and history goes to the LLM, whose code blocks are untrusted. The sandbox runs each block and the value guards check its column; failures become rejection text. The screen fits XGBoost on screen_train and scores on screen_valid. Every result is recorded and fed back into the next prompt; forwarded features are rerun on all splits and handed to stage 1.">
+        <defs>
+          <marker id="ah" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" class="s-ah"/></marker>
+          <marker id="ah-rej" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" class="s-ah-rej"/></marker>
+          <marker id="ah-loop" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" class="s-ah-loop"/></marker>
+        </defs>
+
+        <!-- inputs -->
+        <text class="s-file" x="20" y="30">few_shot.csv · batch r</text>
+        <text class="s-file" x="20" y="46">column_descriptions.json</text>
+        <text class="s-file" x="20" y="62">history.csv · past verdicts</text>
+        <line class="s-wire" x1="100" y1="70" x2="100" y2="98" marker-end="url(#ah)"/>
+        <text class="s-file" x="1000" y="46" text-anchor="middle">screen_train.csv → fit</text>
+        <text class="s-file" x="1000" y="62" text-anchor="middle">screen_valid.csv → score</text>
+        <line class="s-wire" x1="1000" y1="70" x2="1000" y2="98" marker-end="url(#ah)"/>
+
+        <!-- untrusted zone -->
+        <rect class="s-zone" x="233" y="72" width="184" height="142" rx="4"/>
+        <text class="s-zone-t" x="243" y="88">UNTRUSTED · LLM-WRITTEN</text>
+
+        <!-- top row -->
+        <rect class="s-box" x="20" y="100" width="160" height="100" rx="3"/>
+        <text class="s-title" x="34" y="124">Prompt</text>
+        <text class="s-file" x="34" y="142">prompt.py + strategy</text>
+        <text class="s-line" x="34" y="160">columns, example rows</text>
+        <text class="s-line" x="34" y="176">rules, earlier blocks</text>
+        <text class="s-line" x="34" y="192">and their results</text>
+
+        <rect class="s-box" x="245" y="100" width="160" height="100" rx="3"/>
+        <text class="s-title" x="259" y="124">LLM</text>
+        <text class="s-file" x="259" y="142">strategies/*.py</text>
+        <text class="s-line" x="259" y="160">caafe · gpt-4o</text>
+        <text class="s-line" x="259" y="176">5 code blocks</text>
+        <text class="s-line" x="259" y="192">per round</text>
+
+        <rect class="s-box" x="470" y="100" width="160" height="100" rx="3"/>
+        <text class="s-title" x="484" y="124">Sandbox</text>
+        <text class="s-file" x="484" y="142">sandbox.py</text>
+        <text class="s-line" x="484" y="160">one new column only</text>
+        <text class="s-line" x="484" y="176">reads known columns</text>
+        <text class="s-line" x="484" y="192">df, pd, np, math only</text>
+
+        <rect class="s-box" x="695" y="100" width="160" height="100" rx="3"/>
+        <text class="s-title" x="709" y="124">Value guards</text>
+        <text class="s-file" x="709" y="142">guards.py</text>
+        <text class="s-line" x="709" y="160">no inf or text; NaN ok</text>
+        <text class="s-line" x="709" y="176">max ≤ 1000 × p99</text>
+        <text class="s-line" x="709" y="192">|ρ| to base ≤ 0.90</text>
+
+        <rect class="s-box" x="920" y="100" width="160" height="100" rx="3"/>
+        <text class="s-title" x="934" y="124">Screen</text>
+        <text class="s-file" x="934" y="142">screen.py</text>
+        <text class="s-line" x="934" y="160">XGBoost on the fit rows</text>
+        <text class="s-line" x="934" y="176">adj Gini on score rows</text>
+        <text class="s-line" x="934" y="192">Δ vs fixed baseline</text>
+
+        <!-- top row wires -->
+        <line class="s-wire" x1="180" y1="150" x2="243" y2="150" marker-end="url(#ah)"/>
+        <text class="s-lab" x="212" y="143" text-anchor="middle">prompt</text>
+        <line class="s-wire" x1="405" y1="150" x2="468" y2="150" marker-end="url(#ah)"/>
+        <text class="s-lab" x="443" y="143" text-anchor="middle">code text</text>
+        <line class="s-wire" x1="630" y1="150" x2="693" y2="150" marker-end="url(#ah)"/>
+        <text class="s-lab" x="662" y="143" text-anchor="middle">+1 column</text>
+        <line class="s-wire" x1="855" y1="150" x2="918" y2="150" marker-end="url(#ah)"/>
+        <text class="s-lab" x="887" y="143" text-anchor="middle">checked</text>
+
+        <!-- rejections bus -->
+        <polyline class="s-wire-rej" points="550,200 550,238 1000,238"/>
+        <line class="s-wire-rej" x1="775" y1="200" x2="775" y2="238"/>
+        <text class="s-lab-rej" x="662" y="232" text-anchor="middle">rejected: error text</text>
+        <text class="s-lab-rej" x="887" y="232" text-anchor="middle">rejected: error text</text>
+        <line class="s-wire" x1="1000" y1="200" x2="1000" y2="278" marker-end="url(#ah)"/>
+        <text class="s-lab" x="992" y="262" text-anchor="end">ScreenResult</text>
+
+        <!-- bottom row -->
+        <rect class="s-box" x="920" y="280" width="160" height="100" rx="3"/>
+        <text class="s-title" x="934" y="304">Record &amp; keep</text>
+        <text class="s-file" x="934" y="322">loop.py</text>
+        <text class="s-line" x="934" y="340">Candidate + result</text>
+        <text class="s-line" x="934" y="356">keep if Δ &gt; min_delta</text>
+        <text class="s-line" x="934" y="372">unset: all that ran</text>
+
+        <rect class="s-box" x="695" y="280" width="160" height="100" rx="3"/>
+        <text class="s-title" x="709" y="304">Materialise</text>
+        <text class="s-file" x="709" y="322">stage.py</text>
+        <text class="s-line" x="709" y="340">rerun on all 3 splits</text>
+        <text class="s-line" x="709" y="356">guards again, per split</text>
+        <text class="s-line" x="709" y="372">fail → dropped</text>
+
+        <rect class="s-out" x="470" y="280" width="160" height="100" rx="3"/>
+        <text class="s-title" x="484" y="304">To stage 1</text>
+        <text class="s-file" x="484" y="322">Dataset.new_features</text>
+        <text class="s-line" x="484" y="340">+= forwarded columns</text>
+        <text class="s-line" x="484" y="356">after declared ones</text>
+
+        <line class="s-wire" x1="920" y1="330" x2="857" y2="330" marker-end="url(#ah)"/>
+        <text class="s-lab" x="888" y="323" text-anchor="middle">forwarded</text>
+        <line class="s-wire" x1="695" y1="330" x2="632" y2="330" marker-end="url(#ah)"/>
+        <text class="s-lab" x="663" y="323" text-anchor="middle">columns</text>
+
+        <!-- stop rule -->
+        <text class="s-title" x="130" y="300">Stop rule</text>
+        <text class="s-file" x="200" y="300">loop.py</text>
+        <text class="s-line" x="130" y="320">max_rounds reached (2 here), or, if set:</text>
+        <text class="s-line" x="130" y="336">target_features kept · patience rounds</text>
+        <text class="s-line" x="130" y="352">with nothing kept · max_candidates</text>
+
+        <!-- feedback loop -->
+        <path class="s-wire-loop" d="M1000,380 V410 H100 V202" marker-end="url(#ah-loop)"/>
+        <text class="s-lab" x="550" y="403" text-anchor="middle">every record goes into the next round's prompt: its code, and its Δ or its rejection text</text>
+      </svg>
+    </div>
+    <figcaption>One round of discovery. Only the violet region is LLM output; nothing it writes runs until the sandbox has parsed and checked it. Rejections are not exceptions: they come back as text, which is exactly what the next prompt shows.</figcaption>
+  </figure>
+
+  <div class="formats" id="discover-formats">
+    <div>
+      <p class="label">Prompt · one column line</p>
+<pre>df["X1"] (float64; continuous;
+  observed range=[0.633, 1.15])
+  - ROA(C) before interest and
+    depreciation before interest</pre>
+<pre>This block was rejected: Generated
+feature 'cash_to_debt_ratio' is
+redundant: |rho|=0.999 against the
+existing column 'X36' …
+It was not added to the dataframe.
+Fix or avoid this problem.</pre>
+      <p class="cap">Run B, round 2: 38,350 characters of prompt in all.</p>
+    </div>
+    <div>
+      <p class="label">Reply · one block</p>
+<pre>```python
+# (Debt Coverage Efficiency,
+#  evaluates coverage of debt by
+#  net income)
+# Usefulness: Reflects the ability
+#  of the company's earnings to
+#  cover its debt obligations …
+df["debt_coverage_efficiency"] =
+  df["X86"] / df["X91"].clip(lower=0.1)
+```end</pre>
+      <p class="cap">The header gives the display name, description and rationale; the AST gives the input columns.</p>
+    </div>
+    <div>
+      <p class="label">ScreenResult · one proposal</p>
+<pre>feature_name     "asset_utilization_ratio"
+ok               True
+base_score       0.9046   baseline adj Gini
+candidate_score  0.9030
+delta            −0.0016
+error            None
+elapsed_seconds  0.65
+n_rows           860
+kept             True</pre>
+      <p class="cap">Becomes one row of <code>discovered_features.csv</code>: round, feature_name, display_name, description, rationale, input_columns, expression, base_score, candidate_score, delta, error, screen_seconds, code.</p>
+    </div>
+  </div>
+
+  <div class="result">
+    <p class="label" id="discover-proposals">In run B</p>
+    <div class="stats">
+      <div class="stat"><span class="v">2 × 5</span><span class="k">rounds × blocks (LLM 9.7 s, 7.2 s)</span></div>
+      <div class="stat"><span class="v">0.9046</span><span class="k">screen baseline, adj Gini on 860 rows</span></div>
+      <div class="stat"><span class="v">10 → 6</span><span class="k">proposed → forwarded</span></div>
+      <div class="stat"><span class="v">0 / 6</span><span class="k">passed the verdict (all fell at gini gain)</span></div>
+    </div>
+    <div class="scroll">
+      <table class="tbl">
+        <thead><tr><th>Rd</th><th>Feature</th><th>Expression</th><th>Screen</th><th>Final verdict</th></tr></thead>
+        <tbody>
+          <tr><td class="n">1</td><td class="f">profitability_efficiency_ratio</td><td class="x">df['X80'] / df['X38']</td><td><span class="pill fail">rejected · 1 inf value</span></td><td><span class="pill skip">never reached</span></td></tr>
+          <tr><td class="n">1</td><td class="f">asset_utilization_ratio</td><td class="x">df['X21'] / df['X87'].replace(0, np.nan)</td><td class="n">Δ −0.0016</td><td><span class="pill fail">FAIL · gini gain</span> <span class="mono">−0.0085</span></td></tr>
+          <tr><td class="n">1</td><td class="f">cash_to_debt_ratio</td><td class="x">df['X81'] / df['X36'].clip(lower=0.1)</td><td><span class="pill fail">rejected · |ρ| 0.999 vs X36</span></td><td><span class="pill skip">never reached</span></td></tr>
+          <tr><td class="n">1</td><td class="f">operating_margin_volatility</td><td class="x">abs(df['X5'] - df['X7'])</td><td class="n">Δ −0.0003</td><td><span class="pill fail">FAIL · gini gain</span> <span class="mono">−0.0037</span></td></tr>
+          <tr><td class="n">1</td><td class="f">long_term_liquidity_ratio</td><td class="x">df['X55'] / (df['X67'] + 0.1)</td><td class="n">Δ −0.0054</td><td><span class="pill fail">FAIL · gini gain</span> <span class="mono">−0.0102</span></td></tr>
+          <tr><td class="n">2</td><td class="f">quick_assets_to_inventory_ratio</td><td class="x">df['X55'] / df['X63'].replace(0, np.nan)</td><td><span class="pill fail">rejected · 25 NaN</span><span class="note">now passes: NaN reads as missing</span></td><td><span class="pill skip">never reached</span></td></tr>
+          <tr><td class="n">2</td><td class="f">debt_coverage_efficiency</td><td class="x">df['X86'] / df['X91'].clip(lower=0.1)</td><td class="n">Δ +0.0000</td><td><span class="pill fail">FAIL · gini gain</span> <span class="mono">+0.0026</span></td></tr>
+          <tr><td class="n">2</td><td class="f">operational_sustainability_ratio</td><td class="x">df['X49'] / df['X21'].replace(0, np.nan)</td><td class="n">Δ −0.0062</td><td><span class="pill fail">FAIL · gini gain</span> <span class="mono">−0.0024</span></td></tr>
+          <tr><td class="n">2</td><td class="f">rd_cash_flow_synergy</td><td class="x">df['X12'] / (df['X57'] + 0.1)</td><td class="n">Δ −0.0003</td><td><span class="pill fail">FAIL · gini gain</span> <span class="mono">+0.0020</span></td></tr>
+          <tr><td class="n">2</td><td class="f">liquidity_enhancement_ratio</td><td class="x">df['X33'] / df['X56'].replace(0, np.nan)</td><td><span class="pill fail">rejected · |ρ| 0.995 vs X60</span></td><td><span class="pill skip">never reached</span></td></tr>
+        </tbody>
+      </table>
+    </div>
+    <p style="margin-top:10px; font-size:13.5px; color:var(--ink-2)">The final-verdict number is the test-split gini gain of <code>loi__&lt;feature&gt;</code> over base; the gate needs +0.0050 on test and on valid. Run B's screen used a redundancy limit of 0.95; the current code takes 0.90 from <code>feature_selection.spearman</code>, the same limit the selection gate applies.</p>
+  </div>
+</section>
+
+<div class="hand"><span class="line"></span><span class="obj">Dataset <em>· new_features += forwarded (run B: +6)</em></span></div>
+
+<!-- ============ QUALITY ============ -->
+<section class="stage" id="s-quality" aria-labelledby="h-quality">
+  <header>
+    <span class="num">stage 1</span>
+    <h2 id="h-quality">Quality</h2>
+    <span class="where">validation/stages/data_quality.py</span>
+    <span class="chips"><span class="chip warn">! warning · 3.5 s</span></span>
+  </header>
+  <div class="io">
+    <div>
+      <p class="label">In</p>
+      <ul>
+        <li>The Dataset: all 97 features, base and new</li>
+        <li>Train for the profile; valid and test compared to train for drift</li>
+      </ul>
+    </div>
+    <div>
+      <p class="label">Does</p>
+      <ul>
+        <li>Missing rate ≤ 0.95</li>
+        <li>Distinct values ≥ 2</li>
+        <li>PSI vs train ≤ 0.25, with 10 quantile bins and NaN as its own bucket</li>
+        <li>Under <code>enforce</code> with <code>drop_failed</code>, removes what fails. Period stability is still a placeholder for the AIME_DataStability port.</li>
+      </ul>
+    </div>
+    <div>
+      <p class="label">Out</p>
+      <dl class="files">
+        <dt>data_quality_report.csv</dt><dd>one row per feature</dd>
+      </dl>
+<pre class="schema">feature  missing_rate  n_unique  n_rows
+psi_valid  psi_test  psi_max  psi_worst_split
+failed_checks  <b>passed</b></pre>
+      <p style="margin-top:8px"><code>DataQualityResult.failed</code>: the names that failed</p>
+    </div>
+  </div>
+  <div class="result">
+    <p class="label">In run A</p>
+    <div class="stats">
+      <div class="stat"><span class="v">97</span><span class="k">features checked</span></div>
+      <div class="stat"><span class="v">1</span><span class="k">flagged</span></div>
+    </div>
+    <p><code>net_income_flag</code> has one distinct value in train (<code>n_unique 1 &lt; 2</code>). It is a base column and gates are open, so it stays. The stage check <em>all features passed thresholds</em> failed, which is why the stage shows <span class="g warn">!</span>.</p>
+  </div>
+</section>
+
+<div class="hand"><span class="line"></span><span class="obj">Dataset <em>· minus failed columns under enforce; unchanged when open</em></span></div>
+
+<!-- ============ SELECT ============ -->
+<section class="stage" id="s-select" aria-labelledby="h-select">
+  <header>
+    <span class="num">stage 2</span>
+    <h2 id="h-select">Select</h2>
+    <span class="where">validation/stages/feature_selection.py</span>
+    <span class="chips"><span class="chip ok">OK passed · 0.54 s</span></span>
+  </header>
+  <div class="io">
+    <div>
+      <p class="label">In</p>
+      <ul>
+        <li>The 13 candidates against the 84 incumbents, on train (4,091 rows)</li>
+        <li>Incumbents are never screened: a candidate can lose to an incumbent, never the reverse</li>
+      </ul>
+    </div>
+    <div>
+      <p class="label">Does</p>
+      <ul>
+        <li><b>Signal screen:</b> |Spearman ρ| with the target ≥ 0.04, and mutual information ≥ 0</li>
+        <li><b>Redundancy screen,</b> strongest candidate first: |ρ| ≤ 0.90 and normalized MI ≤ 0.80 against the incumbents and the candidates already kept</li>
+      </ul>
+    </div>
+    <div>
+      <p class="label">Out</p>
+      <dl class="files">
+        <dt>feature_selection_verdicts.csv</dt><dd>one row per candidate</dd>
+      </dl>
+<pre class="schema">feature  <b>verdict</b> IN | OUT  decided_by  reason
+spearman_target  nmi_target
+spearman_redundancy_base  mi_redundancy_base
+mrmr_score  closest_existing</pre>
+      <p style="margin-top:8px; font-size:13.5px">Also written: target_stats, the Spearman and MI matrices (13 × 97), redundancy and decisions files.</p>
+    </div>
+  </div>
+  <div class="result">
+    <p class="label">In run A</p>
+    <dl class="pairs">
+      <dt class="in">IN · 5</dt><dd><code>cash_current_liability</code> <code>cash_flow_per_share</code> <code>cash_total_assets</code> <code>cash_reinvestment_pct</code> <code>cash_flow_to_sales</code></dd>
+      <dt class="out">OUT · redundancy 6</dt><dd><code>cand_dup_roa_c</code> |ρ| 0.993 against <code>roa_c_before_interest_and_depreciation_before_interest</code> · <code>cash_flow_rate</code> 0.975 · <code>cash_flow_to_total_assets</code> 0.971 · <code>cash_flow_to_liability</code> 0.968 · <code>cash_flow_to_equity</code> 0.955 · <code>cfo_to_assets</code> 0.954</dd>
+      <dt class="out">OUT · signal 2</dt><dd><code>cash_turnover_rate</code> ρ 0.0172 · <code>cand_noise</code> ρ −0.0066, both under 0.04</dd>
+    </dl>
+    <p style="margin-top:10px">Both planted controls were caught here: the near-copy for redundancy and the noise for weak signal. Gates are open, so all 13 still go on to modeling.</p>
+  </div>
+</section>
+
+<div class="hand"><span class="line"></span><span class="obj">Dataset <em>· new_features = selected under enforce, all 13 when open</em></span></div>
+
+<!-- ============ MODEL ============ -->
+<section class="stage" id="s-model" aria-labelledby="h-model">
+  <header>
+    <span class="num">stage 3</span>
+    <h2 id="h-model">Model</h2>
+    <span class="where">validation/stages/modeling.py · model.py</span>
+    <span class="chips"><span class="chip ok">OK passed · 36.2 s</span></span>
+  </header>
+  <div class="io">
+    <div>
+      <p class="label">In</p>
+      <ul>
+        <li>The Dataset, as float32 matrices per split</li>
+        <li><code>variants: [base, base_plus_new, leave_one_in]</code></li>
+        <li><code>params</code>: eta 0.05, max_depth 4, min_child_weight 5, subsample 0.8, colsample_bytree 0.8</li>
+      </ul>
+    </div>
+    <div>
+      <p class="label">Does</p>
+      <ul>
+        <li>Trains one XGBoost 1.7.6 booster per variant, in parallel</li>
+        <li>Up to 400 rounds, stopping early after 40 without improvement on valid</li>
+        <li>Only predicts on test. Tuning, when on, scores only on valid.</li>
+      </ul>
+    </div>
+    <div>
+      <p class="label">Out</p>
+<pre class="schema"><b>ModelResult</b>  one per variant
+  name, features, note
+  predictions     {train, valid, test}
+  best_iteration, best_score, params
+  importance      gain · total_gain
+                  weight · cover
+  model_path      models/&lt;variant&gt;.json</pre>
+      <p style="margin-top:8px; font-size:13.5px"><code>tuning_trials.csv</code> when tuning is on.</p>
+    </div>
+  </div>
+  <div class="result">
+    <p class="label">In run A</p>
+    <div class="stats">
+      <div class="stat"><span class="v">15 / 15</span><span class="k">variants trained</span></div>
+      <div class="stat"><span class="v">84</span><span class="k">features in base</span></div>
+      <div class="stat"><span class="v">97</span><span class="k">in base_plus_new</span></div>
+      <div class="stat"><span class="v">13 × 85</span><span class="k">loi__&lt;candidate&gt;: base + one</span></div>
+      <div class="stat"><span class="v">51–266</span><span class="k">best iteration range</span></div>
+    </div>
+  </div>
+</section>
+
+<div class="hand"><span class="line"></span><span class="obj">15 × ModelResult <em>· predictions on every split, saved boosters</em></span></div>
+
+<!-- ============ ANALYZE ============ -->
+<section class="stage" id="s-analyze" aria-labelledby="h-analyze">
+  <header>
+    <span class="num">stage 4</span>
+    <h2 id="h-analyze">Analyze</h2>
+    <span class="where">validation/stages/analysis.py · metrics.py</span>
+    <span class="chips"><span class="chip ok">OK passed · 12.6 s</span></span>
+  </header>
+  <div class="io">
+    <div>
+      <p class="label">In</p>
+      <ul>
+        <li>The 15 ModelResults and the Dataset's targets</li>
+        <li><code>baseline_variant: base</code></li>
+      </ul>
+    </div>
+    <div>
+      <p class="label">Does</p>
+      <ul>
+        <li>Adjusted Gini, capture rate in the top 1, 5 and 10 %, and decile calibration, per split</li>
+        <li>Gini gain: each variant minus base, per split</li>
+        <li>SHAP (TreeExplainer) on up to 5,000 test rows, ranked by mean |SHAP|, next to XGBoost total-gain importance</li>
+      </ul>
+    </div>
+    <div>
+      <p class="label">Out</p>
+      <dl class="files">
+        <dt>variant_comparison.csv</dt><dd>one row per variant</dd>
+      </dl>
+<pre class="schema">variant  n_features  best_iteration
+adj_gini_{train,valid,test}
+<b>gini_gain_{split}</b>  gini_gain_pct_{split}
+capture_top5_{split}  accuracy_{split}</pre>
+      <dl class="files" style="margin-top:10px">
+        <dt>metrics_by_variant_split.csv</dt><dd>45 rows = 15 variants × 3 splits</dd>
+        <dt>feature_ranking.csv</dt><dd>1,286 rows: SHAP and importance per variant and feature</dd>
+        <dt>shap_ranking.csv</dt><dd>mean |SHAP|, share and rank per variant</dd>
+        <dt>xgb_importance.csv</dt><dd>gain, total_gain, weight, cover per variant</dd>
+      </dl>
+    </div>
+  </div>
+  <figure class="fig chart" id="analyze-chart">
+    <div class="scroll">
+      <svg viewBox="0 0 700 384" role="img" aria-label="Gini gain over base for each of the 15 variants in run A, on test and on valid. Every candidate variant gains on test, from +0.0002 to +0.0178, but loses on valid, from −0.0001 to −0.0190, so none clears the +0.005 gate on both.">
+        <circle class="c-test" cx="236" cy="13" r="4"/>
+        <text class="c-tick" x="245" y="17">test</text>
+        <circle class="c-valid" cx="292" cy="13" r="4"/>
+        <text class="c-tick" x="301" y="17">valid</text>
+        <line class="c-gate" x1="356" y1="13" x2="376" y2="13"/>
+        <text class="c-gate-t" x="382" y="17">gate +0.005 · must hold on both</text>
+
+        <line class="c-grid" x1="274" y1="32" x2="274" y2="336"/>
+        <line class="c-grid" x1="362" y1="32" x2="362" y2="336"/>
+        <line class="c-zero" x1="450" y1="32" x2="450" y2="336"/>
+        <line class="c-grid" x1="538" y1="32" x2="538" y2="336"/>
+        <line class="c-grid" x1="626" y1="32" x2="626" y2="336"/>
+        <line class="c-gate" x1="494" y1="32" x2="494" y2="336"/>
+
+        <text class="c-lbl" x="220" y="50" text-anchor="end">loi__cash_turnover_rate</text>
+        <line class="c-seg" x1="314.8" y1="46" x2="607.0" y2="46"/><circle class="c-valid" cx="314.8" cy="46" r="4"/><circle class="c-test" cx="607.0" cy="46" r="4"/>
+        <text class="c-lbl" x="220" y="70" text-anchor="end">loi__cash_total_assets</text>
+        <line class="c-seg" x1="391.8" y1="66" x2="603.9" y2="66"/><circle class="c-valid" cx="391.8" cy="66" r="4"/><circle class="c-test" cx="603.9" cy="66" r="4"/>
+        <text class="c-lbl" x="220" y="90" text-anchor="end">loi__cash_flow_to_total_assets</text>
+        <line class="c-seg" x1="283.0" y1="86" x2="547.6" y2="86"/><circle class="c-valid" cx="283.0" cy="86" r="4"/><circle class="c-test" cx="547.6" cy="86" r="4"/>
+        <text class="c-lbl" x="220" y="110" text-anchor="end">loi__cash_flow_to_equity</text>
+        <line class="c-seg" x1="409.4" y1="106" x2="544.8" y2="106"/><circle class="c-valid" cx="409.4" cy="106" r="4"/><circle class="c-test" cx="544.8" cy="106" r="4"/>
+        <text class="c-lbl-dim" x="220" y="130" text-anchor="end">loi__cand_noise (planted)</text>
+        <line class="c-seg" x1="410.0" y1="126" x2="542.7" y2="126"/><circle class="c-valid" cx="410.0" cy="126" r="4"/><circle class="c-test" cx="542.7" cy="126" r="4"/>
+        <text class="c-lbl" x="220" y="150" text-anchor="end">loi__cash_current_liability</text>
+        <line class="c-seg" x1="419.4" y1="146" x2="542.1" y2="146"/><circle class="c-valid" cx="419.4" cy="146" r="4"/><circle class="c-test" cx="542.1" cy="146" r="4"/>
+        <text class="c-lbl" x="220" y="170" text-anchor="end">loi__cfo_to_assets</text>
+        <line class="c-seg" x1="448.8" y1="166" x2="539.4" y2="166"/><circle class="c-valid" cx="448.8" cy="166" r="4"/><circle class="c-test" cx="539.4" cy="166" r="4"/>
+        <text class="c-lbl" x="220" y="190" text-anchor="end">base_plus_new</text>
+        <line class="c-seg" x1="295.8" y1="186" x2="534.2" y2="186"/><circle class="c-valid" cx="295.8" cy="186" r="4"/><circle class="c-test" cx="534.2" cy="186" r="4"/>
+        <text class="c-lbl-dim" x="220" y="210" text-anchor="end">loi__cand_dup_roa_c (planted)</text>
+        <line class="c-seg" x1="388.8" y1="206" x2="533.3" y2="206"/><circle class="c-valid" cx="388.8" cy="206" r="4"/><circle class="c-test" cx="533.3" cy="206" r="4"/>
+        <text class="c-lbl" x="220" y="230" text-anchor="end">loi__cash_reinvestment_pct</text>
+        <line class="c-seg" x1="420.0" y1="226" x2="530.0" y2="226"/><circle class="c-valid" cx="420.0" cy="226" r="4"/><circle class="c-test" cx="530.0" cy="226" r="4"/>
+        <text class="c-lbl" x="220" y="250" text-anchor="end">loi__cash_flow_per_share</text>
+        <line class="c-seg" x1="429.7" y1="246" x2="524.2" y2="246"/><circle class="c-valid" cx="429.7" cy="246" r="4"/><circle class="c-test" cx="524.2" cy="246" r="4"/>
+        <text class="c-lbl" x="220" y="270" text-anchor="end">loi__cash_flow_to_liability</text>
+        <line class="c-seg" x1="441.2" y1="266" x2="511.5" y2="266"/><circle class="c-valid" cx="441.2" cy="266" r="4"/><circle class="c-test" cx="511.5" cy="266" r="4"/>
+        <text class="c-lbl" x="220" y="290" text-anchor="end">loi__cash_flow_to_sales</text>
+        <line class="c-seg" x1="420.9" y1="286" x2="487.9" y2="286"/><circle class="c-valid" cx="420.9" cy="286" r="4"/><circle class="c-test" cx="487.9" cy="286" r="4"/>
+        <text class="c-lbl" x="220" y="310" text-anchor="end">loi__cash_flow_rate</text>
+        <line class="c-seg" x1="435.8" y1="306" x2="452.1" y2="306"/><circle class="c-valid" cx="435.8" cy="306" r="4"/><circle class="c-test" cx="452.1" cy="306" r="4"/>
+        <text class="c-lbl" x="220" y="330" text-anchor="end">base</text>
+        <circle class="c-test" cx="450" cy="326" r="4"/>
+
+        <text class="c-tick" x="274" y="354" text-anchor="middle">−0.02</text>
+        <text class="c-tick" x="362" y="354" text-anchor="middle">−0.01</text>
+        <text class="c-tick" x="450" y="354" text-anchor="middle">0</text>
+        <text class="c-tick" x="538" y="354" text-anchor="middle">+0.01</text>
+        <text class="c-tick" x="626" y="354" text-anchor="middle">+0.02</text>
+        <text class="c-axis-t" x="450" y="376" text-anchor="middle">adjusted Gini gain over base</text>
+      </svg>
+    </div>
+    <figcaption>Run A: every variant gains on test and loses on valid. Base scores 0.8855 on test and 0.9226 on valid. The planted noise column gains +0.0105 on test, which is why the gate asks for the gain on valid as well.</figcaption>
+  </figure>
+</section>
+
+<div class="hand"><span class="line"></span><span class="obj">AnalysisResult <em>· comparison table + SHAP ranking, with Quality and Select results</em></span></div>
+
+<!-- ============ VERDICT ============ -->
+<section class="stage" id="s-verdict" aria-labelledby="h-verdict">
+  <header>
+    <span class="num">stage 5</span>
+    <h2 id="h-verdict">Verdict</h2>
+    <span class="where">validation/stages/verdict.py</span>
+    <span class="chips"><span class="chip ok">OK passed · 0.03 s</span></span>
+  </header>
+  <div class="io">
+    <div>
+      <p class="label">In</p>
+      <ul>
+        <li>The candidate list, fixed after discovery</li>
+        <li>DataQualityResult, FeatureSelectionResult, AnalysisResult</li>
+      </ul>
+    </div>
+    <div>
+      <p class="label">Does · four gates, in order</p>
+      <ul>
+        <li>1 · data quality: the column is usable</li>
+        <li>2 · feature selection: has signal the incumbents lack</li>
+        <li>3 · gini gain: <code>loi__</code> gains ≥ +0.005 on test <b>and</b> valid</li>
+        <li>4 · SHAP rank: in the top 50 % of <code>base_plus_new</code></li>
+        <li>A batch call follows: KEEP if anything passed, otherwise TRY A NEW BATCH</li>
+      </ul>
+    </div>
+    <div>
+      <p class="label">Out</p>
+      <dl class="files">
+        <dt>candidate_verdicts.csv</dt><dd>one row per candidate</dd>
+      </dl>
+<pre class="schema">feature  <b>verdict</b> PASS | FAIL  failed_at
+data quality · feature selection · gini gain
+· shap rank    PASS | FAIL | not reached
+               | not evaluable
+n_gates_failed  reason  gini_gain_test
+shap_rank_pct  spearman_target  mrmr_score</pre>
+      <dl class="files" style="margin-top:10px">
+        <dt>batch_verdict.json</dt><dd>verdict, n_candidates, n_passed, passed, failed_at, batch_gini_gain, note</dd>
+        <dt>report.md · summary.json</dt><dd>the human and machine summaries</dd>
+        <dt>history.csv</dt><dd>+ each proposal's outcome, when discovery ran</dd>
+      </dl>
+    </div>
+  </div>
+  <div class="result">
+    <p class="label" id="verdict-gates">In run A · every candidate measured at every gate</p>
+    <div class="scroll">
+      <table class="tbl">
+        <thead><tr><th>Candidate</th><th class="gate-cell">1 quality</th><th class="gate-cell">2 selection</th><th class="gate-cell">3 gini gain</th><th class="gate-cell">4 SHAP rank</th><th>Failed at</th><th style="text-align:right">Gain test</th><th style="text-align:right">Gain valid</th><th style="text-align:right">SHAP pct</th></tr></thead>
+        <tbody>
+          <tr><td class="f">cash_turnover_rate</td><td class="gate-cell"><span class="pill ok">PASS</span></td><td class="gate-cell"><span class="pill fail">FAIL</span></td><td class="gate-cell"><span class="pill fail">FAIL</span></td><td class="gate-cell"><span class="pill fail">FAIL</span></td><td>feature selection</td><td class="n">+0.0178</td><td class="n">−0.0154</td><td class="n">52 %</td></tr>
+          <tr><td class="f">cash_total_assets</td><td class="gate-cell"><span class="pill ok">PASS</span></td><td class="gate-cell"><span class="pill ok">PASS</span></td><td class="gate-cell"><span class="pill fail">FAIL</span></td><td class="gate-cell"><span class="pill ok">PASS</span></td><td>gini gain</td><td class="n">+0.0175</td><td class="n">−0.0066</td><td class="n">19 %</td></tr>
+          <tr><td class="f">cash_flow_to_total_assets</td><td class="gate-cell"><span class="pill ok">PASS</span></td><td class="gate-cell"><span class="pill fail">FAIL</span></td><td class="gate-cell"><span class="pill fail">FAIL</span></td><td class="gate-cell"><span class="pill fail">FAIL</span></td><td>feature selection</td><td class="n">+0.0111</td><td class="n">−0.0190</td><td class="n">72 %</td></tr>
+          <tr><td class="f">cash_flow_to_equity</td><td class="gate-cell"><span class="pill ok">PASS</span></td><td class="gate-cell"><span class="pill fail">FAIL</span></td><td class="gate-cell"><span class="pill fail">FAIL</span></td><td class="gate-cell"><span class="pill fail">FAIL</span></td><td>feature selection</td><td class="n">+0.0108</td><td class="n">−0.0046</td><td class="n">51 %</td></tr>
+          <tr><td class="f">cand_noise</td><td class="gate-cell"><span class="pill ok">PASS</span></td><td class="gate-cell"><span class="pill fail">FAIL</span></td><td class="gate-cell"><span class="pill fail">FAIL</span></td><td class="gate-cell"><span class="pill ok">PASS</span></td><td>feature selection</td><td class="n">+0.0105</td><td class="n">−0.0045</td><td class="n">43 %</td></tr>
+          <tr><td class="f">cash_current_liability</td><td class="gate-cell"><span class="pill ok">PASS</span></td><td class="gate-cell"><span class="pill ok">PASS</span></td><td class="gate-cell"><span class="pill fail">FAIL</span></td><td class="gate-cell"><span class="pill ok">PASS</span></td><td>gini gain</td><td class="n">+0.0105</td><td class="n">−0.0035</td><td class="n">23 %</td></tr>
+          <tr><td class="f">cfo_to_assets</td><td class="gate-cell"><span class="pill ok">PASS</span></td><td class="gate-cell"><span class="pill fail">FAIL</span></td><td class="gate-cell"><span class="pill fail">FAIL</span></td><td class="gate-cell"><span class="pill fail">FAIL</span></td><td>feature selection</td><td class="n">+0.0102</td><td class="n">−0.0001</td><td class="n">68 %</td></tr>
+          <tr><td class="f">cand_dup_roa_c</td><td class="gate-cell"><span class="pill ok">PASS</span></td><td class="gate-cell"><span class="pill fail">FAIL</span></td><td class="gate-cell"><span class="pill fail">FAIL</span></td><td class="gate-cell"><span class="pill ok">PASS</span></td><td>feature selection</td><td class="n">+0.0095</td><td class="n">−0.0070</td><td class="n">28 %</td></tr>
+          <tr><td class="f">cash_reinvestment_pct</td><td class="gate-cell"><span class="pill ok">PASS</span></td><td class="gate-cell"><span class="pill ok">PASS</span></td><td class="gate-cell"><span class="pill fail">FAIL</span></td><td class="gate-cell"><span class="pill fail">FAIL</span></td><td>gini gain</td><td class="n">+0.0091</td><td class="n">−0.0034</td><td class="n">61 %</td></tr>
+          <tr><td class="f">cash_flow_per_share</td><td class="gate-cell"><span class="pill ok">PASS</span></td><td class="gate-cell"><span class="pill ok">PASS</span></td><td class="gate-cell"><span class="pill fail">FAIL</span></td><td class="gate-cell"><span class="pill ok">PASS</span></td><td>gini gain</td><td class="n">+0.0084</td><td class="n">−0.0023</td><td class="n">35 %</td></tr>
+          <tr><td class="f">cash_flow_to_liability</td><td class="gate-cell"><span class="pill ok">PASS</span></td><td class="gate-cell"><span class="pill fail">FAIL</span></td><td class="gate-cell"><span class="pill fail">FAIL</span></td><td class="gate-cell"><span class="pill ok">PASS</span></td><td>feature selection</td><td class="n">+0.0070</td><td class="n">−0.0010</td><td class="n">46 %</td></tr>
+          <tr><td class="f">cash_flow_to_sales</td><td class="gate-cell"><span class="pill ok">PASS</span></td><td class="gate-cell"><span class="pill ok">PASS</span></td><td class="gate-cell"><span class="pill fail">FAIL</span></td><td class="gate-cell"><span class="pill ok">PASS</span></td><td>gini gain</td><td class="n">+0.0043</td><td class="n">−0.0033</td><td class="n">20 %</td></tr>
+          <tr><td class="f">cash_flow_rate</td><td class="gate-cell"><span class="pill ok">PASS</span></td><td class="gate-cell"><span class="pill fail">FAIL</span></td><td class="gate-cell"><span class="pill fail">FAIL</span></td><td class="gate-cell"><span class="pill fail">FAIL</span></td><td>feature selection</td><td class="n">+0.0002</td><td class="n">−0.0016</td><td class="n">88 %</td></tr>
+        </tbody>
+      </table>
+    </div>
+    <div class="batch">
+      <span class="call">TRY A NEW BATCH</span>
+      <span class="sub"><b>0 of 13</b> passed · fell at feature selection 8, gini gain 5 · the whole batch moves <span class="mono">+0.0096</span> on test</span>
+    </div>
+    <p>Run B, the discovered batch: <b>0 of 6</b> passed, all at gini gain, and the batch moved <span class="mono">−0.0012</span> on test. With a <code>history_path</code> set, each outcome is appended to <code>history.csv</code> (accepted, or rejected with the gate and reason) and the next run's prompt starts from it.</p>
+  </div>
+</section>
+
+</main>
+
+<footer class="every" id="every">
+  <h2>Every run writes to outputs/&lt;run.name&gt;/&lt;timestamp&gt;/</h2>
+  <dl class="files">
+    <dt>pipeline_status.json</dt><dd>rewritten on every stage transition: <code>{schema_version, run, status, started_at, finished_at, stages: [{key, label, status, elapsed_seconds, detail, checks: [{name, passed, detail, severity}], error}]}</code></dd>
+    <dt>run.log</dt><dd>every log line, including the stage board after each transition</dd>
+    <dt>config.resolved.yaml</dt><dd>the config as run, with defaults filled in</dd>
+    <dt>summary.json</dt><dd>every stage's summary, plus library versions</dd>
+    <dt>report.md</dt><dd>the readable report: data, quality, verdict, comparison, ranking</dd>
+  </dl>
+  <p style="font-size:13.5px; color:var(--ink-2); margin-top:14px; max-width:90ch">A stage ends with <span class="g warn">!</span> when one of its checks fails and <span class="g fail">X</span> when it raises; after an <span class="g fail">X</span> every later stage is marked <span class="g skip">-</span> with “not reached”. The run is <code>succeeded</code>, <code>succeeded_with_warnings</code> or <code>failed</code>.</p>
+</footer>
+
+</div>
+</div>
+<script>
+// Mark the contents entry for the section being read: the last target whose
+// top has scrolled past the reading line, or the last one at the page's end.
+(() => {
+  const links = [...document.querySelectorAll('.toc a[href^="#"]')];
+  const byId = new Map(links.map(a => [a.getAttribute('href').slice(1), a]));
+  const targets = [...byId.keys()].map(id => document.getElementById(id)).filter(Boolean);
+  if (!targets.length) return;
+  let queued = false;
+  const update = () => {
+    queued = false;
+    let current = targets[0];
+    for (const target of targets) {
+      if (target.getBoundingClientRect().top <= 120) current = target;
+      else break;
+    }
+    const root = document.documentElement;
+    if (window.innerHeight + window.scrollY >= root.scrollHeight - 4) current = targets[targets.length - 1];
+    for (const a of links) a.removeAttribute('aria-current');
+    byId.get(current.id).setAttribute('aria-current', 'true');
+  };
+  const queue = () => { if (!queued) { queued = true; requestAnimationFrame(update); } };
+  addEventListener('scroll', queue, { passive: true });
+  addEventListener('resize', queue);
+  update();
+})();
+</script>
+</body>
+</html>
