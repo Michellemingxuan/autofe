@@ -134,15 +134,27 @@ def test_the_builtins_allowlist_excludes_the_filesystem_and_import_system(frame)
 # --------------------------------------------------------------------------- #
 # guards
 # --------------------------------------------------------------------------- #
-def test_non_finite_values_are_rejected(frame):
+def test_infinite_values_are_rejected(frame):
     out = apply_code(frame, ['df["r"] = df["a"] / df["b"]'])   # b has a zero
-    with pytest.raises(CandidateError, match="non-finite"):
+    with pytest.raises(CandidateError, match="infinite"):
         check_finite(out, "r", "train")
 
 
 def test_finite_column_passes(frame):
     out = apply_code(frame, ['df["r"] = df["a"] / df["b"].clip(lower=0.5)'])
     check_finite(out, "r", "train")
+
+
+def test_nan_passes_because_it_means_missing(frame):
+    out = apply_code(frame, ['df["r"] = df["a"] / df["b"].where(df["b"] != 0)'])
+    assert out["r"].isna().sum() == 1
+    check_finite(out, "r", "train")                  # must not raise
+
+
+def test_non_numeric_values_are_rejected():
+    frame = pd.DataFrame({"r": [1.0, "high", np.nan]}, dtype=object)
+    with pytest.raises(CandidateError, match="non-numeric"):
+        check_finite(frame, "r", "train")
 
 
 def test_missing_column_is_reported(frame):
@@ -178,3 +190,7 @@ def test_matrix_guard_names_the_offending_column():
     bad = pd.DataFrame({"ok": [1.0, 2.0], "bad": [1.0, np.inf]})
     with pytest.raises(CandidateError, match="bad"):
         check_matrix_finite(bad, "train")
+
+
+def test_matrix_guard_lets_missing_values_through():
+    check_matrix_finite(pd.DataFrame({"a": [1.0, np.nan], "b": [np.nan, 2.0]}), "train")

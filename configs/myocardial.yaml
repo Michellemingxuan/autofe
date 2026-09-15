@@ -4,7 +4,7 @@
 # feature set. A lab panel must be ordered, costs money and comes back late, so
 # whether it adds anything over admission data is a real decision.
 #
-#   python data/myocardial/prepare.py
+#   run data/myocardial/prepare.ipynb    -> the fixed splits and few-shot rows
 #   mllite -c configs/myocardial.yaml
 #   mllite -c configs/myocardial.yaml --set discovery.enabled=true
 #
@@ -23,10 +23,15 @@ run:
   log_level: INFO
 
 data:
-  path: data/myocardial/modeling.parquet
+  # The fixed 60 / 20 / 20 split, stratified on the target and written once by
+  # data/myocardial/prepare.ipynb. The pipeline reads it as is and never re-splits.
+  paths:
+    train: data/myocardial/train.csv
+    valid: data/myocardial/valid.csv
+    test:  data/myocardial/test.csv
   target: chf
   id_cols: [id]             # the archive's own record id
-  missing_values: []        # "?" is already resolved to NaN by prepare.py
+  missing_values: []        # "?" is already resolved to NaN by prepare.ipynb
   missing_indicators:
     # Turned ON here, unlike the other two demos. Which labs were ordered is a
     # clinical decision, so a value being absent carries information about the
@@ -37,11 +42,6 @@ data:
     min_missing_rate: 0.01
     suffix: _is_missing
     treat_as: new           # judged at the same gates as the labs themselves
-  split:
-    mode: random
-    stratify: true          # 394 positives in 1,700 rows - keep the rate stable
-    valid_size: 0.2
-    test_size: 0.2
 
 features:
   # base is left empty: every column that is not a candidate, id or target
@@ -101,24 +101,25 @@ discovery:
   batch_size: 5
   max_rounds: 2            # the stopping control; 1 is a single batch
 
-  # Only ~1,020 train rows exist, so the sample is most of them. Not rebalanced:
-  # at a 23% base rate a uniform draw already carries plenty of positives, and
-  # balancing would have to discard most of the negatives to do it.
-  sample_size: 1000
-  sample_split: train
-  sample_balance: false
-  sample_eval_fraction: 0.3
+  # The rows the screen fits each proposal on (a sample of train) and scores it
+  # on (a sample of valid), written by prepare.ipynb in the same format as the
+  # splits. Nearly all of train and all of valid, since the table is small. Not
+  # rebalanced: at a 23% base rate a uniform draw already carries plenty of
+  # positives.
+  screen_data: files       # splits | files
+  screen_paths:
+    train: data/myocardial/screen_train.csv
+    valid: data/myocardial/screen_valid.csv
   screen_boost_rounds: 150
   metric: adj_gini         # only ~79 test positives, so a top-5% capture rate
                            # moves in steps of more than a percentage point
 
   # The example rows shown under each column - the only concrete data the
-  # proposer ever sees of the table. Chosen per class by KMeans, one row per
-  # cluster, so all 32 do not land in whichever region happens to be dense and
-  # both classes appear even at a low base rate. Each round gets its own batch,
-  # so a second round reasons from rows the first one did not show.
-  shots: 32
-  shot_batches: 2          # capped at max_rounds; more is wasted work
+  # proposer ever sees of the table. Precomputed by prepare.ipynb: chosen per
+  # class by KMeans on train, one row per cluster, so the 32 do not land in
+  # whichever region happens to be dense. Round r shows batch r, so a second
+  # round reasons from new rows.
+  few_shot_path: data/myocardial/few_shot.csv
 
   # The 12 real measurements. Everything else - 98 columns of clinical codes -
   # is presented to the proposer as levels rather than a range, so it does not
@@ -138,7 +139,7 @@ discovery:
     - l_blood
     - roe
 
-  # What each column means, including its coding scheme. Written by prepare.py
+  # What each column means, including its coding scheme. Written by prepare.ipynb
   # from the archive's own published variable list - without it a proposer
   # cannot tell an angina grade from a drug-administration flag.
   column_descriptions_path: data/myocardial/column_descriptions.json

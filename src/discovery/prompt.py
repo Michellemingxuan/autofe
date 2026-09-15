@@ -235,16 +235,15 @@ def build_prompt(
 
     rejections = f"""A proposal is checked before it is scored, and discarded if it breaks any of these. Read them as hard constraints, not advice:
 
-1. NON-FINITE VALUES. Any NaN or infinity in the new column is a rejection. Handle missing values, division by zero and invalid logarithms explicitly.{redundancy_rule}
+1. INFINITE OR NON-NUMERIC VALUES. Any infinity, or any value that is not a number, in the new column is a rejection. NaN is allowed: the model reads it as missing, so it is the right value for a row where the feature is undefined.{redundancy_rule}
 {'3' if redundancy_max_abs is not None else '2'}. EXTREME VALUES. A single value far above the column's own bulk is a rejection.
 
-   Every row must end up with a finite number, so a division needs a finite fallback for the rows where it is undefined. These two both fail:
+   A division needs a fallback for the rows where it is undefined. This fails:
      df["x"] = df["a"] / (df["b"] + 1e-6)                          # one b == 0 becomes ~1e6
-     df["x"] = df["a"] / np.where(df["b"] != 0, df["b"], np.nan)   # NaN is not a number
    These work:
-     df["x"] = np.where(df["b"] > 0, df["a"] / df["b"].where(df["b"] > 0, 1.0), 0.0)
+     df["x"] = df["a"] / df["b"].where(df["b"] != 0)               # undefined rows become NaN
      df["x"] = (df["a"] / df["b"].clip(lower=df["b"][df["b"] > 0].min())).clip(upper=<a sane bound>)
-   Substituting zero - or any other finite value that means "undefined here" - is correct. Substituting NaN or an epsilon is not.
+   Marking an undefined row NaN is correct - the model treats it as missing rather than as a real value. Substituting an epsilon is not.
 {'4' if redundancy_max_abs is not None else '3'}. WRONG SHAPE. Exactly one new column per block, and no modification of any existing column. Name it descriptively in snake_case for what it measures - `debt_to_equity_ratio`, `cash_coverage_gap` - and never by continuing the table's own identifier scheme. `X96` is not an acceptable name: the name and the comment header are how a reader will understand the feature later, and both are required.
 {'5' if redundancy_max_abs is not None else '4'}. UNKNOWN COLUMN. Every column you read must be indexed by the identifier shown in the list above - `df["X36"]`, not `df["Total debt/Total net worth"]`. Descriptions tell you what a column means; they are not keys."""
     diversity = (

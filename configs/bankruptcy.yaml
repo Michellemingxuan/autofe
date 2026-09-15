@@ -2,7 +2,7 @@
 # Scenario - the incumbent model uses profitability / leverage / growth ratios;
 # the cash-flow family is the newly proposed feature set under evaluation.
 #
-#   python data/bankruptcy/prepare.py
+#   run data/bankruptcy/prepare.ipynb    -> the fixed splits and few-shot rows
 #   mllite -c configs/bankruptcy.yaml
 #   mllite -c configs/bankruptcy.yaml --set discovery.enabled=true
 
@@ -17,7 +17,12 @@ run:
   log_level: INFO
 
 data:
-  path: data/bankruptcy/modeling.parquet
+  # The fixed 60 / 20 / 20 split, stratified on the target and written once by
+  # data/bankruptcy/prepare.ipynb. The pipeline reads it as is and never re-splits.
+  paths:
+    train: data/bankruptcy/train.csv
+    valid: data/bankruptcy/valid.csv
+    test:  data/bankruptcy/test.csv
   target: bankrupt
   id_cols: [row_id]
   missing_values: []          # this source has no sentinel codes
@@ -27,11 +32,6 @@ data:
     min_missing_rate: 0.01  # skip columns barely ever missing
     suffix: _is_missing
     treat_as: new           # new | source - which feature list the indicators join
-  split:
-    mode: random
-    stratify: true            # 3.2% positives - keep the rate stable across splits
-    valid_size: 0.2
-    test_size: 0.2
 
 features:
   # base is left empty: everything numeric that is not a candidate, id or target
@@ -83,25 +83,25 @@ discovery:
   batch_size: 5
   max_rounds: 2            # the stopping control; 1 is a single batch
 
-  # The small sample the screen fits on. Balanced because a uniform draw at a
-  # 3% base rate would be almost all solvent companies, and held out in part
-  # because an in-sample delta saturates and stops meaning anything.
-  sample_size: 1500
-  sample_split: train
-  sample_balance: true
-  sample_eval_fraction: 0.3
+  # The rows the screen fits each proposal on (a sample of train) and scores it
+  # on (a sample of valid), written by prepare.ipynb in the same format as the
+  # splits. Balanced, because a uniform draw at a 3% base rate would be almost
+  # all solvent companies. `screen_data: splits` uses the whole splits instead.
+  screen_data: files       # splits | files
+  screen_paths:
+    train: data/bankruptcy/screen_train.csv
+    valid: data/bankruptcy/screen_valid.csv
   screen_boost_rounds: 150
   metric: adj_gini
 
   # The example rows shown under each column - the only concrete data the
-  # proposer ever sees of the table. Chosen per class by KMeans, one row per
-  # cluster, so all 32 do not land in whichever region happens to be dense and
-  # both classes appear even at a low base rate. Each round gets its own batch,
-  # so a second round reasons from rows the first one did not show.
-  shots: 32
-  shot_batches: 2          # capped at max_rounds; more is wasted work
+  # proposer ever sees of the table. Precomputed by prepare.ipynb: chosen per
+  # class by KMeans on train, one row per cluster, so the 32 do not land in
+  # whichever region happens to be dense and both classes appear even at a low
+  # base rate. Round r shows batch r, so a second round reasons from new rows.
+  few_shot_path: data/bankruptcy/few_shot.csv
 
-  # What each column means. Written by prepare.py from the archive's own
+  # What each column means. Written by prepare.ipynb from the archive's own
   # headers: a proposer that only knows a column by name cannot bring any
   # real-world knowledge to it.
   column_descriptions_path: data/bankruptcy/column_descriptions.json

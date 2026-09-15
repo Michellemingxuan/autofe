@@ -16,7 +16,7 @@ import numpy as np
 import pandas as pd
 import pytest
 
-from discovery.shots import _encode, balanced_assignment, build_shot_batches
+from preprocessing.shots import _encode, balanced_assignment, build_shot_batches
 
 
 @pytest.fixture

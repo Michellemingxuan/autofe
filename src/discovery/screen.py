@@ -1,4 +1,4 @@
-"""Score one candidate feature on a small sample, fast.
+"""Score one candidate feature on the screen's rows, fast.
 
 The screen answers a narrow question: does this column run cleanly, and does it
 move the model at all? It is not the decision. The decision is made later by
@@ -16,6 +16,11 @@ It deliberately uses the same estimator (:func:`validation.model.fit_booster`)
 and the same parameters as the verdict, so a screen delta and a verdict delta are
 the same kind of quantity. What differs is the data volume and the absence of
 tuning, which is the whole point: cheap and directionally honest, not final.
+
+The rows are the discovery config's ``screen_data``: the train and valid splits,
+or rows the prepare step sampled from them. The screen fits on the first and
+scores on the second - never on the rows it fit, where a boosted model rebuilds a
+ratio from its own inputs and every delta reads as noise.
 """
 
 from __future__ import annotations
@@ -40,7 +45,7 @@ from discovery.sandbox import (
 )
 from validation.model import fit_booster
 
-__all__ = ["ScreenResult", "Screener", "build_sample"]
+__all__ = ["ScreenResult", "Screener"]
 
 
 @dataclass
@@ -71,43 +76,6 @@ class ScreenResult:
         }
 
 
-def build_sample(
-    frame: pd.DataFrame,
-    target: str,
-    size: int,
-    seed: int = 42,
-    balance: bool = True,
-) -> pd.DataFrame:
-    """
-    Draw the small dataset the screen fits on.
-
-    Balanced across classes by default. On an imbalanced target a uniform draw of
-    a few thousand rows can contain only a handful of positives, which makes the
-    screen's score mostly noise and starves the proposer of the very contrast it
-    is being asked to model. Taking equal counts costs representativeness of the
-    base rate - which the screen does not need, since it compares two models on
-    the same rows - and buys a usable signal.
-    """
-    if size >= len(frame) and not balance:
-        return frame.copy()
-
-    rng = np.random.default_rng(seed)
-    if not balance:
-        take = rng.choice(len(frame), size=min(size, len(frame)), replace=False)
-        return frame.iloc[np.sort(take)].reset_index(drop=True)
-
-    groups = [group for _, group in frame.groupby(target, sort=True)]
-    per_class = max(1, size // max(1, len(groups)))
-    parts = []
-    for group in groups:
-        n = min(per_class, len(group))
-        take = rng.choice(len(group), size=n, replace=False)
-        parts.append(group.iloc[np.sort(take)])
-    sample = pd.concat(parts, axis=0)
-    # Shuffle so class order cannot leak into row order.
-    return sample.iloc[rng.permutation(len(sample))].reset_index(drop=True)
-
-
 class Screener:
     """
     Holds the sample and the baseline, and scores candidates against it.
@@ -120,7 +88,8 @@ class Screener:
 
     def __init__(
         self,
-        sample: pd.DataFrame,
+        train: pd.DataFrame,
+        valid: pd.DataFrame,
         target: str,
         base_features: Sequence[str],
         params: Mapping[str, Any],
@@ -131,10 +100,15 @@ class Screener:
         spike_factor: float = 1000.0,
         redundancy_max_abs: float | None = None,
         column_aliases: Mapping[str, str] | None = None,
-        eval_fraction: float = 0.3,
-        seed: int = 42,
     ):
-        self.sample = sample.reset_index(drop=True)
+        if not len(train) or not len(valid):
+            raise ValueError("the screen needs rows to fit on and rows to score on; "
+                             f"got {len(train)} and {len(valid)}")
+        # One frame, so a proposal's code runs once over every screen row: the
+        # rows it fits on first, the rows it is scored on after them.
+        self.sample = pd.concat([train, valid], ignore_index=True)
+        self._train_rows = np.arange(len(train))
+        self._eval_rows = np.arange(len(train), len(self.sample))
         self.target = target
         self.base_features = list(base_features)
         self.params = self._measurable(params)
@@ -152,27 +126,9 @@ class Screener:
         )
 
         self._y = self.sample[self.target].to_numpy()
-        self._train_rows, self._eval_rows = self._split_rows(eval_fraction, seed)
         self._base_score = self._fit_and_score(
             self.sample[self.base_features], self.base_features
         )
-
-    def _split_rows(self, eval_fraction: float, seed: int) -> tuple[np.ndarray, np.ndarray]:
-        """Stratified train/eval row indices within the sample, fixed for the run.
-
-        Fixed so every candidate is judged against the baseline on identical
-        rows: a reshuffle per proposal would move the reference and let the same
-        feature score differently depending on when it arrived.
-        """
-        rng = np.random.default_rng(seed)
-        train_parts, eval_parts = [], []
-        for value in np.unique(self._y):
-            rows = np.flatnonzero(self._y == value)
-            rows = rows[rng.permutation(len(rows))]
-            cut = max(1, int(round(len(rows) * (1.0 - eval_fraction))))
-            train_parts.append(rows[:cut])
-            eval_parts.append(rows[cut:] if len(rows) > cut else rows[cut - 1:])
-        return np.sort(np.concatenate(train_parts)), np.sort(np.concatenate(eval_parts))
 
     @staticmethod
     def _measurable(params: Mapping[str, Any]) -> dict[str, Any]:

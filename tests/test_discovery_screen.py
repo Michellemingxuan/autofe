@@ -5,10 +5,30 @@ import pytest
 
 from discovery.prompt import build_prompt, describe_columns, extract_code, format_history, parse_candidate
 from discovery.sandbox import CandidateError
-from discovery.screen import Screener, build_sample
+from discovery.screen import Screener
+from preprocessing import build_sample
 from validation.metrics import calc_adj_gini
 
 PARAMS = {"eta": 0.1, "max_depth": 3, "objective": "binary:logistic"}
+
+
+def _split(sample, eval_fraction=0.3, seed=42):
+    """The screen's fit rows and scored rows: a stratified 70 / 30 of the sample.
+
+    Drawn exactly as the screen used to draw them internally, so these tests
+    fit and score on the same rows they always have.
+    """
+    y = sample["class"].to_numpy()
+    rng = np.random.default_rng(seed)
+    fit, score = [], []
+    for value in np.unique(y):
+        rows = np.flatnonzero(y == value)
+        rows = rows[rng.permutation(len(rows))]
+        cut = max(1, int(round(len(rows) * (1.0 - eval_fraction))))
+        fit.append(rows[:cut])
+        score.append(rows[cut:])
+    return (sample.iloc[np.sort(np.concatenate(fit))],
+            sample.iloc[np.sort(np.concatenate(score))])
 
 
 @pytest.fixture
@@ -27,7 +47,7 @@ def frame():
 @pytest.fixture
 def screener(frame):
     sample = build_sample(frame, "class", size=800, seed=1)
-    return Screener(sample, "class", ["a", "b", "noise"], PARAMS,
+    return Screener(*_split(sample), "class", ["a", "b", "noise"], PARAMS,
                     score=calc_adj_gini, num_boost_round=60)
 
 
@@ -95,7 +115,7 @@ def test_identical_candidates_score_identically(screener):
     ('import os\ndf["x"] = 1',                      "Forbidden syntax"),
     ('df["x"] = df["a"]\ndf["y"] = df["b"]',        "exactly one"),
     ('df["a"] = df["b"]',                           "already exists"),
-    ('df["x"] = df["a"] / (df["b"] - df["b"])',     "non-finite"),
+    ('df["x"] = df["a"] / (df["b"] - df["b"])',     "infinite"),
     ('df["x"] = (((',                               "SyntaxError"),
     ('df["x"] = df["nope"] * 2',                    "does not exist"),
 ])
@@ -106,13 +126,29 @@ def test_bad_candidates_return_an_error_message(screener, code, expected):
     assert out.delta is None
 
 
+def test_a_feature_with_missing_values_is_scored_not_rejected(screener):
+    out = screener.evaluate('df["x"] = df["a"].where(df["a"] > 10) / df["b"]')
+    assert out.ok, out.error
+    assert out.delta is not None
+
+
+def test_missing_values_in_the_base_columns_do_not_reject_every_candidate(frame):
+    holey = frame.copy()
+    holey.loc[holey.index[::7], "noise"] = np.nan
+    sample = build_sample(holey, "class", size=800, seed=1)
+    screener = Screener(*_split(sample), "class", ["a", "b", "noise"], PARAMS,
+                        score=calc_adj_gini, num_boost_round=40)
+    out = screener.evaluate('df["x"] = df["a"] / df["b"]')
+    assert out.ok, out.error
+
+
 def test_the_epsilon_guard_spike_is_rejected(frame):
     # one row with b == 0 -> "+ 1e-6" produces ~1e6
     poisoned = frame.copy()
     poisoned.loc[0, "b"] = 0.0
     sample = build_sample(poisoned, "class", size=800, seed=1)
     sample.loc[0, "b"] = 0.0                       # make sure it is in the sample
-    screener = Screener(sample, "class", ["a", "b", "noise"], PARAMS,
+    screener = Screener(*_split(sample), "class", ["a", "b", "noise"], PARAMS,
                         score=calc_adj_gini, num_boost_round=40)
     out = screener.evaluate('df["r"] = df["a"] / (df["b"] + 1e-6)')
     assert not out.ok and "spikes" in out.error
@@ -149,7 +185,7 @@ def test_categorical_columns_list_their_values(frame):
 def test_indexing_by_description_is_answered_with_the_identifier(frame):
     """The failure that cost a whole run: df["Debt ratio %"] instead of df["X36"]."""
     sample = build_sample(frame, "class", size=400, seed=1)
-    screener = Screener(sample, "class", ["a", "b", "noise"], PARAMS,
+    screener = Screener(*_split(sample), "class", ["a", "b", "noise"], PARAMS,
                         score=calc_adj_gini, num_boost_round=20,
                         column_aliases={"Total debt over net worth": "a"})
     out = screener.evaluate('df["x"] = df["Total debt over net worth"] * 2')
@@ -229,7 +265,7 @@ def test_rationale_parsing_survives_broken_code():
 # --------------------------------------------------------------------------- #
 def test_a_near_copy_of_an_existing_column_is_rejected(frame):
     sample = build_sample(frame, "class", size=600, seed=1)
-    screener = Screener(sample, "class", ["a", "b", "noise"], PARAMS,
+    screener = Screener(*_split(sample), "class", ["a", "b", "noise"], PARAMS,
                         score=calc_adj_gini, num_boost_round=30,
                         redundancy_max_abs=0.95)
     # a monotone rescale of an existing column: perfectly correlated, no new info
@@ -240,7 +276,7 @@ def test_a_near_copy_of_an_existing_column_is_rejected(frame):
 
 def test_a_genuinely_new_combination_passes_the_redundancy_check(frame):
     sample = build_sample(frame, "class", size=600, seed=1)
-    screener = Screener(sample, "class", ["a", "b", "noise"], PARAMS,
+    screener = Screener(*_split(sample), "class", ["a", "b", "noise"], PARAMS,
                         score=calc_adj_gini, num_boost_round=30,
                         redundancy_max_abs=0.95)
     out = screener.evaluate('df["ratio"] = df["a"] / df["b"].clip(lower=0.1)')
@@ -249,7 +285,7 @@ def test_a_genuinely_new_combination_passes_the_redundancy_check(frame):
 
 def test_redundancy_checking_is_off_unless_a_threshold_is_given(frame):
     sample = build_sample(frame, "class", size=600, seed=1)
-    screener = Screener(sample, "class", ["a", "b", "noise"], PARAMS,
+    screener = Screener(*_split(sample), "class", ["a", "b", "noise"], PARAMS,
                         score=calc_adj_gini, num_boost_round=30)
     assert screener.evaluate('df["copy"] = df["a"] * 3.0').ok
 
@@ -257,7 +293,7 @@ def test_redundancy_checking_is_off_unless_a_threshold_is_given(frame):
 def test_a_constant_column_is_not_called_redundant(frame):
     """It correlates with nothing; min_unique is the gate that catches it."""
     sample = build_sample(frame, "class", size=600, seed=1)
-    screener = Screener(sample, "class", ["a", "b", "noise"], PARAMS,
+    screener = Screener(*_split(sample), "class", ["a", "b", "noise"], PARAMS,
                         score=calc_adj_gini, num_boost_round=30,
                         redundancy_max_abs=0.95)
     out = screener.evaluate('df["dead"] = df["noise"] * 0.0')
@@ -275,7 +311,7 @@ def test_the_prompt_states_the_real_redundancy_threshold():
 def test_the_prompt_omits_the_redundancy_rule_when_it_is_off():
     text = build_prompt("task", "a (float64)\nSamples [1, 2]", "none", "adjusted Gini")
     assert "REDUNDANT WITH AN EXISTING COLUMN" not in text
-    assert "NON-FINITE VALUES" in text        # the other rules still stand
+    assert "INFINITE OR NON-NUMERIC VALUES" in text        # the other rules still stand
     assert "EXTREME VALUES" in text
 
 
@@ -292,7 +328,7 @@ def test_column_subsampling_is_stripped_so_a_delta_is_attributable(frame):
     sample = build_sample(frame, "class", size=800, seed=1)
     params = {**PARAMS, "colsample_bytree": 0.8, "colsample_bylevel": 0.7,
               "subsample": 0.8}
-    screener = Screener(sample, "class", ["a", "b", "noise"], params,
+    screener = Screener(*_split(sample), "class", ["a", "b", "noise"], params,
                         score=calc_adj_gini, num_boost_round=60)
 
     # column subsampling stripped, because the column count is what moves
@@ -308,7 +344,7 @@ def test_column_subsampling_is_stripped_so_a_delta_is_attributable(frame):
 def test_two_uninformative_columns_do_not_score_identically_nonzero(frame):
     """The signature of the offset: different columns, same non-zero delta."""
     sample = build_sample(frame, "class", size=800, seed=1)
-    screener = Screener(sample, "class", ["a", "b", "noise"], PARAMS,
+    screener = Screener(*_split(sample), "class", ["a", "b", "noise"], PARAMS,
                         score=calc_adj_gini, num_boost_round=60)
     first = screener.evaluate('df["c1"] = 1').delta
     second = screener.evaluate('df["c2"] = 0').delta
@@ -318,7 +354,7 @@ def test_two_uninformative_columns_do_not_score_identically_nonzero(frame):
 def test_a_sparse_binary_flag_is_not_called_a_spike(frame):
     """4 ones in 6819 rows has p99 == 0; max/p99 must not read as 1e12."""
     sample = build_sample(frame, "class", size=800, seed=1)
-    screener = Screener(sample, "class", ["a", "b", "noise"], PARAMS,
+    screener = Screener(*_split(sample), "class", ["a", "b", "noise"], PARAMS,
                         score=calc_adj_gini, num_boost_round=30,
                         spike_factor=1000.0)
     out = screener.evaluate('df["rare"] = (df["a"] > df["a"].quantile(0.999)).astype(int)')
@@ -381,11 +417,12 @@ def test_the_prompt_explains_the_ratio_mechanism_not_just_the_rule():
 
 
 def test_the_prompt_shows_a_safe_division_not_only_an_unsafe_one():
-    """Told only what to avoid, the model substituted NaN instead of an epsilon."""
+    """Told only what to avoid, the model reached for the next workaround."""
     text = build_prompt("task", 'df["a"] (float64)', "none", "adjusted Gini")
-    assert "np.nan)   # NaN is not a number" in text
     assert "These work:" in text
-    assert "Substituting zero" in text
+    assert 'df["b"].where(df["b"] != 0)' in text
+    assert "NaN is allowed" in text
+    assert "Substituting an epsilon is not" in text
 
 
 def test_the_prompt_forbids_continuing_the_tables_naming_scheme():

@@ -75,9 +75,9 @@ write down python code that adds this single derived variable to the dataframe
 `df`. Assign exactly one new column as df["<name>"] = <expression>, indexing `df`
 only by the identifiers listed above. Use vectorised pandas/numpy with `df`, `pd`
 and `np` only - no imports, no function definitions, no file access. The result
-must contain no NaN or infinity, and no value far above the column's own bulk:
-adding 1e-6 to a zero denominator produces a value of order 1e6 and is
-rejected.{guard}
+must contain no infinity (NaN is fine; it is read as missing) and no value far
+above the column's own bulk: adding 1e-6 to a zero denominator produces a value
+of order 1e6 and is rejected.{guard}
 
 Return the code in one block:
 ```python

@@ -24,13 +24,13 @@ from typing import Any, Optional
 
 import pandas as pd
 
+from discovery.guards import check_finite, check_scale
 from discovery.loop import Candidate, DiscoveryRun, StoppingRule, run_discovery
 from discovery.prompt import describe_columns, low_variation_columns
-from discovery.sandbox import apply_code
-from discovery.screen import Screener, build_sample
-from discovery.shots import build_shot_batches
+from discovery.sandbox import CandidateError, apply_code, validate_single_column
+from discovery.screen import Screener
 from discovery.strategies import REGISTRY as STRATEGIES, LLMSettings, PromptContext
-from validation.data import Dataset
+from validation.data import Dataset, clean_missing, read_frame
 from validation.logging_utils import get_logger
 from validation.metrics import calc_adj_gini, capture_rate
 
@@ -131,6 +131,105 @@ def _metric(name: str, percent: float):
     raise ValueError(f"Unsupported discovery metric {name!r}; use adj_gini or capture_rate")
 
 
+def _read_rows(cfg: Any, dataset: Dataset, path: str | Path,
+               columns: list[str]) -> pd.DataFrame:
+    """
+    Rows the prepare step wrote for discovery, in the same format as the splits.
+
+    Read and cleaned exactly as the validation tables are - sentinel codes and
+    infinities become NaN - so the screen and the prompt see what the models
+    see. A column the file lacks but the dataset carries - one kept by an earlier
+    iteration of the discovery loop, or a missing indicator - is joined in by id.
+    Rows from the test split are refused: test never reaches discovery.
+    """
+    frame = read_frame(cfg.data, str(path))
+    id_col = cfg.data.id_cols[0] if cfg.data.id_cols else None
+    has_ids = bool(id_col) and id_col in frame.columns
+
+    if has_ids and "test" in dataset.frames:
+        leaked = sorted(set(frame[id_col]) & set(dataset.split("test")[id_col]))
+        if leaked:
+            raise ValueError(
+                f"{len(leaked)} row(s) in {path} are test rows (e.g. {leaked[:3]}); "
+                "test never reaches discovery - rebuild the file with the dataset's "
+                "prepare step")
+
+    absent = [c for c in columns if c not in frame.columns]
+    if absent:
+        if not has_ids:
+            raise ValueError(f"{path} lacks column(s) {absent[:5]} and has no "
+                             f"{id_col or 'id'!r} column to join them by")
+        pool = pd.concat([dataset.frames[name] for name in ("train", "valid")
+                          if name in dataset.frames]).set_index(id_col)
+        unknown = sorted(set(frame[id_col]) - set(pool.index))
+        if unknown or not pool.index.is_unique:
+            raise ValueError(
+                f"{path} lacks column(s) {absent[:5]}, and {len(unknown)} of its rows "
+                f"are not in train or valid to join them from (e.g. {unknown[:3]}); "
+                "rebuild it with the dataset's prepare step")
+        frame = frame.assign(**{c: pool.loc[frame[id_col], c].to_numpy() for c in absent})
+
+    features = [c for c in columns if c != dataset.target]
+    return clean_missing(frame, features, cfg.data.missing_values)
+
+
+def _load_shot_batches(cfg: Any, dataset: Dataset) -> list[pd.DataFrame]:
+    """
+    The precomputed example rows, one frame per round.
+
+    The file holds the rows themselves, in the same format as the splits, plus a
+    ``batch`` column: round r shows batch r, so a later round reasons from rows
+    the earlier ones did not show.
+    """
+    path = cfg.discovery.few_shot_path
+    shots = _read_rows(cfg, dataset, path, [dataset.target, *dataset.base_features])
+    if "batch" not in shots.columns:
+        raise ValueError(f"{path} must have a 'batch' column saying which round shows "
+                         "each row")
+
+    batches = [group.reset_index(drop=True)
+               for _, group in shots.groupby("batch", sort=True)]
+    batches = batches[:max(1, cfg.discovery.max_rounds)]
+    logger.info("discovery: %d example row(s) per round x %d round(s), from %s",
+                len(batches[0]), len(batches), path)
+    return batches
+
+
+def _screen_frames(cfg: Any, dataset: Dataset) -> tuple[pd.DataFrame, pd.DataFrame, str]:
+    """
+    The rows the screen fits on and the rows it scores on, and where they came from.
+
+    ``splits`` takes the train and valid splits as they are. ``files`` takes the
+    samples the prepare step wrote, in the same format as the splits and read the
+    same way (see :func:`_read_rows`). Test never reaches the screen. Scoring on
+    valid rows means the proposer's feedback comes from valid, so valid stops
+    being an independent check on what it proposes; test still is.
+    """
+    columns = [dataset.target, *dataset.base_features]
+    if cfg.discovery.screen_data == "splits":
+        if "valid" not in dataset.frames:
+            raise ValueError("discovery.screen_data=splits scores on the valid split, "
+                             "and this dataset has none")
+        return (dataset.split("train")[columns], dataset.split("valid")[columns],
+                "the train and valid splits")
+
+    paths = cfg.discovery.screen_paths
+    picked = {part: _read_rows(cfg, dataset, paths[part], columns)
+              for part in ("train", "valid")}
+
+    id_col = cfg.data.id_cols[0] if cfg.data.id_cols else None
+    if id_col and all(id_col in frame.columns for frame in picked.values()):
+        shared = set(picked["train"][id_col]) & set(picked["valid"][id_col])
+        if shared:
+            raise ValueError(
+                f"{len(shared)} row(s) are in both screen files (e.g. "
+                f"{sorted(shared)[:3]}): the screen would score proposals on rows it "
+                "fit them on")
+    return (picked["train"][columns].reset_index(drop=True),
+            picked["valid"][columns].reset_index(drop=True),
+            f"{paths['train']} and {paths['valid']}")
+
+
 def run_discovery_stage(
     cfg: Any,
     dataset: Dataset,
@@ -170,18 +269,9 @@ def run_discovery_stage(
             redundancy_max_abs = spearman.redundancy_max_abs
 
 
-    # --- the small sampling dataset ------------------------------------------
-    source_split = discovery_cfg.sample_split
-    frame = dataset.split(source_split)
+    # --- the screen's rows: fit on one set, score on another -----------------
     base_features = list(dataset.base_features)
-    sample = build_sample(
-        frame[[dataset.target, *base_features]],
-        dataset.target,
-        size=discovery_cfg.sample_size,
-        seed=cfg.run.seed,
-        balance=discovery_cfg.sample_balance,
-    )
-    positives = int(sample[dataset.target].sum())
+    train, valid, source = _screen_frames(cfg, dataset)
     logger.info(
         "discovery: redundancy limit |rho|<=%s (from %s)",
         f"{redundancy_max_abs:.2f}" if redundancy_max_abs is not None else "off",
@@ -194,11 +284,10 @@ def run_discovery_stage(
         discovery_cfg.llm.model, metric_name,
     )
     logger.info(
-        "discovery: %d-row %s sample from %s (%d rows, %d positives), "
-        "%d base features, %.0f%% held out for scoring",
-        len(sample), "balanced" if discovery_cfg.sample_balance else "random",
-        source_split, len(frame), positives, len(base_features),
-        discovery_cfg.sample_eval_fraction * 100,
+        "discovery: the screen fits on %d row(s) (%d positive) and scores on %d "
+        "(%d positive), from %s; %d base features",
+        len(train), int(train[dataset.target].sum()),
+        len(valid), int(valid[dataset.target].sum()), source, len(base_features),
     )
 
     subsampled = [k for k in ("colsample_bytree", "colsample_bylevel", "colsample_bynode")
@@ -218,7 +307,8 @@ def run_discovery_stage(
         )
 
     screener = Screener(
-        sample,
+        train,
+        valid,
         dataset.target,
         base_features,
         cfg.model.params or {},
@@ -230,13 +320,11 @@ def run_discovery_stage(
         # Description -> identifier, so indexing by meaning is answered with the
         # key to use rather than a KeyError.
         column_aliases={v: k for k, v in _column_descriptions(discovery_cfg).items()},
-        eval_fraction=discovery_cfg.sample_eval_fraction,
-        seed=cfg.run.seed,
     )
 
     # --- the proposer --------------------------------------------------------
     descriptions = _column_descriptions(discovery_cfg)
-    flat_columns = low_variation_columns(sample, base_features)
+    flat_columns = low_variation_columns(screener.sample, base_features)
     if flat_columns:
         logger.info(
             "discovery: %d/%d columns barely vary across rows and are flagged in the "
@@ -260,19 +348,10 @@ def run_discovery_stage(
             "discovery: %d/%d columns presented as coded categories (levels, not ranges)",
             len(categorical_columns), len(base_features),
         )
-    # One batch of example rows per round, each spread across the feature space
-    # rather than drawn at random, so a later round reasons from new evidence
-    # instead of re-reading the same 32 rows.
-    shot_batches = build_shot_batches(
-        sample,
-        dataset.target,
-        columns=base_features,
-        categorical=categorical_columns,
-        shots=discovery_cfg.shots,
-        batches=max(1, min(discovery_cfg.shot_batches, discovery_cfg.max_rounds)),
-        seed=cfg.run.seed,
-        logger=logger,
-    )
+    # One batch of example rows per round, precomputed by the dataset's prepare
+    # step, so a later round reasons from new evidence instead of re-reading the
+    # same rows.
+    shot_batches = _load_shot_batches(cfg, dataset)
     context = PromptContext(
         task_description=discovery_cfg.task_description,
         column_contexts=[
@@ -289,7 +368,7 @@ def run_discovery_stage(
         ],
         metric_name=metric_name,
         metric_explanation=metric_explanation,
-        n_rows=len(frame),
+        n_rows=len(dataset.split("train")),
         redundancy_max_abs=redundancy_max_abs,
     )
     proposer = STRATEGIES[discovery_cfg.strategy](
@@ -312,6 +391,22 @@ def run_discovery_stage(
         logger=logger,
     )
 
+    widened, dropped = _materialise(dataset, run.kept, discovery_cfg.spike_factor)
+    for candidate, reason in dropped:
+        # Recorded as a rejection like any the screen makes, so the run's kept
+        # list, its records and its round counts all agree with what validation
+        # actually receives.
+        logger.warning(
+            "discovery: dropping '%s' - it passed the screen but fails on the full "
+            "splits: %s", candidate.feature_name, reason,
+        )
+        candidate.screen.ok = False
+        candidate.screen.extras["kept"] = False
+        candidate.screen.error = f"Dropped on the full splits: {reason}"
+        round_record = run.rounds[candidate.round_index - 1]
+        round_record.kept -= 1
+        round_record.rejected += 1
+
     kept = run.kept
     failed = [c for c in run.candidates if not c.ok]
     logger.info(
@@ -329,12 +424,12 @@ def run_discovery_stage(
                     ", ".join(f"{k} x{v}" for k, v in sorted(reasons.items())))
     logger.info(
         "discovery: handing %d feature(s) to validation: %s",
-        len(kept), ", ".join(c.feature_name or "?" for c in kept) or "none",
+        len(kept), ", ".join(c.feature_name for c in kept) or "none",
     )
 
     return DiscoveryResult(
-        dataset=_materialise(dataset, kept),
-        kept_features=[c.feature_name for c in kept if c.feature_name],
+        dataset=widened,
+        kept_features=[c.feature_name for c in kept],
         records=run.records(),
         rounds=[vars(r) for r in run.rounds],
         stopped_because=run.stopped_because,
@@ -342,31 +437,51 @@ def run_discovery_stage(
     )
 
 
-def _materialise(dataset: Dataset, kept: list[Candidate]) -> Dataset:
+def _materialise(
+    dataset: Dataset, kept: list[Candidate], spike_factor: float,
+) -> tuple[Dataset, list[tuple[Candidate, str]]]:
     """
     Compute the kept features on every split and return the widened dataset.
 
     Applied per split through the same sandbox that screened them, so the column
-    in test is computed by exactly the code that was screened on train. A
-    candidate that fails here - a value present in train but not in test can do
-    it - is dropped rather than allowed to half-exist across splits.
+    in test is computed by exactly the code that was screened on train. Each
+    column then goes through the screen's value guards again, now on every split:
+    the screen saw a few thousand train rows, and a blow-up on a row it never
+    drew - in the split used for refitting, say - validates healthy and deploys
+    broken. A candidate that fails anywhere is dropped rather than allowed to
+    half-exist across splits, and returned with the reason.
     """
     if not kept:
-        return dataset
+        return dataset, []
 
-    blocks = [c.code for c in kept]
-    names = [c.feature_name for c in kept if c.feature_name]
+    # Computed from the base columns alone, as the screen did: a block may only
+    # read those, and nothing else in the frame should be able to change it.
+    columns: dict[str, dict[str, pd.Series]] = {}
+    dropped: list[tuple[Candidate, str]] = []
+    for candidate in kept:
+        name = candidate.feature_name
+        try:
+            extended = {}
+            for split, frame in dataset.frames.items():
+                # The screen checked the name against base columns only; the full
+                # frame also holds ids, the target and hand-written candidates.
+                validate_single_column(candidate.code, frame.columns)
+                extended[split] = apply_code(frame[dataset.base_features], [candidate.code])
+                check_finite(extended[split], name, split)
+            check_scale(extended, name, spike_factor)
+        except CandidateError as error:
+            dropped.append((candidate, str(error)))
+            continue
+        except Exception as error:  # noqa: BLE001 - any failure drops the candidate
+            dropped.append((candidate, f"{type(error).__name__}: {error}"))
+            continue
+        columns[name] = {split: frame[name] for split, frame in extended.items()}
 
-    widened: dict[str, pd.DataFrame] = {}
-    for split, frame in dataset.frames.items():
-        widened[split] = apply_code(frame, blocks)
-
-    missing = [n for n in names if any(n not in f.columns for f in widened.values())]
-    if missing:
-        raise RuntimeError(
-            f"features {missing} did not materialise on every split; "
-            "this should have been caught while screening"
-        )
+    names = list(columns)
+    widened = {
+        split: frame.assign(**{name: columns[name][split] for name in names})
+        for split, frame in dataset.frames.items()
+    }
 
     # Appended, not replaced: a config may already list hand-written candidates,
     # and validating those beside the discovered ones is the useful behaviour.
@@ -379,4 +494,4 @@ def _materialise(dataset: Dataset, kept: list[Candidate]) -> Dataset:
         new_features=combined,
         weight_col=dataset.weight_col,
         meta={**dataset.meta, "discovered_features": names},
-    )
+    ), dropped

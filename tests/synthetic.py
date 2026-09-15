@@ -1,20 +1,17 @@
-"""Generate a synthetic table for end-to-end smoke runs.
+"""A synthetic table with a known ground truth, for end-to-end tests.
 
-Also imported by the test suite for ``make_frame``. ``.gitignore`` keeps ``*.py``
-under ``data/`` tracked precisely so this survives a fresh clone.
-
-Builds incumbent features (``old_*``) and candidate features (``new_*``) with a
-known ground truth:
-
+    old_0 .. old_11               incumbent features
     new_signal_a / new_signal_b   genuinely add signal beyond the incumbents
     new_dup_old0                  a near-copy of old_0 (should fail redundancy)
     new_noise                     pure noise (should fail the signal screen)
+    y                             regression target, clipped at 0
+    row_id                        id
+    split                         train / valid / test label, about 60 / 20 / 20
+
+About 8% of ``new_signal_b`` is coded -9999, to exercise sentinel cleaning.
 """
 
 from __future__ import annotations
-
-import argparse
-from pathlib import Path
 
 import numpy as np
 import pandas as pd
@@ -51,23 +48,7 @@ def make_frame(n_rows: int = 60_000, n_old: int = 12, seed: int = 0) -> pd.DataF
     return frame
 
 
-def main() -> None:
-    parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--rows", type=int, default=60_000)
-    parser.add_argument("--seed", type=int, default=0)
-    parser.add_argument("--out",
-                        default=str(Path(__file__).resolve().parent / "modeling.parquet"))
-    args = parser.parse_args()
-
-    frame = make_frame(args.rows, seed=args.seed)
-    out = Path(args.out)
-    out.parent.mkdir(parents=True, exist_ok=True)
-    if out.suffix == ".parquet":
-        frame.to_parquet(out, index=False)
-    else:
-        frame.to_csv(out, index=False)
-    print(f"wrote {len(frame):,} rows x {frame.shape[1]} cols -> {out}")
-
-
-if __name__ == "__main__":
-    main()
+def split_by_column(frame: pd.DataFrame, column: str = "split") -> dict[str, pd.DataFrame]:
+    """The train / valid / test frames a prepare step would have written."""
+    return {name: frame[frame[column] == name].drop(columns=column).reset_index(drop=True)
+            for name in ("train", "valid", "test")}

@@ -1,4 +1,8 @@
-"""Choose the example rows the proposer is shown.
+"""Choose the example rows the proposer is shown - once, in the prepare step.
+
+Each dataset's prepare notebook runs :func:`build_shot_batches` on its train
+split and saves those rows with a batch column; a discovery run reads that file back
+through ``discovery.few_shot_path`` and shows batch r in round r.
 
 The rows picked here fill the ``Samples [...]`` line under every column of the
 prompt, so they are the only concrete data a language model ever sees of the
@@ -193,9 +197,9 @@ def build_shot_batches(
 
     Degrades rather than raising: a class with fewer rows than the cluster
     budget gets as many clusters as it has rows, and a request for more batches
-    than the smallest cluster can fill starts reusing rows. Both are logged.
-    This runs inside a pipeline, so a shot budget that does not divide neatly
-    should cost a warning, not the run.
+    than the smallest cluster can fill starts reusing rows. Both are logged:
+    a shot budget that does not divide neatly should cost a warning, not the
+    build.
     """
     log = logger or logging.getLogger(__name__)
     columns = [c for c in columns if c in sample.columns]

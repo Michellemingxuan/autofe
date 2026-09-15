@@ -71,9 +71,10 @@ Requirements:
 - Index `df` only by the identifiers listed above, never by a description.
 - Vectorised pandas/numpy only, using `df`, `pd` and `np`. No imports, no
   functions, no file access.
-- No NaN or infinity in the result, and no value far above the column's own
-  bulk: `a / (b + 1e-6)` turns one `b == 0` into a value of order 1e6 and is
-  rejected. Mask, clip, or use a denominator that cannot approach zero.{redundancy}
+- No infinity in the result (NaN is fine; it is read as missing), and no value
+  far above the column's own bulk: `a / (b + 1e-6)` turns one `b == 0` into a
+  value of order 1e6 and is rejected. Mask the undefined rows to NaN, clip, or
+  use a denominator that cannot approach zero.{redundancy}
 
 Return only the code block:
 ```python

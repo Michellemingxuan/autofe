@@ -22,7 +22,7 @@ import pandas as pd
 import yaml
 
 from validation.config import Config, load_config
-from validation.data import Dataset, build_dataset, prepare_dataset, prepare_dataset_from_frames
+from validation.data import Dataset, build_dataset, prepare_dataset_from_frames
 from validation.logging_utils import get_logger, setup_logging, timed
 from validation.stages.analysis import AnalysisResult, run_analysis
 from validation.stages.data_quality import DataQualityResult, run_data_quality
@@ -93,7 +93,6 @@ class Pipeline:
 
     def run(
         self,
-        frame: Optional[pd.DataFrame] = None,
         frames: Optional[Dict[str, pd.DataFrame]] = None,
         dataset: Optional[Dataset] = None,
     ) -> PipelineResult:
@@ -101,11 +100,10 @@ class Pipeline:
 
         Pass at most one input override:
 
-        ``frame``    one in-memory table, split per ``data.split``;
-        ``frames``   already-split tables, ``{"train": df, "valid": df, "test": df}``;
+        ``frames``   the split tables in memory, ``{"train": df, "valid": df, "test": df}``;
         ``dataset``  an already-built ``Dataset``, skipping loading entirely.
 
-        With none of them, the config decides: ``data.paths`` if set, else ``data.path``.
+        With neither, the tables named in ``data.paths`` are read.
         """
         setup_logging(self.cfg.run.log_level, self.output_dir / "run.log")
         start = time.perf_counter()
@@ -115,17 +113,11 @@ class Pipeline:
         result = PipelineResult(config=self.cfg, output_dir=self.output_dir)
 
         with timed(logger, "stage 0: data"):
-            given = [name for name, value in
-                     (("frame", frame), ("frames", frames), ("dataset", dataset)) if value is not None]
-            if len(given) > 1:
-                raise ValueError(f"pass at most one of frame/frames/dataset, not both: {given}")
+            if frames is not None and dataset is not None:
+                raise ValueError("pass at most one of frames/dataset, not both")
             if dataset is None:
-                if frames is not None:
-                    dataset = prepare_dataset_from_frames(frames, self.cfg)
-                elif frame is not None:
-                    dataset = prepare_dataset(frame, self.cfg)
-                else:
-                    dataset = build_dataset(self.cfg)
+                dataset = (prepare_dataset_from_frames(frames, self.cfg) if frames is not None
+                           else build_dataset(self.cfg))
 
         if self.cfg.discovery.enabled:
             with timed(logger, "stage 0.5: feature discovery"):
@@ -466,7 +458,7 @@ def _environment() -> Dict[str, str]:
 def run_pipeline(
     config_path: str | Path,
     overrides: Optional[Dict[str, Any]] = None,
-    frame: Optional[pd.DataFrame] = None,
+    frames: Optional[Dict[str, pd.DataFrame]] = None,
 ) -> PipelineResult:
     """Convenience entry point: load a YAML config and run every stage."""
-    return Pipeline(load_config(config_path, overrides)).run(frame=frame)
+    return Pipeline(load_config(config_path, overrides)).run(frames=frames)

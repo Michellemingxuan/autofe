@@ -4,8 +4,9 @@ import numpy as np
 import pandas as pd
 import pytest
 
+from synthetic import split_by_column
 from validation.config import Config
-from validation.data import prepare_dataset
+from validation.data import prepare_dataset_from_frames
 from validation.stages.data_quality import population_stability_index as psi
 from validation.stages.data_quality import run_data_quality
 
@@ -74,15 +75,19 @@ def frame():
 def _config(**dq):
     return Config.from_dict({
         "run": {"n_jobs": 2, "log_level": "ERROR"},
-        "data": {"target": "y", "split": {"mode": "column", "column": "split"}},
+        "data": {"target": "y"},
         "features": {"base_prefix": "old_", "new_prefix": "new_"},
         "data_quality": {"enabled": True, **dq},
     })
 
 
+def _dataset(frame, cfg):
+    return prepare_dataset_from_frames(split_by_column(frame), cfg)
+
+
 def test_psi_columns_are_added_per_non_reference_split(frame):
     cfg = _config()
-    result = run_data_quality(prepare_dataset(frame, cfg), cfg)
+    result = run_data_quality(_dataset(frame, cfg), cfg)
     report = result.report.set_index("feature")
 
     assert {"psi_valid", "psi_test", "psi_max", "psi_worst_split"} <= set(report.columns)
@@ -94,27 +99,27 @@ def test_psi_columns_are_added_per_non_reference_split(frame):
 
 
 def test_shifted_feature_fails_the_quality_check(frame):
-    result = run_data_quality(prepare_dataset(frame, _config(max_psi=0.25)), _config(max_psi=0.25))
+    result = run_data_quality(_dataset(frame, _config(max_psi=0.25)), _config(max_psi=0.25))
     assert "old_drifting" in result.failed
     assert "old_stable" not in result.failed
 
 
 def test_threshold_is_configurable(frame):
     cfg = _config(max_psi=99.0)
-    result = run_data_quality(prepare_dataset(frame, cfg), cfg)
+    result = run_data_quality(_dataset(frame, cfg), cfg)
     assert result.failed == []                     # nothing exceeds an enormous threshold
 
 
 def test_check_can_be_switched_off(frame):
     cfg = _config(distribution_check=False)
-    result = run_data_quality(prepare_dataset(frame, cfg), cfg)
+    result = run_data_quality(_dataset(frame, cfg), cfg)
     assert "psi_max" not in result.report.columns
     assert "missing_rate" in result.report.columns  # the other checks still run
 
 
 def test_reference_split_is_configurable(frame):
     cfg = _config(distribution_reference="test")
-    result = run_data_quality(prepare_dataset(frame, cfg), cfg)
+    result = run_data_quality(_dataset(frame, cfg), cfg)
     report = result.report.set_index("feature")
     assert {"psi_train", "psi_valid"} <= set(report.columns)
     assert "psi_test" not in report.columns
@@ -125,7 +130,7 @@ def test_reference_split_is_configurable(frame):
 def test_missing_reference_split_is_reported_not_fatal(frame):
     cfg = _config(distribution_reference="valid")
     frame = frame[frame["split"] != "valid"]
-    result = run_data_quality(prepare_dataset(frame, cfg), cfg)
+    result = run_data_quality(_dataset(frame, cfg), cfg)
     assert "psi_max" not in result.report.columns   # skipped, stage still returns
     assert len(result.report) > 0
 
@@ -136,7 +141,7 @@ def test_missing_reference_split_is_reported_not_fatal(frame):
 def test_report_names_the_check_that_rejected_each_feature(frame):
     frame = frame.assign(old_constant=1.0)
     cfg = _config(max_psi=0.25, min_unique=2)
-    result = run_data_quality(prepare_dataset(frame, cfg), cfg)
+    result = run_data_quality(_dataset(frame, cfg), cfg)
     report = result.report.set_index("feature")
 
     assert report.loc["old_constant", "failed_checks"] == "n_unique < 2"
@@ -147,7 +152,7 @@ def test_report_names_the_check_that_rejected_each_feature(frame):
 
 def test_thresholds_are_reported_alongside_the_result(frame):
     cfg = _config(max_missing_rate=0.9, min_unique=3, max_psi=0.2)
-    result = run_data_quality(prepare_dataset(frame, cfg), cfg)
+    result = run_data_quality(_dataset(frame, cfg), cfg)
 
     assert result.thresholds == {"max_missing_rate": 0.9, "min_unique": 3, "max_psi": 0.2}
     assert result.summary()["thresholds"] == result.thresholds
@@ -157,14 +162,14 @@ def test_thresholds_are_reported_alongside_the_result(frame):
 def test_a_feature_can_fail_several_checks_at_once(frame):
     frame = frame.assign(old_broken=np.nan)
     cfg = _config(max_missing_rate=0.5, min_unique=2)
-    result = run_data_quality(prepare_dataset(frame, cfg), cfg)
+    result = run_data_quality(_dataset(frame, cfg), cfg)
     checks = result.report.set_index("feature").loc["old_broken", "failed_checks"]
 
     assert "missing_rate" in checks and "n_unique" in checks
 
 
 def test_tightening_a_threshold_rejects_more(frame):
-    dataset = prepare_dataset(frame, _config())
+    dataset = _dataset(frame, _config())
     loose = run_data_quality(dataset, _config(max_psi=0.25))
     tight = run_data_quality(dataset, _config(max_psi=0.001))
 
@@ -174,7 +179,6 @@ def test_tightening_a_threshold_rejects_more(frame):
 
 def test_thresholds_appear_in_the_report_file(tmp_path):
     """The run must record the thresholds it actually applied."""
-    import pandas as pd
     from validation.pipeline import Pipeline
 
     rng = np.random.default_rng(5)
@@ -187,13 +191,13 @@ def test_thresholds_appear_in_the_report_file(tmp_path):
 
     cfg = Config.from_dict({
         "run": {"name": "dq", "output_dir": str(tmp_path), "n_jobs": 2, "log_level": "ERROR"},
-        "data": {"target": "y", "split": {"mode": "column", "column": "split"}},
+        "data": {"target": "y"},
         "features": {"base_prefix": "old_", "new_prefix": "new_"},
         "data_quality": {"enabled": True, "max_psi": 0.33, "min_unique": 7},
         "model": {"num_boost_round": 30, "variants": ["base", "base_plus_new"]},
         "analysis": {"shap": {"enabled": False}},
     })
-    result = Pipeline(cfg).run(frame=df)
+    result = Pipeline(cfg).run(frames=split_by_column(df))
     report = (result.output_dir / "report.md").read_text()
 
     assert "max_psi" in report and "0.33" in report

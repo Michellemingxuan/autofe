@@ -276,7 +276,7 @@ def run_tuning(
 
     if "valid" not in matrices:
         raise ValueError("model.tuning needs a valid split to score against; "
-                         "configure data.split so one exists")
+                         "give data.paths a valid table")
 
     if tuning.mode == "shared":
         target = next((v for v in variants if v.name == tuning.tune_on), None)

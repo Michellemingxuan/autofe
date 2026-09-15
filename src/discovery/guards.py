@@ -6,9 +6,12 @@ that actually bites.
 
 Both guards exist because of failures observed in practice:
 
-* Non-finite values. A generated ratio produces NaN or inf on some rows, a
-  linear model raises at fit time, and the round dies with a stack trace instead
-  of feedback the model can act on.
+* Infinite or non-numeric values. A generated ratio divides by zero on some rows
+  and produces inf, which no fit can use, and the round dies with a stack trace
+  instead of feedback the model can act on. NaN is not in this category: the
+  booster reads it as missing, which is the right value for a row where a
+  feature is undefined, and the base table already carries it wherever a value
+  was not recorded.
 
 * Finite but enormous values. This is the subtle one. A model asked to guard a
   division writes ``a / (b + 1e-6)``, which does not prevent a blow-up - it
@@ -50,15 +53,23 @@ def _numeric(frame: pd.DataFrame, column: str) -> np.ndarray:
     return pd.to_numeric(frame[column], errors="coerce").to_numpy(dtype=float)
 
 
+def _unusable(frame: pd.DataFrame) -> np.ndarray:
+    """Infinite, or present but not a number. Missing is neither, so NaN passes."""
+    numeric = frame.apply(pd.to_numeric, errors="coerce").to_numpy(dtype=float)
+    return np.isinf(numeric) | (np.isnan(numeric) & frame.notna().to_numpy())
+
+
 def check_finite(frame: pd.DataFrame, column: str, split_name: str) -> None:
-    """Require the generated column to be numeric and finite on this split."""
+    """Require the generated column to be numeric and free of infinities.
+
+    NaN is allowed: the booster reads it as missing.
+    """
     if column not in frame.columns:
         raise CandidateError(
             f"Generated feature '{column}' is missing from the {split_name} data."
         )
 
-    values = _numeric(frame, column)
-    bad = ~np.isfinite(values)
+    bad = _unusable(frame[[column]])[:, 0]
     if not bad.any():
         return
 
@@ -68,10 +79,10 @@ def check_finite(frame: pd.DataFrame, column: str, split_name: str) -> None:
         for pos in positions[:5]
     ]
     raise CandidateError(
-        f"Generated feature '{column}' has {int(bad.sum())} non-finite or "
+        f"Generated feature '{column}' has {int(bad.sum())} infinite or "
         f"non-numeric values on the {split_name} data. Examples: {examples}. "
-        "Handle missing values, division by zero, invalid logarithms and "
-        "infinities explicitly."
+        "Guard divisions and logarithms so the rows where the feature is "
+        "undefined become NaN, which the model reads as missing."
     )
 
 
@@ -147,7 +158,10 @@ def check_redundancy(
     if ranked.nunique() <= 1:
         return      # a constant column correlates with nothing; min_unique catches it
 
-    correlations = base_ranks.corrwith(ranked).abs().dropna()
+    # A constant base column has zero spread, so its correlation is 0/0; it comes
+    # back NaN and is dropped below, and numpy need not warn about it per call.
+    with np.errstate(divide="ignore", invalid="ignore"):
+        correlations = base_ranks.corrwith(ranked).abs().dropna()
     if correlations.empty:
         return
 
@@ -166,25 +180,25 @@ def check_redundancy(
 
 def check_matrix_finite(frame: pd.DataFrame, split_name: str) -> None:
     """
-    Last guard before fitting: the whole matrix is numeric and finite.
+    Last guard before fitting: the whole matrix is numeric and free of infinities.
 
     In normal operation check_finite catches the generated column first; this
     exists so an unexpected interaction surfaces as a clear message rather than
-    a library error from deep inside a solver.
+    a library error from deep inside a solver. NaN passes, as it does there: the
+    base columns carry it wherever a value was missing, and rejecting it here
+    rejected every candidate on such a table.
     """
-    numeric = frame.apply(pd.to_numeric, errors="coerce")
-    array = numeric.to_numpy(dtype=float)
-    bad = ~np.isfinite(array)
+    bad = _unusable(frame)
     if not bad.any():
         return
 
     rows, cols = np.where(bad)
-    affected = sorted({str(numeric.columns[j]) for j in cols})
+    affected = sorted({str(frame.columns[j]) for j in cols})
     examples = [
         {"row": int(i), "column": str(frame.columns[j]), "value": repr(frame.iloc[i, j])}
         for i, j in zip(rows[:5], cols[:5])
     ]
     raise CandidateError(
-        f"The {split_name} matrix has non-finite or non-numeric values. "
+        f"The {split_name} matrix has infinite or non-numeric values. "
         f"Affected columns: {affected}. Examples: {examples}."
     )

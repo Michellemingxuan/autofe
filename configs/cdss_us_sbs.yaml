@@ -1,12 +1,11 @@
-# cdss_us_sbs - internal use case. The split is done upstream, so the three sets
-# arrive already separated and `data.split` below is never consulted.
+# cdss_us_sbs - internal use case, run in the private environment; kept here as
+# the template for a dataset that arrives already split upstream.
 #
-#   1. python data/cdss_us_sbs/prepare.py --inspect --train ... --valid ... --test ...
-#         -> reports what is in the extracts and prints the block to fill in here
-#   2. fill in `target`, `id_cols`, `missing_values` and the candidate features
-#   3. python data/cdss_us_sbs/prepare.py -c configs/cdss_us_sbs.yaml --train ... --valid ... --test ...
-#         -> writes the three modeling tables to the paths declared below
-#   4. mllite -c configs/cdss_us_sbs.yaml
+#   1. open data/cdss_us_sbs/prepare.ipynb, point it at the three extracts, and
+#      use its profile to fill in the TODOs below (target, id_cols, candidates)
+#   2. run it to the end -> the three tables, column descriptions, few-shot rows
+#   3. mllite -c configs/cdss_us_sbs.yaml
+#      (add --set discovery.enabled=true once discovery.task_description is written)
 
 run:
   name: cdss_us_sbs
@@ -18,10 +17,10 @@ run:
   gates: open           # measure everything, remove nothing, while we learn the data
 
 data:
-  paths:                # prepare.py writes these; the pipeline reads them
-    train: data/cdss_us_sbs/train.parquet
-    valid: data/cdss_us_sbs/valid.parquet
-    test:  data/cdss_us_sbs/test.parquet
+  paths:                # prepare.ipynb writes these; the pipeline reads them as given
+    train: data/cdss_us_sbs/train.csv
+    valid: data/cdss_us_sbs/valid.csv
+    test:  data/cdss_us_sbs/test.csv
   target: TODO_target_column
   id_cols: []           # e.g. [acct_id, as_of_date] - enables the leakage check
   missing_values: [-9999]
@@ -38,6 +37,30 @@ features:
   new: []               # list the candidates, or use new_prefix
   new_prefix: null
   exclude: []           # non-numeric columns the pipeline should ignore
+
+# ---------------------------------------------------------------------------
+# Feature discovery. Off until the task description is written: it is the
+# proposer's only briefing on what the data is.
+# ---------------------------------------------------------------------------
+discovery:
+  enabled: false
+  strategy: caafe          # caafe | elfgym | ferg | featllm | promptfe
+  task_description: ""     # TODO: what a row is, the population, what the target means
+  batch_size: 5
+  max_rounds: 2
+  screen_data: files       # splits | files - files: the samples prepare.ipynb draws
+  screen_paths:            # the screen fits on train's sample, scores on valid's
+    train: data/cdss_us_sbs/screen_train.csv
+    valid: data/cdss_us_sbs/screen_valid.csv
+  screen_boost_rounds: 150
+  metric: adj_gini
+  continuous_columns: null # TODO: the real measurements (or list categorical_columns)
+  column_descriptions_path: data/cdss_us_sbs/column_descriptions.json   # prepare.ipynb
+  few_shot_path: data/cdss_us_sbs/few_shot.csv                          # prepare.ipynb
+  llm:
+    backend: openai        # openai | safechain
+    model: gpt-4o
+    reasoning_effort: null
 
 data_quality:
   enabled: true

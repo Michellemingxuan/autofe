@@ -133,14 +133,14 @@ associated with class {label} of {self.context.target}:
 
 {condition}
 
-The column must be 1 where the condition holds and 0 where it does not, with no
-missing values. Be sure the code matches the value type of the columns used
-(numerical vs categorical). Index `df` only by the identifiers listed above.
-Vectorised pandas/numpy only, with `df`, `pd` and `np` - no imports, no
-functions, no file access. Cast the result to int.
+The column must be 1 where the condition holds and 0 where it does not. Be sure
+the code matches the value type of the columns used (numerical vs categorical).
+Index `df` only by the identifiers listed above. Vectorised pandas/numpy only,
+with `df`, `pd` and `np` - no imports, no functions, no file access. Cast the
+result to int.
 
-The indicator must contain no NaN: a condition over a column with missing values
-must decide what those rows are. If the condition involves a ratio, guard the
+A comparison against a missing value is False, so rows with a missing input
+fall into 0 unless the condition says otherwise. If the condition involves a ratio, guard the
 division away from zero rather than adding a tiny epsilon - `a / (b + 1e-6)`
 turns one `b == 0` into a value of order 1e6.{redundancy}
 

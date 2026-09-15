@@ -42,16 +42,6 @@ class RunConfig:
 
 
 @dataclass
-class SplitConfig:
-    mode: str = "random"           # random | column | time
-    column: Optional[str] = None   # mode=column: col holding train/valid/test labels
-    time_col: Optional[str] = None # mode=time: col to sort on
-    valid_size: float = 0.2
-    test_size: float = 0.2
-    stratify: bool = False         # random mode, classification only
-
-
-@dataclass
 class MissingIndicatorConfig:
     """Add a 0/1 column recording where a feature was missing.
 
@@ -76,22 +66,17 @@ class MissingIndicatorConfig:
 
 @dataclass
 class DataConfig:
-    path: str = ""                 # single table, split by `split` below
     paths: Dict[str, str] = field(default_factory=dict)
-    # ^ already-split inputs: {train: ..., valid: ..., test: ...}. When set, this
-    #   wins over `path` and no splitting happens - `split` is ignored entirely.
+    # ^ {train: ..., valid: ..., test: ...} - the split, made once by the dataset's
+    #   prepare step and read exactly as written. The pipeline never re-splits.
     format: str = "auto"           # auto | parquet | csv | pickle
     target: str = "y"
     weight_col: Optional[str] = None
     id_cols: List[str] = field(default_factory=list)
     missing_values: List[float] = field(default_factory=lambda: [-9999])
-    nrows: Optional[int] = None    # cap rows read (csv only), for smoke runs
-    split: SplitConfig = field(default_factory=SplitConfig)
     missing_indicators: MissingIndicatorConfig = field(default_factory=MissingIndicatorConfig)
 
     def __post_init__(self):
-        if isinstance(self.split, dict):
-            self.split = _subset(SplitConfig, self.split)
         if isinstance(self.missing_indicators, dict):
             self.missing_indicators = _subset(MissingIndicatorConfig, self.missing_indicators)
 
@@ -312,14 +297,17 @@ class DiscoveryConfig:
     # Set a number to pre-filter anyway, e.g. to cap how many candidates reach
     # the expensive stages on a large batch.
     min_delta: Optional[float] = None
-    # The small sampling dataset the screen fits on.
-    sample_size: int = 2000
-    sample_split: str = "train"
-    # Rows inside the sample held back for scoring. Without a holdout the delta is
-    # meaningless: a boosted fit reconstructs a ratio from its own inputs, so the
-    # in-sample baseline saturates. See discovery/screen.py.
-    sample_eval_fraction: float = 0.3
-    sample_balance: bool = True
+    # The rows the screen fits each proposal on and scores it on:
+    #   splits : fit on the train split, score on the valid split, as prepared
+    #   files  : fit and score on samples the prepare step drew from train and
+    #            valid, in the same format as the splits, at screen_paths
+    #            {train: ..., valid: ...} - e.g. class-balanced when positives
+    #            are rare
+    # Scoring on valid rows means the proposer's feedback comes from valid, so
+    # valid stops being an independent check on what it proposes; test still is.
+    # To keep valid independent, sample both files from disjoint rows of train.
+    screen_data: str = "splits"
+    screen_paths: Dict[str, str] = field(default_factory=dict)
     screen_boost_rounds: int = 200
     # What the columns mean. Without this a proposer sees "X36" and can only
     # guess; with it, real-world knowledge becomes usable, which is the whole
@@ -337,10 +325,12 @@ class DiscoveryConfig:
     # every one of them must be shown as levels rather than a range.
     continuous_columns: Optional[List[str]] = None
 
-    # Rows shown to the proposer as concrete examples, and how many batches of
-    # them to rotate through so successive rounds do not see identical data.
-    shots: int = 32
-    shot_batches: int = 10
+    # The example rows shown to the proposer: a CSV in the same format as the
+    # splits plus a `batch` column, written by the dataset's prepare step and
+    # clustered per class on train so the rows cover the table and every class
+    # appears (see preprocessing/shots.py).
+    # Round r shows batch r, so successive rounds see different rows.
+    few_shot_path: Optional[str] = None
     # A candidate whose largest magnitude exceeds this multiple of its own 99th
     # percentile is rejected before it can reach a model. See discovery/guards.py.
     spike_factor: float = 1000.0
@@ -397,9 +387,13 @@ class Config:
             if self.discovery.llm.backend not in ("openai", "safechain"):
                 raise ValueError("discovery.llm.backend must be openai|safechain, "
                                  f"got {self.discovery.llm.backend!r}")
-            if self.discovery.sample_split not in ("train", "valid", "test"):
-                raise ValueError("discovery.sample_split must be train|valid|test, "
-                                 f"got {self.discovery.sample_split!r}")
+            if self.discovery.screen_data not in ("splits", "files"):
+                raise ValueError("discovery.screen_data must be splits|files, "
+                                 f"got {self.discovery.screen_data!r}")
+            if (self.discovery.screen_data == "files"
+                    and sorted(self.discovery.screen_paths) != ["train", "valid"]):
+                raise ValueError("discovery.screen_data=files needs discovery.screen_paths "
+                                 "with a train and a valid entry")
             if self.discovery.max_rounds < 1:
                 raise ValueError("discovery.max_rounds must be >= 1, got "
                                  f"{self.discovery.max_rounds}")
@@ -413,9 +407,6 @@ class Config:
             if self.discovery.metric not in ("adj_gini", "capture_rate"):
                 raise ValueError("discovery.metric must be adj_gini|capture_rate, got "
                                  f"{self.discovery.metric!r}")
-            if not 0.0 < self.discovery.sample_eval_fraction < 1.0:
-                raise ValueError("discovery.sample_eval_fraction must be in (0, 1), got "
-                                 f"{self.discovery.sample_eval_fraction}")
             if self.discovery.categorical_columns and self.discovery.continuous_columns is not None:
                 raise ValueError(
                     "set either discovery.categorical_columns or "
@@ -424,6 +415,10 @@ class Config:
             if not self.discovery.task_description.strip():
                 raise ValueError("discovery.task_description is required when discovery is "
                                  "enabled: the proposer needs to know what the data is about.")
+            if not self.discovery.few_shot_path:
+                raise ValueError("discovery.few_shot_path is required when discovery is "
+                                 "enabled: the example rows are precomputed by the "
+                                 "dataset's prepare step.")
         indicators = self.data.missing_indicators
         if indicators.scope not in ("candidates", "all"):
             raise ValueError("data.missing_indicators.scope must be candidates|all, "
@@ -446,14 +441,6 @@ class Config:
             raise ValueError(f"run.gates must be open|enforce, got {self.run.gates!r}")
         if self.model.task not in ("regression", "binary"):
             raise ValueError(f"model.task must be regression|binary, got {self.model.task!r}")
-        if self.data.split.mode not in ("random", "column", "time"):
-            raise ValueError(f"data.split.mode must be random|column|time, got {self.data.split.mode!r}")
-        if self.data.paths:
-            pass   # `split` is unused when the inputs arrive already split
-        elif self.data.split.mode == "column" and not self.data.split.column:
-            raise ValueError("data.split.mode=column requires data.split.column")
-        elif self.data.split.mode == "time" and not self.data.split.time_col:
-            raise ValueError("data.split.mode=time requires data.split.time_col")
         tuning = self.model.tuning
         if tuning.mode not in ("shared", "per_variant"):
             raise ValueError(f"model.tuning.mode must be shared|per_variant, got {tuning.mode!r}")

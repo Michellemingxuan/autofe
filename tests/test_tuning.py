@@ -11,7 +11,7 @@ from validation.stages.modeling import DEFAULT_SEARCH_SPACE, sample_params
 
 xgb = pytest.importorskip("xgboost")
 
-from data.synthetic.make import make_frame  # noqa: E402
+from synthetic import make_frame, split_by_column  # noqa: E402
 from validation.pipeline import Pipeline  # noqa: E402
 
 
@@ -48,14 +48,14 @@ def test_sampling_is_reproducible_from_the_seed():
 # End to end
 # --------------------------------------------------------------------------- #
 @pytest.fixture(scope="module")
-def frame():
-    return make_frame(n_rows=6_000, seed=11)
+def frames():
+    return split_by_column(make_frame(n_rows=6_000, seed=11))
 
 
 def _config(tmp_path, **tuning):
     return Config.from_dict({
         "run": {"name": "tune", "output_dir": str(tmp_path), "n_jobs": 2, "log_level": "ERROR"},
-        "data": {"target": "y", "id_cols": ["row_id"], "split": {"mode": "column", "column": "split"}},
+        "data": {"target": "y", "id_cols": ["row_id"]},
         "features": {"base_prefix": "old_", "new_prefix": "new_"},
         "feature_selection": {"chunk_size": 2, "spearman": {"target_min_abs": 0.04}},
         "model": {"num_boost_round": 30, "early_stopping_rounds": 10,
@@ -67,16 +67,16 @@ def _config(tmp_path, **tuning):
     })
 
 
-def test_disabled_tuning_uses_the_configured_params(frame, tmp_path):
-    result = Pipeline(_config(tmp_path, enabled=False)).run(frame=frame)
+def test_disabled_tuning_uses_the_configured_params(frames, tmp_path):
+    result = Pipeline(_config(tmp_path, enabled=False)).run(frames=frames)
     assert all(m.tuned is False for m in result.models)
     assert all(m.params["eta"] == 0.3 for m in result.models)
     assert not (result.output_dir / "tuning_trials.csv").exists()
 
 
-def test_shared_mode_gives_every_variant_identical_params(frame, tmp_path):
+def test_shared_mode_gives_every_variant_identical_params(frames, tmp_path):
     result = Pipeline(_config(tmp_path, enabled=True, mode="shared",
-                              tune_on="base_plus_new")).run(frame=frame)
+                              tune_on="base_plus_new")).run(frames=frames)
 
     configs = {json.dumps(m.params, sort_keys=True, default=str) for m in result.models}
     assert len(configs) == 1, "shared mode must not leave variants on different params"
@@ -87,8 +87,8 @@ def test_shared_mode_gives_every_variant_identical_params(frame, tmp_path):
     assert len(trials) == 3
 
 
-def test_per_variant_mode_searches_every_variant(frame, tmp_path):
-    result = Pipeline(_config(tmp_path, enabled=True, mode="per_variant")).run(frame=frame)
+def test_per_variant_mode_searches_every_variant(frames, tmp_path):
+    result = Pipeline(_config(tmp_path, enabled=True, mode="per_variant")).run(frames=frames)
 
     trials = pd.read_csv(result.output_dir / "tuning_trials.csv")
     assert set(trials["variant"]) == {"base", "base_plus_new"}
@@ -102,8 +102,8 @@ def test_per_variant_mode_searches_every_variant(frame, tmp_path):
                    for k, v in best.items())
 
 
-def test_the_winning_params_are_the_ones_actually_trained(frame, tmp_path):
-    result = Pipeline(_config(tmp_path, enabled=True, mode="shared")).run(frame=frame)
+def test_the_winning_params_are_the_ones_actually_trained(frames, tmp_path):
+    result = Pipeline(_config(tmp_path, enabled=True, mode="shared")).run(frames=frames)
     trials = pd.read_csv(result.output_dir / "tuning_trials.csv")
     best = json.loads(trials.loc[trials["score"].idxmax(), "params"])
     used = result.models[0].params
@@ -113,21 +113,18 @@ def test_the_winning_params_are_the_ones_actually_trained(frame, tmp_path):
     assert used["eta"] != 0.3 or best["eta"] == 0.3
 
 
-def test_report_records_the_mode_and_configurations(frame, tmp_path):
-    result = Pipeline(_config(tmp_path, enabled=True, mode="shared")).run(frame=frame)
+def test_report_records_the_mode_and_configurations(frames, tmp_path):
+    result = Pipeline(_config(tmp_path, enabled=True, mode="shared")).run(frames=frames)
     report = (result.output_dir / "report.md").read_text()
     assert "## Hyperparameters" in report
     assert "Distinct configurations in use: **1**" in report
     assert "attributable to the feature" in report      # states why shared matters
 
 
-def test_tuning_needs_a_valid_split(frame, tmp_path):
+def test_tuning_needs_a_valid_split(frames, tmp_path):
     cfg = _config(tmp_path, enabled=True)
-    cfg.data.split.mode = "random"
-    cfg.data.split.valid_size = 0.0
-    cfg.data.split.test_size = 0.2
     with pytest.raises(ValueError, match="valid split"):
-        Pipeline(cfg).run(frame=frame.drop(columns="split"))
+        Pipeline(cfg).run(frames={"train": frames["train"], "test": frames["test"]})
 
 
 def test_metric_cannot_be_set_to_something_unimplemented():

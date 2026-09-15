@@ -94,8 +94,9 @@ Propose {n_features} new features for predicting {self.context.target}, each as 
 single pandas expression built only from the columns above and the operators
 listed. Score is {self.context.metric_name}; higher is better.{self.context.metric_explanation}
 
-Each expression must produce no NaN or infinity and no value far above its own
-bulk - guard every division and reciprocal away from zero rather than adding a
+Each expression must produce no infinity and no value far above its own bulk
+(NaN is fine; it is read as missing) - guard every division and reciprocal
+away from zero rather than adding a
 tiny epsilon, which turns one zero denominator into a value of order 1e6. Index
 `df` only by the identifiers listed above.{redundancy}
 

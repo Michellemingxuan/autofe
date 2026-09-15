@@ -19,7 +19,7 @@ from validation.stages.feature_selection import FeatureSelectionResult
 
 xgb = pytest.importorskip("xgboost")
 
-from data.synthetic.make import make_frame  # noqa: E402
+from synthetic import make_frame, split_by_column  # noqa: E402
 from validation.pipeline import Pipeline  # noqa: E402
 
 
@@ -150,7 +150,7 @@ def test_pipeline_emits_the_cascade_and_the_batch_call(tmp_path):
     frame = make_frame(n_rows=9_000, seed=8)
     cfg = Config.from_dict({
         "run": {"name": "cascade", "output_dir": str(tmp_path), "n_jobs": 2, "log_level": "ERROR"},
-        "data": {"target": "y", "id_cols": ["row_id"], "split": {"mode": "column", "column": "split"}},
+        "data": {"target": "y", "id_cols": ["row_id"]},
         "features": {"base_prefix": "old_", "new_prefix": "new_"},
         # redundancy_max_abs defaults to 1.01 (screen off), so set it explicitly -
         # otherwise the duplicate survives selection and is only caught a gate later.
@@ -161,7 +161,7 @@ def test_pipeline_emits_the_cascade_and_the_batch_call(tmp_path):
         "analysis": {"shap": {"sample_size": 800}},
         "verdict": {"min_gini_gain": 0.005},
     })
-    result = Pipeline(cfg).run(frame=frame)
+    result = Pipeline(cfg).run(frames=split_by_column(frame))
 
     assert result.batch is not None
     assert result.batch.verdict in {"KEEP", "TRY A NEW BATCH"}
@@ -184,12 +184,12 @@ def test_verdict_stage_can_be_disabled(tmp_path):
     frame = make_frame(n_rows=6_000, seed=9)
     cfg = Config.from_dict({
         "run": {"name": "no_verdict", "output_dir": str(tmp_path), "n_jobs": 2, "log_level": "ERROR"},
-        "data": {"target": "y", "id_cols": ["row_id"], "split": {"mode": "column", "column": "split"}},
+        "data": {"target": "y", "id_cols": ["row_id"]},
         "features": {"base_prefix": "old_", "new_prefix": "new_"},
         "model": {"num_boost_round": 40, "variants": ["base", "base_plus_new"]},
         "analysis": {"shap": {"enabled": False}},
         "verdict": {"enabled": False},
     })
-    result = Pipeline(cfg).run(frame=frame)
+    result = Pipeline(cfg).run(frames=split_by_column(frame))
     assert result.batch is None
     assert "verdict" in result.verdicts.columns    # falls back to the selection view

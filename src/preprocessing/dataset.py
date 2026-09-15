@@ -1,35 +1,32 @@
-"""What every ``data/<dataset>/prepare.py`` script does the same way.
+"""The small pieces every dataset's prepare step uses, and the checks on its output.
 
-A prepare script has exactly one job a config cannot express: turn a published
-archive into the modeling table the config already describes. Everything around
-that job - fetching the archive, making column names usable, checking that the
-table really contains what the config declares, writing the three artifacts - is
-identical across datasets, so it lives here and each script keeps only its own
-recipe.
+A prepare step - ``data/<name>/prepare.ipynb`` for the UCI demos, a script for a
+private extract - is specific to its dataset. Only what never varies lives here:
 
-The division of labour is worth stating, because it is what keeps the configs
-honest:
+    sanitize, sanitize_columns   readable snake_case names, originals kept
+    fetch_archive                download once, then read from the local cache
+    stratified_split             the one train / valid / test split
+    write_splits                 check the splits against the config, then write
 
-    configs/<name>.yaml      where the table goes, the target, the id column,
-                             and which features are the candidates
-    data/<name>/prepare.py   how the archive becomes that table
-    this module              the parts that do not vary, including the checks
+Every prepare step writes, at and beside the config's ``data.paths``:
 
-The checks matter more than they look. A config can name a candidate feature
-that the script does not build, and nothing downstream notices: the feature is
-simply absent from every variant, the run completes, and the verdict is about a
-set that was never evaluated. :func:`write_modeling_table` refuses that case
-instead.
+    train.csv valid.csv test.csv   the tables the pipeline reads
+    column_mapping.csv             sanitized name -> the original
+    column_descriptions.json       what each column means, for discovery
 
-Three artifacts come out of every build:
+plus, when discovery is configured, the few-shot example rows (see
+:mod:`preprocessing.shots`). The split is made here, once, and the pipeline
+reads it exactly as written - it never re-splits.
 
-    modeling.parquet            the table the pipeline reads
-    column_mapping.csv          sanitized name -> the archive's original
-    column_descriptions.json    what each column means, for a discovery run
-
-The last one is not decoration. A proposer that knows a column only as
+The descriptions are not decoration. A proposer that knows a column only as
 ``cash_flow_to_liability`` cannot bring any real-world knowledge to it, so the
 original human-written header travels with the table.
+
+The checks matter more than they look. A config can name a candidate feature
+that the prepare step does not build, and nothing downstream notices: the feature
+is simply absent from every variant, the run completes, and the verdict is about
+a set that was never evaluated. :func:`write_splits` refuses that case instead,
+and refuses an id that appears in two splits, which leaks the outcome.
 """
 
 from __future__ import annotations
@@ -37,23 +34,27 @@ from __future__ import annotations
 import io
 import json
 import re
-import sys
 import urllib.request
 import zipfile
-from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Any, Iterable, Mapping, Sequence
+from typing import Any, Mapping
 
+import numpy as np
 import pandas as pd
 
 __all__ = [
+    "SPLITS",
     "sanitize",
     "sanitize_columns",
     "fetch_archive",
+    "stratified_split",
+    "build_sample",
     "declared_candidates",
     "resolve_path",
-    "write_modeling_table",
+    "write_splits",
 ]
+
+SPLITS = ("train", "valid", "test")
 
 
 def sanitize(name: str) -> str:
@@ -86,7 +87,7 @@ def sanitize_columns(frame: pd.DataFrame) -> tuple[pd.DataFrame, pd.DataFrame]:
         # column on rename, so it is an error rather than a warning.
         raise ValueError(
             f"sanitizing produced duplicate column name(s): {sorted(set(duplicated))}. "
-            "Disambiguate them in the prepare script before sanitizing."
+            "Disambiguate them before sanitizing."
         )
     renamed = frame.copy()
     renamed.columns = mapping["column"].tolist()
@@ -97,7 +98,7 @@ def fetch_archive(url: str, dest: Path, member: str, timeout: int = 180) -> Path
     """
     Download ``url`` into ``dest`` once and return the path to ``member``.
 
-    Cached on the extracted file, so re-running a prepare script does no network
+    Cached on the extracted file, so re-running a prepare step does no network
     I/O. Handles both a zip archive and a bare file, because UCI serves each.
     """
     target = dest / member
@@ -120,6 +121,74 @@ def fetch_archive(url: str, dest: Path, member: str, timeout: int = 180) -> Path
     return target
 
 
+def stratified_split(
+    frame: pd.DataFrame,
+    target: str,
+    *,
+    valid_size: float = 0.2,
+    test_size: float = 0.2,
+    seed: int = 42,
+) -> dict[str, pd.DataFrame]:
+    """
+    Split once into train / valid / test, keeping the target rate in every part.
+
+    Stratified because the outcome is often rare: an unstratified draw can hand
+    valid or test a materially different base rate, which shows up as noise in
+    the Gini comparison the pipeline exists to make. Each class is shuffled with
+    the seed and cut by the two sizes, so the same seed always gives the same
+    split, and rows keep their original order within each part. ``frame`` needs
+    a unique index.
+    """
+    rng = np.random.default_rng(seed)
+    labels = pd.Series("train", index=frame.index, dtype=object)
+    for _, index in frame.groupby(frame[target], sort=False).groups.items():
+        index = np.asarray(index)
+        shuffled = index[rng.permutation(len(index))]
+        n_test = int(round(len(index) * test_size))
+        n_valid = int(round(len(index) * valid_size))
+        labels.loc[shuffled[:n_test]] = "test"
+        labels.loc[shuffled[n_test:n_test + n_valid]] = "valid"
+    return {name: frame.loc[labels == name].reset_index(drop=True) for name in SPLITS}
+
+
+def build_sample(
+    frame: pd.DataFrame,
+    target: str,
+    size: int,
+    *,
+    balance: bool = True,
+    seed: int = 42,
+) -> pd.DataFrame:
+    """
+    Draw ``size`` rows - class-balanced by default - for discovery's screen.
+
+    Balanced means each class contributes up to ``size / n_classes`` rows, so a
+    rare class is kept whole instead of the handful a uniform draw would give.
+    On an imbalanced target a uniform draw of a few thousand rows holds only a
+    few positives, which makes the screen's score mostly noise; the screen
+    compares two models on the same rows, so it does not need the base rate.
+    The same seed always gives the same rows.
+    """
+    if size >= len(frame) and not balance:
+        return frame.copy()
+
+    rng = np.random.default_rng(seed)
+    if not balance:
+        take = rng.choice(len(frame), size=min(size, len(frame)), replace=False)
+        return frame.iloc[np.sort(take)].reset_index(drop=True)
+
+    groups = [group for _, group in frame.groupby(target, sort=True)]
+    per_class = max(1, size // max(1, len(groups)))
+    parts = []
+    for group in groups:
+        n = min(per_class, len(group))
+        take = rng.choice(len(group), size=n, replace=False)
+        parts.append(group.iloc[np.sort(take)])
+    sample = pd.concat(parts, axis=0)
+    # Shuffle so class order cannot leak into row order.
+    return sample.iloc[rng.permutation(len(sample))].reset_index(drop=True)
+
+
 def declared_candidates(cfg: Any, frame: pd.DataFrame) -> list[str]:
     """The candidate features the config asks the pipeline to evaluate."""
     declared = list(cfg.features.new)
@@ -135,63 +204,73 @@ def resolve_path(path: str | Path, root: Path) -> Path:
     return resolved if resolved.is_absolute() else root / resolved
 
 
-@dataclass
-class BuildReport:
-    """What was written, for the script to print and for tests to assert on."""
-
-    rows: int
-    columns: int
-    positive_rate: float
-    positives: int
-    base_features: int
-    candidates: list[str]
-    described: int
-    paths: dict[str, Path] = field(default_factory=dict)
-
-
-def write_modeling_table(
+def write_splits(
     cfg: Any,
-    frame: pd.DataFrame,
+    frames: Mapping[str, pd.DataFrame],
     *,
     root: Path,
-    id_col: str,
     mapping: pd.DataFrame | None = None,
     descriptions: Mapping[str, str] | None = None,
     extra_descriptions: Mapping[str, str] | None = None,
-) -> BuildReport:
+) -> dict[str, Path]:
     """
-    Check the built table against the config, then write the three artifacts.
+    Check the three splits against the config, then write them and their sidecars.
 
-    Raises rather than writing whenever the table and the config disagree: a
+    Raises rather than writing whenever the tables and the config disagree: a
     table that does not contain what the config declares produces a run whose
     verdict is about the wrong feature set, and that failure is invisible in the
-    output.
+    output. Returns the path of every file written.
     """
-    out = resolve_path(cfg.data.path, root)
-    out.parent.mkdir(parents=True, exist_ok=True)
+    paths = dict(cfg.data.paths or {})
+    missing = [s for s in SPLITS if s not in paths]
+    if missing:
+        raise ValueError(f"data.paths has no entry for {missing}; the config must "
+                         "say where each split is written")
+    if sorted(frames) != sorted(SPLITS):
+        raise ValueError(f"expected frames for {list(SPLITS)}, got {sorted(frames)}")
 
-    if cfg.data.target not in frame.columns:
-        raise KeyError(f"target {cfg.data.target!r} is not in the built table")
+    columns = list(frames["train"].columns)
+    for name in ("valid", "test"):
+        absent = [c for c in columns if c not in frames[name].columns]
+        extra = [c for c in frames[name].columns if c not in columns]
+        if absent or extra:
+            raise ValueError(f"{name!r} does not have train's columns: "
+                             f"missing {absent[:5]}, extra {extra[:5]}")
+    frames = {name: frames[name][columns] for name in SPLITS}
 
-    declared = declared_candidates(cfg, frame)
-    absent = [c for c in declared if c not in frame.columns]
+    target = cfg.data.target
+    if target not in columns:
+        raise KeyError(f"target {target!r} is not in the built tables")
+    values = pd.concat([frame[target] for frame in frames.values()]).dropna().unique()
+    if set(values) - {0, 1}:
+        raise ValueError(f"target {target!r} is not binary; it holds {sorted(values)[:8]}")
+
+    declared = declared_candidates(cfg, frames["train"])
+    absent = [c for c in declared if c not in columns]
     if absent:
-        raise KeyError(
-            f"features.new names column(s) this script does not build: {absent}"
-        )
+        raise KeyError(f"features.new names column(s) that were not built: {absent}")
     if not declared and not cfg.discovery.enabled:
         raise ValueError(
-            f"{cfg.data.target!r} has no candidate features to evaluate: "
-            "features.new is empty and discovery is disabled, so the run would "
-            "have nothing to judge. Declare candidates or enable discovery."
+            f"{target!r} has no candidate features to evaluate: features.new is "
+            "empty and discovery is disabled, so the run would have nothing to "
+            "judge. Declare candidates or enable discovery."
         )
 
-    target = frame[cfg.data.target]
-    if set(target.dropna().unique()) - {0, 1}:
-        raise ValueError(
-            f"target {cfg.data.target!r} is not binary; it holds "
-            f"{sorted(target.dropna().unique())[:8]}"
-        )
+    id_cols = list(cfg.data.id_cols)
+    absent = [c for c in id_cols if c not in columns]
+    if absent:
+        raise KeyError(f"data.id_cols names column(s) that were not built: {absent}")
+    if id_cols:
+        # The same unit in two splits leaks the outcome, and nothing downstream
+        # can tell a leaked split from a clean one.
+        keys = {name: set(map(tuple, frame[id_cols].astype(str).to_numpy()))
+                for name, frame in frames.items()}
+        for left, right in (("train", "valid"), ("train", "test"), ("valid", "test")):
+            shared = keys[left] & keys[right]
+            if shared:
+                raise ValueError(
+                    f"{len(shared):,} id(s) appear in both {left!r} and {right!r} "
+                    f"(e.g. {sorted(shared)[:3]}). That is leakage - fix the split.")
 
     # Descriptions default to the archive's own headers, which is what a human
     # wrote and the most useful thing a proposer can be told about a column.
@@ -203,59 +282,22 @@ def write_modeling_table(
     if extra_descriptions:
         descriptions.update({str(k): str(v).strip()
                              for k, v in extra_descriptions.items()})
-    reserved = {cfg.data.target, id_col, *cfg.data.id_cols}
+    reserved = {target, *id_cols}
     descriptions = {k: v for k, v in descriptions.items()
-                    if k in frame.columns and k not in reserved}
+                    if k in columns and k not in reserved}
 
-    paths = {"table": out,
-             "descriptions": out.parent / "column_descriptions.json"}
-    frame.to_parquet(out, index=False)
-    paths["descriptions"].write_text(
+    written: dict[str, Path] = {}
+    for name in SPLITS:
+        out = resolve_path(paths[name], root)
+        out.parent.mkdir(parents=True, exist_ok=True)
+        frames[name].to_csv(out, index=False)
+        written[name] = out
+
+    folder = written["train"].parent
+    written["descriptions"] = folder / "column_descriptions.json"
+    written["descriptions"].write_text(
         json.dumps(descriptions, indent=2, ensure_ascii=False), encoding="utf-8")
     if mapping is not None:
-        paths["mapping"] = out.parent / "column_mapping.csv"
-        mapping.to_csv(paths["mapping"], index=False)
-
-    base = [c for c in frame.columns if c not in set(declared) | reserved]
-    return BuildReport(
-        rows=len(frame),
-        columns=frame.shape[1],
-        positive_rate=float(target.mean()),
-        positives=int(target.sum()),
-        base_features=len(base),
-        candidates=declared,
-        described=len(descriptions),
-        paths=paths,
-    )
-
-
-def print_report(report: BuildReport, cfg: Any, config_path: str | Path,
-                 root: Path, id_col: str) -> None:
-    """The summary a prepare script prints, identical for every dataset."""
-    table = report.paths["table"]
-    print(f"wrote {report.rows:,} rows x {report.columns} cols -> {table}")
-    print(f"  target {cfg.data.target!r}: {report.positive_rate:.2%} positive "
-          f"({report.positives:,} of {report.rows:,})")
-    print(f"  id column: {id_col!r}")
-    print(f"  incumbent features: {report.base_features}")
-    print(f"  candidate features: {len(report.candidates)} "
-          f"(declared in {Path(config_path).name})")
-    print(f"  column descriptions: {report.paths['descriptions'].name} "
-          f"({report.described} columns, for a discovery run)")
-    print(f"\nready:  mllite -c {config_path}")
-    print(f"   with discovery:  mllite -c {config_path} --set discovery.enabled=true")
-
-
-def load_config_from(root: Path, config_path: str | Path) -> Any:
-    """Import ``validation`` off the repo's src tree and load the config.
-
-    Prepare scripts run as plain files (``python data/x/prepare.py``), not as
-    part of an installed package, so they have to put ``src`` on the path
-    themselves.
-    """
-    src = str(root / "src")
-    if src not in sys.path:
-        sys.path.insert(0, src)
-    from validation import load_config
-
-    return load_config(str(config_path))
+        written["mapping"] = folder / "column_mapping.csv"
+        mapping.to_csv(written["mapping"], index=False)
+    return written

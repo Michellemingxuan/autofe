@@ -4,16 +4,20 @@ __pycache__/
 .pytest_cache/
 .ipynb_checkpoints/
 outputs/
-# Use-case folders: ignore the tables, keep the build scripts. A table is
-# rebuildable from its prepare.py, which downloads the source and verifies the
-# result against the config, so committing it would add megabytes of binary for
-# something one command reproduces.
-data/*/modeling.parquet
-data/*/train.parquet
-data/*/valid.parquet
-data/*/test.parquet
+# Credentials: OPENAI_API_KEY and friends. Never committed.
+.env
+# Dataset folders: ignore the tables, keep what builds them. Every table is
+# rebuilt by the dataset's prepare notebook, which downloads the source and
+# checks the result against the config, so committing it would add megabytes of
+# binary for something one run reproduces.
+data/*/train.csv
+data/*/valid.csv
+data/*/test.csv
+data/*/few_shot.csv
+data/*/screen_train.csv
+data/*/screen_valid.csv
 data/*/raw/
-# Kept on purpose: prepare.py, column_mapping.csv and column_descriptions.json.
+# Kept on purpose: prepare.ipynb, column_mapping.csv and column_descriptions.json.
 # The descriptions are what a discovery run reads to know what a column means,
 # and they are small, reviewable, and awkward to regenerate by hand.
 .DS_Store

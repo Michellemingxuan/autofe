@@ -8,20 +8,20 @@ from validation.stages.verdict import FAIL, NOT_REACHED, PASS
 
 xgb = pytest.importorskip("xgboost")
 
-from data.synthetic.make import make_frame  # noqa: E402
+from synthetic import make_frame, split_by_column  # noqa: E402
 from validation.pipeline import Pipeline  # noqa: E402
 
 
 @pytest.fixture(scope="module")
-def frame():
-    return make_frame(n_rows=9_000, seed=12).assign(new_constant=1.0)
+def frames():
+    return split_by_column(make_frame(n_rows=9_000, seed=12).assign(new_constant=1.0))
 
 
 def _config(tmp_path, gates):
     return Config.from_dict({
         "run": {"name": f"gates_{gates}", "output_dir": str(tmp_path), "n_jobs": 2,
                 "log_level": "ERROR", "gates": gates},
-        "data": {"target": "y", "id_cols": ["row_id"], "split": {"mode": "column", "column": "split"}},
+        "data": {"target": "y", "id_cols": ["row_id"]},
         "features": {"base_prefix": "old_", "new_prefix": "new_"},
         "data_quality": {"enabled": True, "drop_failed": True},
         "feature_selection": {"chunk_size": 2, "spearman": {"target_min_abs": 0.04,
@@ -43,8 +43,8 @@ def test_bad_gate_mode_is_rejected():
         Config.from_dict({"run": {"gates": "half"}}).validate()
 
 
-def test_open_gates_remove_nothing(frame, tmp_path):
-    result = Pipeline(_config(tmp_path, "open")).run(frame=frame)
+def test_open_gates_remove_nothing(frames, tmp_path):
+    result = Pipeline(_config(tmp_path, "open")).run(frames=frames)
 
     proposed = {"new_signal_a", "new_signal_b", "new_dup_old0", "new_noise", "new_constant"}
     assert set(result.dataset.new_features) == proposed, "no candidate may be removed"
@@ -58,8 +58,8 @@ def test_open_gates_remove_nothing(frame, tmp_path):
     assert {f"loi__{f}" for f in proposed} <= variants
 
 
-def test_open_gates_measure_every_candidate_at_every_gate(frame, tmp_path):
-    result = Pipeline(_config(tmp_path, "open")).run(frame=frame)
+def test_open_gates_measure_every_candidate_at_every_gate(frames, tmp_path):
+    result = Pipeline(_config(tmp_path, "open")).run(frames=frames)
     verdicts = result.verdicts.set_index("feature")
 
     # nothing is short-circuited: no cell says "not reached"
@@ -76,8 +76,8 @@ def test_open_gates_measure_every_candidate_at_every_gate(frame, tmp_path):
     assert (verdicts["n_gates_failed"] >= 1).any()
 
 
-def test_enforce_stops_at_the_first_failing_gate(frame, tmp_path):
-    result = Pipeline(_config(tmp_path, "enforce")).run(frame=frame)
+def test_enforce_stops_at_the_first_failing_gate(frames, tmp_path):
+    result = Pipeline(_config(tmp_path, "enforce")).run(frames=frames)
     verdicts = result.verdicts.set_index("feature")
 
     assert verdicts.loc["new_constant", "data quality"] == FAIL
@@ -87,8 +87,8 @@ def test_enforce_stops_at_the_first_failing_gate(frame, tmp_path):
     assert "new_noise" not in result.dataset.new_features
 
 
-def test_batch_verdict_is_advisory_while_gates_are_open(frame, tmp_path):
-    result = Pipeline(_config(tmp_path, "open")).run(frame=frame)
+def test_batch_verdict_is_advisory_while_gates_are_open(frames, tmp_path):
+    result = Pipeline(_config(tmp_path, "open")).run(frames=frames)
     assert "advisory" in result.batch.note
     assert result.summary()["gates"] == "open"
 

@@ -1,9 +1,9 @@
-"""The shared parts of a data/<dataset>/prepare.py script.
+"""The shared parts of a dataset's prepare step.
 
-The checks matter more than the mechanics here. A prepare script that writes a
-table disagreeing with its config produces a run whose verdict is about a
-feature set nobody chose, and nothing downstream notices - so most of these
-tests are about refusing to write rather than about writing correctly.
+The checks matter more than the mechanics here. A prepare step that writes tables
+disagreeing with its config produces a run whose verdict is about a feature set
+nobody chose, and nothing downstream notices - so most of these tests are about
+refusing to write rather than about writing correctly.
 """
 
 from __future__ import annotations
@@ -14,24 +14,28 @@ import zipfile
 from dataclasses import dataclass, field
 from pathlib import Path
 
+import numpy as np
 import pandas as pd
 import pytest
 
 from preprocessing import (
+    SPLITS,
+    declared_candidates,
     fetch_archive,
     resolve_path,
     sanitize,
     sanitize_columns,
-    write_modeling_table,
+    stratified_split,
+    write_splits,
 )
 
 
 # --------------------------------------------------------------------------- #
-# a config stand-in: only the fields write_modeling_table reads
+# a config stand-in: only the fields write_splits reads
 # --------------------------------------------------------------------------- #
 @dataclass
 class FakeData:
-    path: str
+    paths: dict
     target: str = "y"
     id_cols: list = field(default_factory=lambda: ["row_id"])
 
@@ -58,21 +62,32 @@ def cfg_for(tmp_path, **kw):
     features = FakeFeatures(new=list(kw.pop("new", ["cand_a"])),
                             new_prefix=kw.pop("new_prefix", ""))
     discovery = FakeDiscovery(enabled=kw.pop("discovery", False))
-    return FakeConfig(
-        data=FakeData(path=str(tmp_path / "modeling.parquet"), **kw),
-        features=features,
-        discovery=discovery,
-    )
+    paths = {name: str(tmp_path / f"{name}.csv") for name in SPLITS}
+    return FakeConfig(data=FakeData(paths=paths, **kw), features=features,
+                      discovery=discovery)
 
 
 @pytest.fixture
-def frame():
-    return pd.DataFrame({
-        "row_id": [0, 1, 2, 3],
-        "y": [0, 1, 0, 1],
-        "incumbent": [1.0, 2.0, 3.0, 4.0],
-        "cand_a": [0.5, 0.6, 0.7, 0.8],
+def frames():
+    frame = pd.DataFrame({
+        "row_id": range(12),
+        "y": [0, 1] * 6,
+        "incumbent": np.arange(12.0),
+        "cand_a": np.arange(12) / 10,
     })
+    return {"train": frame.iloc[:6].reset_index(drop=True),
+            "valid": frame.iloc[6:9].reset_index(drop=True),
+            "test": frame.iloc[9:].reset_index(drop=True)}
+
+
+def _mapping(frame):
+    return pd.DataFrame({"original": [c.upper() for c in frame.columns],
+                         "column": list(frame.columns)})
+
+
+def _write(cfg, frames, tmp_path, **kw):
+    kw.setdefault("mapping", _mapping(frames["train"]))
+    return write_splits(cfg, frames, root=tmp_path, **kw)
 
 
 # --------------------------------------------------------------------------- #
@@ -107,92 +122,124 @@ def test_a_name_collision_is_refused_rather_than_dropping_a_column():
 
 
 # --------------------------------------------------------------------------- #
-# the checks that stop a bad table being written
+# the split
 # --------------------------------------------------------------------------- #
-def test_a_candidate_the_script_did_not_build_is_refused(frame, tmp_path):
+@pytest.fixture
+def rare_event_frame():
+    rng = np.random.default_rng(0)
+    n = 5000
+    return pd.DataFrame({"row_id": np.arange(n), "x": rng.normal(size=n),
+                         "y": (rng.random(n) < 0.03).astype(int)})
+
+
+def test_the_split_keeps_the_event_rate_in_every_part(rare_event_frame):
+    parts = stratified_split(rare_event_frame, "y", valid_size=0.2, test_size=0.2, seed=1)
+    overall = rare_event_frame["y"].mean()
+    for name, part in parts.items():
+        assert part["y"].mean() == pytest.approx(overall, abs=0.003), name
+    assert len(parts["test"]) == pytest.approx(0.2 * len(rare_event_frame), abs=2)
+    assert len(parts["valid"]) == pytest.approx(0.2 * len(rare_event_frame), abs=2)
+
+
+def test_the_split_is_disjoint_complete_and_reproducible(rare_event_frame):
+    parts = stratified_split(rare_event_frame, "y", seed=1)
+    ids = {name: set(part["row_id"]) for name, part in parts.items()}
+    assert not ids["train"] & ids["valid"] and not ids["train"] & ids["test"] \
+        and not ids["valid"] & ids["test"]
+    assert set().union(*ids.values()) == set(rare_event_frame["row_id"])
+
+    again = stratified_split(rare_event_frame, "y", seed=1)
+    other = stratified_split(rare_event_frame, "y", seed=2)
+    assert all(parts[n]["row_id"].equals(again[n]["row_id"]) for n in SPLITS)
+    assert not parts["test"]["row_id"].equals(other["test"]["row_id"])
+
+
+# --------------------------------------------------------------------------- #
+# the checks that stop bad tables being written
+# --------------------------------------------------------------------------- #
+def test_a_candidate_that_was_not_built_is_refused(frames, tmp_path):
     """The failure this exists for: the run would silently evaluate nothing."""
     cfg = cfg_for(tmp_path, new=["cand_a", "cand_never_built"])
     with pytest.raises(KeyError, match="cand_never_built"):
-        write_modeling_table(cfg, frame, root=tmp_path, id_col="row_id",
-                             mapping=_mapping(frame))
-    assert not (tmp_path / "modeling.parquet").exists()
+        _write(cfg, frames, tmp_path)
+    assert not (tmp_path / "train.csv").exists()
 
 
-def test_a_missing_target_is_refused(frame, tmp_path):
-    cfg = cfg_for(tmp_path, target="not_a_column")
+def test_a_missing_target_is_refused(frames, tmp_path):
     with pytest.raises(KeyError, match="not_a_column"):
-        write_modeling_table(cfg, frame, root=tmp_path, id_col="row_id",
-                             mapping=_mapping(frame))
+        _write(cfg_for(tmp_path, target="not_a_column"), frames, tmp_path)
 
 
-def test_a_non_binary_target_is_refused(tmp_path):
-    frame = pd.DataFrame({"row_id": [0, 1, 2], "y": [0, 1, 2],
-                          "incumbent": [1.0, 2.0, 3.0], "cand_a": [1.0, 2.0, 3.0]})
+def test_a_non_binary_target_is_refused(frames, tmp_path):
+    frames["test"] = frames["test"].assign(y=[0, 1, 2])
     with pytest.raises(ValueError, match="not binary"):
-        write_modeling_table(cfg_for(tmp_path), frame, root=tmp_path,
-                             id_col="row_id", mapping=_mapping(frame))
+        _write(cfg_for(tmp_path), frames, tmp_path)
 
 
-def test_nothing_to_judge_is_refused(frame, tmp_path):
+def test_nothing_to_judge_is_refused(frames, tmp_path):
     """No declared candidates and no discovery means a run with no question."""
-    cfg = cfg_for(tmp_path, new=[])
     with pytest.raises(ValueError, match="nothing to judge"):
-        write_modeling_table(cfg, frame, root=tmp_path, id_col="row_id",
-                             mapping=_mapping(frame))
+        _write(cfg_for(tmp_path, new=[]), frames, tmp_path)
 
 
-def test_no_candidates_is_allowed_when_discovery_will_supply_them(frame, tmp_path):
-    cfg = cfg_for(tmp_path, new=[], discovery=True)
-    report = write_modeling_table(cfg, frame, root=tmp_path, id_col="row_id",
-                                  mapping=_mapping(frame))
-    assert report.candidates == []
+def test_no_candidates_is_allowed_when_discovery_will_supply_them(frames, tmp_path):
+    written = _write(cfg_for(tmp_path, new=[], discovery=True), frames, tmp_path)
+    assert written["train"].exists()
+
+
+def test_an_id_in_two_splits_is_refused_as_leakage(frames, tmp_path):
+    frames["test"].loc[0, "row_id"] = frames["train"].loc[0, "row_id"]
+    with pytest.raises(ValueError, match="leakage"):
+        _write(cfg_for(tmp_path), frames, tmp_path)
+    assert not (tmp_path / "train.csv").exists()
+
+
+def test_splits_with_different_columns_are_refused(frames, tmp_path):
+    frames["valid"] = frames["valid"].drop(columns="incumbent")
+    with pytest.raises(ValueError, match="incumbent"):
+        _write(cfg_for(tmp_path), frames, tmp_path)
+
+
+def test_a_config_without_a_path_for_every_split_is_refused(frames, tmp_path):
+    cfg = cfg_for(tmp_path)
+    del cfg.data.paths["test"]
+    with pytest.raises(ValueError, match="data.paths"):
+        _write(cfg, frames, tmp_path)
 
 
 # --------------------------------------------------------------------------- #
 # what gets written
 # --------------------------------------------------------------------------- #
-def _mapping(frame):
-    return pd.DataFrame({"original": [c.upper() for c in frame.columns],
-                         "column": list(frame.columns)})
-
-
-def test_the_three_artifacts_are_written(frame, tmp_path):
-    report = write_modeling_table(cfg_for(tmp_path), frame, root=tmp_path,
-                                  id_col="row_id", mapping=_mapping(frame))
-    assert pd.read_parquet(report.paths["table"]).equals(frame)
-    assert report.paths["mapping"].exists()
-    written = json.loads(report.paths["descriptions"].read_text())
+def test_the_tables_and_sidecars_are_written(frames, tmp_path):
+    written = _write(cfg_for(tmp_path), frames, tmp_path)
+    for name in SPLITS:
+        pd.testing.assert_frame_equal(pd.read_csv(written[name]), frames[name])
+    assert written["mapping"].exists()
+    descriptions = json.loads(written["descriptions"].read_text())
     # The id and target are not features, so they carry no description.
-    assert set(written) == {"incumbent", "cand_a"}
-    assert written["cand_a"] == "CAND_A"          # the original header
+    assert set(descriptions) == {"incumbent", "cand_a"}
+    assert descriptions["cand_a"] == "CAND_A"          # the original header
 
 
-def test_the_report_counts_incumbents_and_candidates_apart(frame, tmp_path):
-    report = write_modeling_table(cfg_for(tmp_path), frame, root=tmp_path,
-                                  id_col="row_id", mapping=_mapping(frame))
-    assert report.rows == 4
-    assert report.base_features == 1               # incumbent
-    assert report.candidates == ["cand_a"]
-    assert report.positives == 2
-    assert report.positive_rate == 0.5
+def test_every_split_is_written_in_trains_column_order(frames, tmp_path):
+    frames["test"] = frames["test"][list(reversed(frames["test"].columns))]
+    written = _write(cfg_for(tmp_path), frames, tmp_path)
+    assert list(pd.read_csv(written["test"]).columns) == list(frames["train"].columns)
 
 
-def test_new_prefix_candidates_are_picked_up(frame, tmp_path):
-    cfg = cfg_for(tmp_path, new=[], new_prefix="cand_")
-    report = write_modeling_table(cfg, frame, root=tmp_path, id_col="row_id",
-                                  mapping=_mapping(frame))
-    assert report.candidates == ["cand_a"]
-
-
-def test_explicit_descriptions_win_over_the_mapping(frame, tmp_path):
-    report = write_modeling_table(
-        cfg_for(tmp_path), frame, root=tmp_path, id_col="row_id",
-        mapping=_mapping(frame),
+def test_explicit_descriptions_win_over_the_mapping(frames, tmp_path):
+    written = _write(
+        cfg_for(tmp_path), frames, tmp_path,
         descriptions={"incumbent": "an existing ratio", "cand_a": "the proposal"},
         extra_descriptions={"cand_a": "corrected"},
     )
-    written = json.loads(report.paths["descriptions"].read_text())
-    assert written == {"incumbent": "an existing ratio", "cand_a": "corrected"}
+    descriptions = json.loads(written["descriptions"].read_text())
+    assert descriptions == {"incumbent": "an existing ratio", "cand_a": "corrected"}
+
+
+def test_new_prefix_candidates_are_picked_up(frames, tmp_path):
+    cfg = cfg_for(tmp_path, new=[], new_prefix="cand_")
+    assert declared_candidates(cfg, frames["train"]) == ["cand_a"]
 
 
 # --------------------------------------------------------------------------- #
@@ -215,7 +262,7 @@ def test_fetch_archive_handles_a_bare_file(tmp_path, monkeypatch):
 
 
 def test_fetch_archive_does_not_download_twice(tmp_path, monkeypatch):
-    """A re-run of a prepare script should do no network I/O at all."""
+    """A re-run of a prepare step should do no network I/O at all."""
     buffer = io.BytesIO()
     with zipfile.ZipFile(buffer, "w") as archive:
         archive.writestr("data.csv", "cached\n")
@@ -256,10 +303,9 @@ def _serve(monkeypatch, payload: bytes) -> list:
 # paths
 # --------------------------------------------------------------------------- #
 def test_a_relative_config_path_resolves_against_the_repo_root(tmp_path):
-    assert resolve_path("data/x/modeling.parquet", tmp_path) == \
-        tmp_path / "data/x/modeling.parquet"
+    assert resolve_path("data/x/train.csv", tmp_path) == tmp_path / "data/x/train.csv"
 
 
 def test_an_absolute_config_path_is_left_alone(tmp_path):
-    absolute = tmp_path / "elsewhere.parquet"
+    absolute = tmp_path / "elsewhere.csv"
     assert resolve_path(absolute, Path("/ignored")) == absolute

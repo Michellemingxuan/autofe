@@ -4,7 +4,7 @@ import pandas as pd
 import pytest
 
 from discovery.loop import DiscoveryRun, RoundRecord, StoppingRule, run_discovery
-from discovery.screen import Screener, build_sample
+from discovery.screen import Screener
 from validation.metrics import calc_adj_gini
 
 PARAMS = {"eta": 0.1, "max_depth": 3, "objective": "binary:logistic"}

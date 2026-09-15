@@ -1,7 +1,22 @@
-"""Loading, split assignment and feature-list resolution.
+"""Stage 0: turn the train / valid / test tables into a ``Dataset``.
 
-A ``Dataset`` is the single object every downstream stage consumes: one frame per
-split plus the resolved base/new feature lists.
+Input
+    the three tables named in the config's ``data.paths``, or the same frames
+    passed in memory. The split was made once, by the dataset's prepare step,
+    and is used exactly as given - nothing here re-splits.
+
+Output
+    a ``Dataset``: one cleaned frame per split, plus the resolved incumbent
+    (``base``) and candidate (``new``) feature lists. Every later stage reads it.
+
+The steps, in order:
+
+    read        read_frame               parquet / csv / pickle
+    features    resolve_features         explicit lists and prefixes, against train
+    clean       clean_missing            sentinel codes and +/-inf -> NaN
+    indicators  add_missing_indicators   optional 0/1 "was missing" columns
+
+Relative paths resolve against the working directory, so run from the repo root.
 """
 
 from __future__ import annotations
@@ -55,12 +70,77 @@ class Dataset:
 
 
 # --------------------------------------------------------------------------- #
-# Loading
+# Entry points - from files or from frames, both ending in _assemble
 # --------------------------------------------------------------------------- #
-def read_frame(cfg: DataConfig, path: Optional[str] = None) -> pd.DataFrame:
-    path = Path(path if path is not None else cfg.path)
+def build_dataset(cfg: Config) -> Dataset:
+    """Read the train / valid / test tables named in ``data.paths``."""
+    if not cfg.data.paths:
+        raise ValueError("data.paths is empty; point it at the train / valid / test "
+                         "tables the dataset's prepare step wrote")
+    frames = {name: read_frame(cfg.data, path) for name, path in cfg.data.paths.items()}
+    return prepare_dataset_from_frames(frames, cfg)
+
+
+def prepare_dataset_from_frames(frames: Dict[str, pd.DataFrame], cfg: Config) -> Dataset:
+    """Build a ``Dataset`` from train / valid / test frames already in memory.
+
+    This is the entry point for a discover -> verify loop, where candidate
+    features are engineered in the session and never round-trip through a file.
+    The frames are taken as-is, so whatever split produced them is preserved.
+    """
+    unknown = sorted(set(frames) - set(SPLITS))
+    if unknown:
+        raise ValueError(f"frame names must be train/valid/test, got extra: {unknown}")
+    if "train" not in frames or not len(frames["train"]):
+        raise ValueError("a non-empty 'train' frame is required")
+    for name, frame in frames.items():
+        if cfg.data.target not in frame.columns:
+            raise KeyError(f"target column {cfg.data.target!r} not in the {name!r} frame")
+    ordered = {name: frames[name] for name in SPLITS if name in frames and len(frames[name])}
+    return _assemble(ordered, cfg)
+
+
+def _assemble(frames: Dict[str, pd.DataFrame], cfg: Config) -> Dataset:
+    """Resolve features against train, then subset and clean every split alike."""
+    reference = frames["train"]
+    base, new = resolve_features(reference, cfg.features, cfg.data)
+    keep = list(dict.fromkeys(
+        base + new + [cfg.data.target]
+        + list(cfg.data.id_cols)
+        + ([cfg.data.weight_col] if cfg.data.weight_col in reference.columns else [])
+    ))
+
+    prepared = {}
+    for name, frame in frames.items():
+        absent = [c for c in keep if c not in frame.columns]
+        if absent:
+            raise KeyError(f"the {name!r} split is missing column(s) present in train: {absent}")
+        prepared[name] = clean_missing(frame[keep], base + new, cfg.data.missing_values)
+
+    # After cleaning, so indicators capture sentinels and infinities too.
+    prepared, base, new = add_missing_indicators(prepared, base, new, cfg)
+
+    dataset = Dataset(
+        frames=prepared,
+        target=cfg.data.target,
+        base_features=base,
+        new_features=new,
+        weight_col=cfg.data.weight_col,
+    )
+    logger.info("dataset ready: %s", dataset.describe())
+    return dataset
+
+
+# --------------------------------------------------------------------------- #
+# Reading
+# --------------------------------------------------------------------------- #
+def read_frame(cfg: DataConfig, path: str) -> pd.DataFrame:
+    path = Path(path)
     if not path.exists():
-        raise FileNotFoundError(f"data.path does not exist: {path}")
+        raise FileNotFoundError(
+            f"data file does not exist: {path}. Relative paths resolve against the "
+            f"working directory ({Path.cwd()}), so run from the repo root - and build "
+            "the tables first with the dataset's prepare step.")
     fmt = cfg.format
     if fmt == "auto":
         suffix = path.suffix.lower()
@@ -74,18 +154,19 @@ def read_frame(cfg: DataConfig, path: Optional[str] = None) -> pd.DataFrame:
         return pd.read_parquet(path)
     if fmt == "pickle":
         return pd.read_pickle(path)
-    return pd.read_csv(path, nrows=cfg.nrows)
+    # round_trip: a float comes back bit-for-bit as it was written, so a model
+    # fitted on the CSV is the model that would have been fitted on the frame.
+    return pd.read_csv(path, float_precision="round_trip")
 
 
+# --------------------------------------------------------------------------- #
+# Features
+# --------------------------------------------------------------------------- #
 def resolve_features(df: pd.DataFrame, cfg: FeatureConfig, data_cfg: DataConfig) -> tuple[List[str], List[str]]:
     """Turn explicit lists and/or prefixes into concrete, de-duplicated columns."""
     reserved = set(cfg.exclude) | set(data_cfg.id_cols) | {data_cfg.target}
     if data_cfg.weight_col:
         reserved.add(data_cfg.weight_col)
-    if data_cfg.split.column:
-        reserved.add(data_cfg.split.column)
-    if data_cfg.split.time_col:
-        reserved.add(data_cfg.split.time_col)
 
     def _resolve(names: List[str], prefix: Optional[str]) -> List[str]:
         out = [c for c in names if c not in reserved]
@@ -110,6 +191,9 @@ def resolve_features(df: pd.DataFrame, cfg: FeatureConfig, data_cfg: DataConfig)
     return base, new
 
 
+# --------------------------------------------------------------------------- #
+# Cleaning
+# --------------------------------------------------------------------------- #
 def clean_missing(df: pd.DataFrame, columns: List[str], sentinels: List[float]) -> pd.DataFrame:
     """Replace sentinel codes and infinities with NaN, so they read as missing.
 
@@ -141,122 +225,6 @@ def clean_missing(df: pd.DataFrame, columns: List[str], sentinels: List[float]) 
                        n_non_finite, len(affected),
                        affected[:5] + (["..."] if len(affected) > 5 else []))
     return df
-
-
-# --------------------------------------------------------------------------- #
-# Splitting
-# --------------------------------------------------------------------------- #
-def assign_splits(df: pd.DataFrame, cfg: DataConfig, seed: int) -> Dict[str, pd.DataFrame]:
-    split_cfg = cfg.split
-    if split_cfg.mode == "column":
-        col = split_cfg.column
-        labels = df[col].astype(str).str.lower()
-        frames = {name: df.loc[labels == name].copy() for name in SPLITS}
-        frames = {k: v for k, v in frames.items() if len(v)}
-        unknown = sorted(set(labels.unique()) - set(SPLITS))
-        if unknown:
-            logger.warning("split column %r has unused label(s): %s", col, unknown)
-        if "train" not in frames:
-            raise ValueError(f"split column {col!r} produced no train rows")
-        return frames
-
-    if split_cfg.mode == "time":
-        ordered = df.sort_values(split_cfg.time_col)
-        n = len(ordered)
-        n_test = int(round(n * split_cfg.test_size))
-        n_valid = int(round(n * split_cfg.valid_size))
-        n_train = n - n_test - n_valid
-        if n_train <= 0:
-            raise ValueError("time split leaves no training rows; lower valid_size/test_size")
-        frames = {"train": ordered.iloc[:n_train].copy()}
-        if n_valid:
-            frames["valid"] = ordered.iloc[n_train:n_train + n_valid].copy()
-        if n_test:
-            frames["test"] = ordered.iloc[n_train + n_valid:].copy()
-        return frames
-
-    # random
-    rng = np.random.default_rng(seed)
-    if split_cfg.stratify:
-        return _stratified_split(df, cfg, rng)
-    draw = rng.random(len(df))
-    test_cut = split_cfg.test_size
-    valid_cut = test_cut + split_cfg.valid_size
-    frames = {"test": df.loc[draw < test_cut].copy()}
-    frames["valid"] = df.loc[(draw >= test_cut) & (draw < valid_cut)].copy()
-    frames["train"] = df.loc[draw >= valid_cut].copy()
-    frames = {k: v for k, v in frames.items() if len(v)}
-    if "train" not in frames:
-        raise ValueError("random split left no training rows")
-    return frames
-
-
-def _stratified_split(df: pd.DataFrame, cfg: DataConfig, rng: np.random.Generator) -> Dict[str, pd.DataFrame]:
-    """Random split that preserves the target rate in every split.
-
-    Matters whenever the outcome is rare: an unstratified draw can hand valid or
-    test a materially different base rate, which shows up as noise in the Gini
-    comparison the whole pipeline exists to make.
-    """
-    split_cfg = cfg.split
-    labels = pd.Series("train", index=df.index, dtype=object)
-    for _, index in df.groupby(df[cfg.target], sort=False).groups.items():
-        index = np.asarray(index)
-        shuffled = index[rng.permutation(len(index))]
-        n_test = int(round(len(index) * split_cfg.test_size))
-        n_valid = int(round(len(index) * split_cfg.valid_size))
-        labels.loc[shuffled[:n_test]] = "test"
-        labels.loc[shuffled[n_test:n_test + n_valid]] = "valid"
-    frames = {name: df.loc[labels == name].copy() for name in SPLITS}
-    frames = {k: v for k, v in frames.items() if len(v)}
-    if "train" not in frames:
-        raise ValueError("stratified split left no training rows")
-    return frames
-
-
-def build_dataset(cfg: Config) -> Dataset:
-    """Read whatever the config points at and produce a cleaned ``Dataset``.
-
-    ``data.paths`` (already-split inputs) takes precedence over ``data.path``.
-    """
-    if cfg.data.paths:
-        logger.info("reading %d pre-split input(s); data.split is ignored", len(cfg.data.paths))
-        frames = {name: read_frame(cfg.data, path) for name, path in cfg.data.paths.items()}
-        return prepare_dataset_from_frames(frames, cfg)
-    return prepare_dataset(read_frame(cfg.data), cfg)
-
-
-def prepare_dataset(df: pd.DataFrame, cfg: Config) -> Dataset:
-    """Build a ``Dataset`` from one in-memory table, splitting it per ``data.split``.
-
-    This is the entry point for a discover -> verify loop, where candidate
-    features are engineered in the session and never round-trip through a file.
-    """
-    if cfg.data.nrows and len(df) > cfg.data.nrows:
-        df = df.head(cfg.data.nrows)
-    if cfg.data.target not in df.columns:
-        raise KeyError(f"target column {cfg.data.target!r} not in data")
-    return _assemble(assign_splits(df, cfg.data, cfg.run.seed), cfg)
-
-
-def prepare_dataset_from_frames(frames: Dict[str, pd.DataFrame], cfg: Config) -> Dataset:
-    """Build a ``Dataset`` from inputs that are already split.
-
-    Use this when train/valid/test are prepared upstream - separate files, or
-    separate frames in memory. No splitting happens and ``data.split`` is unused;
-    the frames are taken as-is, so any out-of-time or sampling logic upstream is
-    preserved exactly.
-    """
-    unknown = sorted(set(frames) - set(SPLITS))
-    if unknown:
-        raise ValueError(f"frame names must be train/valid/test, got extra: {unknown}")
-    if "train" not in frames or not len(frames["train"]):
-        raise ValueError("a non-empty 'train' frame is required")
-    for name, frame in frames.items():
-        if cfg.data.target not in frame.columns:
-            raise KeyError(f"target column {cfg.data.target!r} not in the {name!r} frame")
-    ordered = {name: frames[name] for name in SPLITS if name in frames and len(frames[name])}
-    return _assemble(ordered, cfg)
 
 
 def add_missing_indicators(
@@ -313,35 +281,3 @@ def add_missing_indicators(
                 ", ".join(f"{n} ({r:.1%})" for _, n, r in made[:5])
                 + (", ..." if len(made) > 5 else ""))
     return prepared, base, new
-
-
-def _assemble(frames: Dict[str, pd.DataFrame], cfg: Config) -> Dataset:
-    """Resolve features against train, then subset and clean every split alike."""
-    reference = frames["train"]
-    base, new = resolve_features(reference, cfg.features, cfg.data)
-    keep = list(dict.fromkeys(
-        base + new + [cfg.data.target]
-        + list(cfg.data.id_cols)
-        + [c for c in (cfg.data.weight_col, cfg.data.split.column, cfg.data.split.time_col)
-           if c and c in reference.columns]
-    ))
-
-    prepared = {}
-    for name, frame in frames.items():
-        absent = [c for c in keep if c not in frame.columns]
-        if absent:
-            raise KeyError(f"the {name!r} split is missing column(s) present in train: {absent}")
-        prepared[name] = clean_missing(frame[keep], base + new, cfg.data.missing_values)
-
-    # After cleaning, so indicators capture sentinels and infinities too.
-    prepared, base, new = add_missing_indicators(prepared, base, new, cfg)
-
-    dataset = Dataset(
-        frames=prepared,
-        target=cfg.data.target,
-        base_features=base,
-        new_features=new,
-        weight_col=cfg.data.weight_col,
-    )
-    logger.info("dataset ready: %s", dataset.describe())
-    return dataset
