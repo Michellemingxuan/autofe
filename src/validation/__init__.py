@@ -14,6 +14,7 @@ from validation.data import (
     prepare_dataset_from_frames,
 )
 from validation.pipeline import Pipeline, PipelineResult, run_pipeline
+from validation.preflight import PreflightReport, run_preflight
 
 __all__ = [
     "Config",
@@ -24,5 +25,7 @@ __all__ = [
     "Pipeline",
     "PipelineResult",
     "run_pipeline",
+    "PreflightReport",
+    "run_preflight",
 ]
 __version__ = "0.1.0"

@@ -24,6 +24,8 @@ import yaml
 from validation.config import Config, load_config
 from validation.data import Dataset, build_dataset, prepare_dataset_from_frames
 from validation.logging_utils import get_logger, setup_logging, timed
+from validation.preflight import run_preflight
+from validation.status import RunStatus, render_plan, stage_specs
 from validation.stages.analysis import AnalysisResult, run_analysis
 from validation.stages.data_quality import DataQualityResult, run_data_quality
 from validation.stages.feature_selection import (
@@ -91,6 +93,10 @@ class Pipeline:
         path.mkdir(parents=True, exist_ok=True)
         return path
 
+    def plan(self) -> str:
+        """Return the resolved stage graph without loading data or training."""
+        return render_plan(self.cfg)
+
     def run(
         self,
         frames: Optional[Dict[str, pd.DataFrame]] = None,
@@ -108,114 +114,174 @@ class Pipeline:
         setup_logging(self.cfg.run.log_level, self.output_dir / "run.log")
         start = time.perf_counter()
         logger.info("run %r -> %s", self.cfg.run.name, self.output_dir)
+        logger.info("pipeline: %s", self.plan())
         self._write_yaml("config.resolved.yaml", self.cfg.to_dict())
+        tracker = RunStatus(self.output_dir, self.cfg.run.name, stage_specs(self.cfg))
+        logger.info("structured run status: %s", self.output_dir / "pipeline_status.json")
 
         result = PipelineResult(config=self.cfg, output_dir=self.output_dir)
+        try:
+            with tracker.stage("data") as stage, timed(logger, "stage 0: data"):
+                if frames is not None and dataset is not None:
+                    raise ValueError("pass at most one of frames/dataset, not both")
+                if dataset is None:
+                    dataset = (prepare_dataset_from_frames(frames, self.cfg) if frames is not None
+                               else build_dataset(self.cfg))
+                stage.detail = ", ".join(
+                    f"{name} {len(frame):,} rows" for name, frame in dataset.frames.items())
+                preflight = run_preflight(self.cfg, dataset)
+                self._write_json("preflight.json", preflight.to_dict())
+                for check in preflight.checks:
+                    stage.check(check.name, check.status == "PASS", check.detail,
+                                severity="warning" if check.status == "WARN" else "error")
+                failures = [check for check in preflight.checks if check.status == "FAIL"]
+                if failures:
+                    raise ValueError("preflight failed: " + "; ".join(
+                        f"{check.name}: {check.detail}" for check in failures))
 
-        with timed(logger, "stage 0: data"):
-            if frames is not None and dataset is not None:
-                raise ValueError("pass at most one of frames/dataset, not both")
-            if dataset is None:
-                dataset = (prepare_dataset_from_frames(frames, self.cfg) if frames is not None
-                           else build_dataset(self.cfg))
+            with tracker.stage("discovery") as stage:
+                if self.cfg.discovery.enabled:
+                    with timed(logger, "stage 0.5: feature discovery"):
+                        # Imported here, not at module scope, to avoid an import cycle and
+                        # keep LLM dependencies optional for validation-only installs.
+                        from discovery.stage import run_discovery_stage
 
-        if self.cfg.discovery.enabled:
-            with timed(logger, "stage 0.5: feature discovery"):
-                # Imported here, not at module scope, for two reasons: `discovery`
-                # imports `validation`, so a top-level import would close a cycle;
-                # and its LLM dependencies are an optional extra, so a
-                # validation-only install must not need them present.
-                from discovery.stage import run_discovery_stage
+                        discovered = run_discovery_stage(self.cfg, dataset, self.output_dir)
+                        dataset = discovered.dataset
+                        result.discovery = discovered
+                        if discovered.records:
+                            self._write_csv("discovered_features.csv", discovered.to_frame())
+                        self._write_json("discovery_summary.json", discovered.summary())
+                        logger.info("discovery contributed %d feature(s): %s",
+                                    len(discovered.kept_features),
+                                    ", ".join(discovered.kept_features) or "none")
+                        stage.detail = (f"{len(discovered.records)} proposed, "
+                                        f"{len(discovered.kept_features)} forwarded")
+                        stage.check("loop stopped explicitly", bool(discovered.stopped_because),
+                                    discovered.stopped_because)
+                else:
+                    stage.skip("disabled in config")
 
-                discovered = run_discovery_stage(self.cfg, dataset, self.output_dir)
-                dataset = discovered.dataset
-                result.discovery = discovered
-                if discovered.records:
-                    # The ledger: what was proposed, why, and what it scored.
-                    self._write_csv("discovered_features.csv", discovered.to_frame())
-                self._write_json("discovery_summary.json", discovered.summary())
-                logger.info("discovery contributed %d feature(s): %s",
-                            len(discovered.kept_features),
-                            ", ".join(discovered.kept_features) or "none")
+            # After discovery, so its candidates are measured at every later stage.
+            candidates = list(dataset.new_features)
 
-        # After discovery, so the candidate set it contributed is measured at
-        # every later stage exactly like a hand-written one.
-        candidates = list(dataset.new_features)   # before any stage narrows them
+            with tracker.stage("data_quality") as stage, timed(logger, "stage 1: data quality & stability"):
+                dq = run_data_quality(dataset, self.cfg)
+                if dq.skipped:
+                    stage.skip("disabled in config")
+                else:
+                    if not dq.report.empty:
+                        self._write_csv("data_quality_report.csv", dq.report)
+                    if dq.failed and self.cfg.data_quality.drop_failed and self.cfg.gates_enforced:
+                        failed = set(dq.failed)
+                        dataset = dataset.with_features(
+                            [f for f in dataset.base_features if f not in failed],
+                            [f for f in dataset.new_features if f not in failed],
+                        )
+                        logger.info("dropped %d feature(s) failing data quality", len(failed))
+                    elif dq.failed:
+                        logger.info("data quality flagged %d feature(s); keeping them (gates open)",
+                                    len(dq.failed))
+                    stage.detail = f"{len(dq.report)} checked, {len(dq.failed)} flagged"
+                    stage.check("quality report produced", not dq.report.empty)
+                    stage.check("all features passed thresholds", not dq.failed,
+                                f"{len(dq.failed)} flagged", severity="warning")
+            result.data_quality = dq
 
-        with timed(logger, "stage 1: data quality & stability"):
-            dq = run_data_quality(dataset, self.cfg)
-            if not dq.report.empty:
-                self._write_csv("data_quality_report.csv", dq.report)
-            if dq.failed and self.cfg.data_quality.drop_failed and self.cfg.gates_enforced:
-                failed = set(dq.failed)
-                dataset = dataset.with_features(
-                    [f for f in dataset.base_features if f not in failed],
-                    [f for f in dataset.new_features if f not in failed],
-                )
-                logger.info("dropped %d feature(s) failing data quality", len(failed))
-            elif dq.failed:
-                logger.info("data quality flagged %d feature(s); keeping them (gates open)",
-                            len(dq.failed))
-        result.data_quality = dq
+            with tracker.stage("feature_selection") as stage, timed(logger, "stage 2: feature selection"):
+                fs = run_feature_selection(dataset, self.cfg)
+                if fs.skipped:
+                    stage.skip("disabled in config; all candidates forwarded")
+                self._write_feature_selection(fs)
+                if self.cfg.gates_enforced:
+                    carried = fs.selected
+                else:
+                    carried = list(dataset.new_features)
+                    if fs.dropped:
+                        logger.info("selection flagged %d candidate(s); carrying all %d forward "
+                                    "(gates open)", len(fs.dropped), len(carried))
+                dataset = dataset.with_features(dataset.base_features, carried)
+                if not fs.skipped:
+                    stage.detail = f"{len(fs.selected)} selected, {len(fs.dropped)} flagged"
+                    stage.check("every candidate received a decision",
+                                len(fs.selected) + len(fs.dropped) == len(candidates),
+                                f"{len(candidates)} candidate(s)")
+            result.feature_selection = fs
+            result.dataset = dataset
 
-        with timed(logger, "stage 2: feature selection"):
-            fs = run_feature_selection(dataset, self.cfg)
-            self._write_feature_selection(fs)
-            if self.cfg.gates_enforced:
-                carried = fs.selected
-            else:
-                carried = list(dataset.new_features)   # measure, but remove nothing
-                if fs.dropped:
-                    logger.info("selection flagged %d candidate(s); carrying all %d forward "
-                                "(gates open)", len(fs.dropped), len(carried))
-            dataset = dataset.with_features(dataset.base_features, carried)
-        result.feature_selection = fs
-        result.dataset = dataset
+            selection_verdicts = build_verdict_table(candidates, fs, dq_failed=dq.failed)
+            self._write_csv("feature_selection_verdicts.csv", selection_verdicts)
+            logger.info("selection: %d of %d candidate(s) carried forward",
+                        int((selection_verdicts["verdict"] == "IN").sum()) if len(selection_verdicts) else 0,
+                        len(candidates))
 
-        selection_verdicts = build_verdict_table(candidates, fs, dq_failed=dq.failed)
-        self._write_csv("feature_selection_verdicts.csv", selection_verdicts)
-        logger.info("selection: %d of %d candidate(s) carried forward",
-                    int((selection_verdicts["verdict"] == "IN").sum()) if len(selection_verdicts) else 0,
-                    len(candidates))
+            if not dataset.new_features:
+                logger.warning("no new features survived selection; only the baseline will be informative")
 
-        if not dataset.new_features:
-            logger.warning("no new features survived selection; only the baseline will be informative")
+            with tracker.stage("modeling") as stage, timed(logger, "stage 3: model builds"):
+                models, tuning_log = run_modeling(dataset, self.cfg,
+                                                  model_dir=self.output_dir / "models")
+                self._write_csv("tuning_trials.csv", tuning_log)
+                failed_models = [m for m in models if m.error]
+                stage.detail = f"{len(models) - len(failed_models)}/{len(models)} variants succeeded"
+                stage.check("all variants trained", not failed_models,
+                            ", ".join(m.name for m in failed_models) or "all succeeded")
+                stage.check("baseline model available",
+                            any(m.name == self.cfg.analysis.baseline_variant and not m.error for m in models),
+                            self.cfg.analysis.baseline_variant)
+            result.models = models
 
-        with timed(logger, "stage 3: model builds"):
-            models, tuning_log = run_modeling(dataset, self.cfg, model_dir=self.output_dir / "models")
-            self._write_csv("tuning_trials.csv", tuning_log)
-        result.models = models
+            with tracker.stage("analysis") as stage, timed(logger, "stage 4: outcome analysis"):
+                analysis = run_analysis(dataset, self.cfg, models)
+                self._write_analysis(analysis)
+                stage.detail = f"{len(analysis.comparison)} variants compared"
+                stage.check("comparison table produced", not analysis.comparison.empty)
+                expected = {s for s in self.cfg.analysis.metrics_on if s in dataset.available_splits()}
+                measured = set(analysis.metrics["split"]) if not analysis.metrics.empty else set()
+                stage.check("requested available splits measured", expected <= measured,
+                            ", ".join(sorted(measured)) or "none")
+                if self.cfg.analysis.shap.enabled:
+                    stage.check("SHAP ranking produced", not analysis.shap_ranking.empty,
+                                severity="warning")
+            result.analysis = analysis
 
-        with timed(logger, "stage 4: outcome analysis"):
-            analysis = run_analysis(dataset, self.cfg, models)
-            self._write_analysis(analysis)
-        result.analysis = analysis
+            with tracker.stage("verdict") as stage, timed(logger, "stage 5: verdict"):
+                if self.cfg.verdict.enabled:
+                    result.verdicts, result.batch = run_verdict(
+                        candidates, self.cfg, dq=dq, fs=fs, analysis=analysis)
+                    self._write_csv("candidate_verdicts.csv", result.verdicts)
+                    self._write_json("batch_verdict.json", result.batch.summary())
+                    stage.detail = f"{result.batch.n_passed}/{result.batch.n_candidates} passed"
+                    stage.check("every candidate received a verdict",
+                                len(result.verdicts) == len(candidates),
+                                f"{len(result.verdicts)}/{len(candidates)}")
+                    not_evaluable = int((result.verdicts == "not evaluable").sum().sum()) \
+                        if not result.verdicts.empty else 0
+                    stage.check("all enabled gates were evaluable", not_evaluable == 0,
+                                f"{not_evaluable} unavailable result(s)", severity="warning")
+                else:
+                    result.verdicts = selection_verdicts
+                    stage.skip("disabled in config")
 
-        with timed(logger, "stage 5: verdict"):
-            if self.cfg.verdict.enabled:
-                result.verdicts, result.batch = run_verdict(
-                    candidates, self.cfg, dq=dq, fs=fs, analysis=analysis)
-                self._write_csv("candidate_verdicts.csv", result.verdicts)
-                self._write_json("batch_verdict.json", result.batch.summary())
-            else:
-                result.verdicts = selection_verdicts
+            if result.discovery is not None and self.cfg.discovery.history_path:
+                from discovery.stage import append_history
 
-        if result.discovery is not None and self.cfg.discovery.history_path:
-            # Only now does each proposal have its final verdict - the thing the
-            # next run's prompt most needs to know about it.
-            from discovery.stage import append_history
+                added = append_history(self.cfg.discovery.history_path, result.discovery,
+                                       result.verdicts,
+                                       run=f"{self.cfg.run.name}/{self.output_dir.name}")
+                logger.info("discovery history: %d proposal(s) and their verdicts appended "
+                            "to %s", added, self.cfg.discovery.history_path)
 
-            added = append_history(self.cfg.discovery.history_path, result.discovery,
-                                   result.verdicts,
-                                   run=f"{self.cfg.run.name}/{self.output_dir.name}")
-            logger.info("discovery history: %d proposal(s) and their verdicts appended "
-                        "to %s", added, self.cfg.discovery.history_path)
-
-        result.elapsed_seconds = time.perf_counter() - start
-        self._write_json("summary.json", {**result.summary(), "environment": _environment()})
-        self._write_report(result)
-        logger.info("run finished in %.1fs; artifacts in %s", result.elapsed_seconds, self.output_dir)
-        return result
+            result.elapsed_seconds = time.perf_counter() - start
+            self._write_json("summary.json", {**result.summary(), "environment": _environment()})
+            self._write_report(result)
+            tracker.finish()
+            logger.info("run finished in %.1fs; artifacts in %s", result.elapsed_seconds, self.output_dir)
+            return result
+        except Exception as exc:
+            if tracker.status != "failed":
+                tracker.fail(exc)
+            raise
 
     # ------------------------------------------------------------------ #
     # Artifacts

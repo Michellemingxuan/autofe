@@ -50,26 +50,47 @@ pip install -e ".[dev]"        # or: pip install -r requirements.txt
 XGBoost is pinned to **1.7.6**. On an existing environment where numpy/scipy are
 already set, `pip install --no-deps xgboost==1.7.6` avoids disturbing them.
 
-The demo downloads from `archive.ics.uci.edu`. In a private environment with no
-egress, point `data.path` at a local table instead - nothing else in the pipeline
-reaches the network.
+The preparation notebooks download from `archive.ics.uci.edu`. In a private
+environment with no egress, prepare local train/valid/test tables and point
+`data.paths` at them instead; validation itself does not reach the network.
 
 ## Run
 
 ```bash
-python data/bankruptcy/prepare.py             # downloads the demo dataset
+# Run data/bankruptcy/prepare.ipynb once to build the fixed split files.
 autofe -c configs/bankruptcy.yaml                      # or: python -m validation.cli -c ...
 autofe -c configs/bankruptcy.yaml --set run.n_jobs=8   # dotted overrides, repeatable
+autofe -c configs/bankruptcy.yaml --plan               # show the stages; load nothing
+autofe -c configs/bankruptcy.yaml --check              # validate wiring/data; train nothing
 ```
 
-Two demos ship with the repo:
+During a run, the terminal prints a compact pipeline board. The same transitions
+are persisted in `run.log`. Each stage also records its duration, checks,
+warning/failure reason, and summary in `pipeline_status.json`; a failed run
+therefore still says exactly where it stopped.
+
+For a new use case, generate the small config instead of copying a demo's
+domain-specific discovery settings:
+
+```bash
+autofe init configs/churn.yaml \
+  --train data/churn/train.csv --valid data/churn/valid.csv --test data/churn/test.csv \
+  --target churned --task binary --id customer_id --new-prefix cand_
+autofe -c configs/churn.yaml --check
+autofe -c configs/churn.yaml
+```
+
+The generated config uses safe defaults, infers incumbent numeric columns, and
+includes the model variants needed by the per-candidate verdict. Add advanced
+settings only when the use case needs them.
+
+Three demos ship with the repo:
 
 | Config | Data | Purpose |
 | --- | --- | --- |
 | `configs/bankruptcy.yaml` | UCI Taiwanese Bankruptcy Prediction (real, binary, 3.2% event rate) | Realistic end-to-end run; rare events, all-continuous ratios |
 | `configs/malware.yaml` | UCI NATICUSdroid Android permissions (29,332 apps, 50% positive) | Balanced target, and every feature a 0/1 flag - so a useful feature has to combine flags, not transform one |
 | `configs/myocardial.yaml` | UCI Myocardial Infarction Complications (1,700 patients, 23% positive) | Small, 7.6% of cells missing, 98 of 110 features coded categories - the hard case |
-| `configs/example_synthetic.yaml` | `data/synthetic/make.py` (regression, known ground truth) | Fast sanity check that the screens find what is really there |
 
 From Python:
 
@@ -86,10 +107,11 @@ Candidates engineered in a session never need to round-trip through a file:
 ```python
 from validation import Pipeline, load_config
 
-frame["cand_x"] = frame["a"] / frame["b"]
+frames = {name: part.assign(cand_x=part["a"] / part["b"])
+          for name, part in frames.items()}
 cfg = load_config("configs/bankruptcy.yaml")
 cfg.features.new = ["cand_x"]
-result = Pipeline(cfg).run(frame=frame)     # or run(dataset=...) for a prebuilt one
+result = Pipeline(cfg).run(frames=frames)   # or run(dataset=...) for a prebuilt one
 ```
 
 **Start here:** [`notebooks/usage.ipynb`](notebooks/usage.ipynb)
@@ -102,7 +124,7 @@ the stage-by-stage API, and a worked discover -> verify -> keep-or-shift-out loo
 6,819 Taiwanese companies (1999-2009), 95 financial ratios, 3.2% bankruptcy rate.
 The scenario is that an incumbent model already uses the profitability / leverage
 / growth ratios and a team proposes adding the **cash-flow family** (11 ratios).
-`data/bankruptcy/prepare.py` also plants two controls among the candidates so the
+`data/bankruptcy/prepare.ipynb` also plants two controls among the candidates so the
 screens have something known to catch: `cand_dup_roa_c` (a near-copy of an
 incumbent) and `cand_noise` (pure noise).
 
@@ -135,7 +157,9 @@ Two caveats that the demo makes concrete, and that apply to any run:
 | Path | What it does |
 | --- | --- |
 | `src/validation/config.py` | Typed config dataclasses; unknown keys are errors, not silent no-ops |
-| `src/validation/data.py` | Load, resolve base/new feature lists, clean sentinels, split |
+| `src/validation/data.py` | Load fixed splits, resolve base/new feature lists, clean sentinels |
+| `src/validation/preflight.py` | Fast checks for data, leakage, model, and verdict contracts |
+| `src/validation/status.py` | Terminal graph plus live HTML/JSON run state |
 | `src/validation/parallel.py` | The only place that talks to joblib; also budgets XGBoost threads |
 | `src/validation/metrics.py` | Adjusted Gini, decile accuracy, capture rate |
 | `src/validation/stages/data_quality.py` | **Placeholder** — port AIME_DataStability here |
@@ -155,19 +179,16 @@ Two caveats that the demo makes concrete, and that apply to any run:
 configs/            run configs - one file fully describes a run
 data/               one folder per use case - the script and its output together
   bankruptcy/
-    prepare.py      downloads + shapes the UCI table
+    prepare.ipynb   downloads, shapes, checks, and splits the UCI table
     raw/            the downloaded archive, before shaping  (ignored)
-    modeling.parquet                                        (ignored)
+    train.csv valid.csv test.csv                            (ignored)
     column_mapping.csv
     column_descriptions.json   what each column means, for a discovery run
-  malware/          same shape: prepare.py + mapping + descriptions
+  malware/          same shape: prepare.ipynb + mapping + descriptions
   myocardial/
-  synthetic/
-    make.py         generates the ground-truth table
-    modeling.parquet                                        (ignored)
 src/validation/     the pipeline: data, quality, screening, models, verdict
 src/discovery/      proposing candidate features and screening them cheaply
-src/preprocessing/  what every data/<use case>/prepare.py shares
+src/preprocessing/  what every data/<use case>/prepare.ipynb shares
 notebooks/          executed walkthrough
 outputs/            one timestamped directory per run
 tests/
@@ -178,42 +199,37 @@ its parts side by side, which is exactly the shape `data.paths` expects:
 
 ```
 data/<use case>/
-    modeling.parquet                    # one table, pipeline splits it
-    train.parquet valid.parquet test.parquet   # or already split
+    train.csv valid.csv test.csv        # fixed split; parquet works too
 ```
 
-Both prep scripts read their use case's config for the target, id column,
+Each preparation notebook reads its use case's config for the target, id column,
 candidate list and output path, so those are declared once in YAML rather than
 repeated on a command line. The scripts own only what a config cannot express —
 how the raw source becomes a table — and then verify that what they built matches
 what the config declares.
 
-The tables themselves are git-ignored — `modeling.parquet`, any pre-split
-train/valid/test parquet, and `raw/` — so nothing large or confidential is
+The tables themselves are git-ignored — train/valid/test CSV or parquet files,
+screen samples, few-shot rows, and `raw/` — so nothing large or confidential is
 committed. What is tracked is everything needed to rebuild them: each use case's
-`prepare.py`, its `column_mapping.csv`, and its `column_descriptions.json`.
-Those are code and documentation, they must survive a fresh clone, and
-`data/synthetic/make.py` is imported by the test suite.
+`prepare.ipynb`, its `column_mapping.csv`, and its `column_descriptions.json`.
+Those are code and documentation, so they survive a fresh clone.
 
-So a fresh clone runs `python data/<use case>/prepare.py` once, which downloads
-the source, rebuilds the table and checks it against the config.
+So a fresh clone executes `data/<use case>/prepare.ipynb` once; it downloads the
+source, rebuilds the fixed splits, and checks them against the config.
 
 Paths in a config are relative to where you run from, so run from the project
 root (the notebook does `os.chdir(ROOT)` in its first cell for the same reason).
 
-## Inputs: four shapes, same Dataset
+## Inputs: two shapes, same Dataset
 
 | Your data | Config | Call |
 | --- | --- | --- |
-| One table, pipeline splits it | `data.path` + `data.split.mode: random \| time` | `run()` |
-| One table with a train/valid/test column | `data.path` + `split.mode: column` | `run()` |
 | **Already split, separate files** | `data.paths: {train:…, valid:…, test:…}` | `run()` |
 | **Already split, in memory** | — | `run(frames={"train": df, …})` |
-| One frame in memory | — | `run(frame=df)` |
 
-When `data.paths` is set it wins over `data.path` and the whole `split` block is
-ignored — the frames are used exactly as given, so out-of-time or sampling logic
-you applied upstream is preserved. Features are resolved against `train`, and a
+Splitting is deliberately an upstream preparation decision: the frames are used
+exactly as given, so out-of-time or sampling logic is stable across repeated runs.
+Features are resolved against `train`, and a
 column present in train but missing from another split is an error, not a silent
 NaN column.
 
@@ -430,6 +446,8 @@ Each run writes `outputs/<run name>/<timestamp>/`:
 ```
 report.md                              human-readable summary
 summary.json                           machine-readable summary + library versions
+pipeline_status.json                   stage state, timings, checks and errors
+preflight.json                         resolved data/config contract checks
 config.resolved.yaml                   the fully resolved config
 run.log
 data_quality_report.csv
@@ -450,8 +468,8 @@ models/<variant>.json
 ## Using it as a discovery loop
 
 The pipeline is built to be called repeatedly: propose candidates, verify them,
-then either keep them or shift out and propose something else. `Pipeline.run(frame=...)`
-takes an in-memory table, so a round is one function call — see section 4 of the
+then either keep them or shift out and propose something else. `Pipeline.run(frames=...)`
+takes in-memory split tables, so a round is one function call — see section 4 of the
 notebook for a working `verify()` and a two-round ledger.
 
 What the demo loop turned up, which is worth knowing before trusting a round:
