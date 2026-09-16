@@ -26,7 +26,7 @@ from pathlib import Path
 from typing import Any, Sequence
 
 from discovery.llm import call_llm
-from discovery.prompt import extract_blocks
+from discovery.prompt import extract_blocks, format_task_context
 
 __all__ = ["LLMSettings", "PromptContext", "StrategyBase", "TwoPhaseProposer", "parse_ideas"]
 
@@ -86,6 +86,8 @@ class PromptContext:
     column_contexts: list[str]
     metric_name: str
     metric_explanation: str = ""
+    #: Domain background for the task; rendered as its own block, or "" when unset.
+    task_context: str = ""
     n_rows: int | None = None
     redundancy_max_abs: float | None = None
     target: str = "the target"
@@ -99,6 +101,12 @@ class PromptContext:
             self.column_contexts = [self.column_contexts]
         if not self.column_contexts:
             raise ValueError("PromptContext needs at least one column block")
+
+    @property
+    def task_context_block(self) -> str:
+        """The domain block, with the blank lines that separate it, or ""."""
+        block = format_task_context(self.task_context)
+        return f"\n{block}\n" if block else ""
 
     def context_for(self, round_index: int) -> str:
         """The column block for this round, cycling if rounds outrun batches."""

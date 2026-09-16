@@ -4,8 +4,7 @@ Each dataset's prepare notebook runs :func:`build_shot_batches` on its train
 split and saves those rows with a batch column; a discovery run reads that file back
 through ``discovery.few_shot_path`` and shows batch r in round r.
 
-The rows picked here fill the ``Samples [...]`` line under every column of the
-prompt, so they are the only concrete data a language model ever sees of the
+The rows picked here are printed as the example rows of the prompt, so they are the only concrete data a language model ever sees of the
 table. A uniform draw is a bad way to choose them twice over:
 
 * **Class coverage.** At a 3% positive rate a 32-row draw usually contains zero

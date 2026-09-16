@@ -17,6 +17,8 @@ data/*/few_shot.csv
 data/*/screen_train.csv
 data/*/screen_valid.csv
 data/*/raw/
+# Domain context for a private use case: the prompt reads it, git never sees it.
+data/*/task_context.md
 # Kept on purpose: prepare.ipynb, column_mapping.csv and column_descriptions.json.
 # The descriptions are what a discovery run reads to know what a column means,
 # and they are small, reviewable, and awkward to regenerate by hand.

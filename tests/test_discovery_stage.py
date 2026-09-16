@@ -220,6 +220,17 @@ def test_a_stale_few_shot_file_is_refused(cfg, dataset, tmp_path, fake_llm):
         run_discovery_stage(cfg, dataset)
 
 
+def test_the_task_context_file_reaches_the_prompt(cfg, dataset, tmp_path, fake_llm):
+    """A page of domain background lives in a file; the run reads it in."""
+    path = tmp_path / "task_context.md"
+    path.write_text("Ratios of a to b are the known driver.", encoding="utf-8")
+    cfg.discovery.task_context_path = str(path)
+    run_discovery_stage(cfg, dataset)
+    prompt = fake_llm[-1]["prompt"]
+    assert "Domain context for this task" in prompt
+    assert "Ratios of a to b are the known driver." in prompt
+
+
 def test_the_prompt_asks_for_the_batch_size(cfg, dataset, fake_llm):
     run_discovery_stage(cfg, dataset)
     assert "3 additive columns" in fake_llm[0]["prompt"]
@@ -403,7 +414,8 @@ def three_batches(tmp_path, dataset):
 def test_the_example_rows_keep_rotating_across_runs(cfg, dataset, tmp_path,
                                                     three_batches, fake_llm):
     def shown(prompt):
-        return [line for line in prompt.splitlines() if "Samples [" in line]
+        return [l for l in prompt.splitlines()
+                if l.startswith("| r") and not l.startswith("| row")]
 
     cfg.discovery.few_shot_path = three_batches
     run_discovery_stage(cfg, dataset)                            # round 1: batch 0

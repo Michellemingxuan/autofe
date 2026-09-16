@@ -46,6 +46,11 @@ discovery:
   enabled: false
   strategy: caafe          # caafe | elfgym | ferg | featllm | promptfe
   task_description: ""     # TODO: what a row is, the population, what the target means
+  # Domain background, fed to the proposer as its own block ahead of the columns:
+  # what the SBS book is, what the CDSS score means, which quantities must not be
+  # mixed. Kept in a file rather than here because it is a page long and belongs
+  # to the private environment - the path is gitignored.
+  task_context_path: data/cdss_us_sbs/task_context.md
   batch_size: 5
   max_rounds: 2
   screen_data: files       # splits | files - files: the samples prepare.ipynb draws

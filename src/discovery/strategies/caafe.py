@@ -44,6 +44,7 @@ class CaafeProposer(StrategyBase):
             self.context.context_for(round_index),
             format_history(history, self.context.metric_name),
             self.context.metric_name,
+            task_context=self.context.task_context,
             metric_explanation=self.context.metric_explanation,
             already_proposed=proposed_names,
             n_rows=self.context.n_rows,

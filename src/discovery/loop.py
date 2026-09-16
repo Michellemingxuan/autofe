@@ -65,6 +65,7 @@ class Candidate:
     display_name: str | None = None
     description: str | None = None
     rationale: str | None = None
+    evidence: str | None = None            # the example rows the proposer cited
     input_columns: list[str] = field(default_factory=list)
     expression: str | None = None
     screen: ScreenResult | None = None
@@ -86,6 +87,7 @@ class Candidate:
             "display_name": self.display_name,
             "description": self.description,
             "rationale": self.rationale,
+            "evidence": self.evidence,
             "input_columns": ", ".join(self.input_columns),
             "expression": self.expression,
             "base_score": screen.get("base_score"),

@@ -278,6 +278,12 @@ class DiscoveryConfig:
     enabled: bool = False
     strategy: str = "caafe"           # caafe | elfgym | ferg | featllm | promptfe
     task_description: str = ""        # what the dataset is, in domain terms
+    # Domain background for the task - how the score is used, what the incumbent
+    # model leans on, which quantities must not be mixed. Fed to the proposer as
+    # its own block. Inline for a line or two; a path when it is a page, or when
+    # it must stay out of the repository.
+    task_context: str = ""
+    task_context_path: Optional[str] = None
 
     # Each round asks for a batch and screens it one feature at a time, folding
     # every outcome into the history the next round sees.

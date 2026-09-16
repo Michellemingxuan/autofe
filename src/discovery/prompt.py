@@ -30,6 +30,7 @@ import pandas as pd
 __all__ = [
     "CandidateText",
     "describe_columns",
+    "format_task_context",
     "low_variation_columns",
     "format_history",
     "build_prompt",
@@ -48,6 +49,7 @@ class CandidateText:
     display_name: str | None = None
     description: str | None = None
     rationale: str | None = None
+    evidence: str | None = None
     input_columns: list[str] = field(default_factory=list)
     expression: str | None = None
 
@@ -56,6 +58,7 @@ class CandidateText:
             "display_name": self.display_name,
             "description": self.description,
             "rationale": self.rationale,
+            "evidence": self.evidence,
             "input_columns": list(self.input_columns),
             "expression": self.expression,
         }
@@ -99,24 +102,89 @@ def low_variation_columns(
     return found
 
 
+def _row_tables(
+    sample: pd.DataFrame,
+    columns: Sequence[str],
+    label: str | None = None,
+    max_width: int = 240,
+) -> list[str]:
+    """
+    The shown rows as rows: markdown tables, split so that a line stays readable.
+
+    Wide chunks on purpose: every split is a pair of columns the reader has to
+    join by row label, and joining is exactly what a proposal needs to do.
+
+    Every table repeats the row label, so one record can be followed across the
+    splits - which is the whole point of showing rows rather than columns.
+    """
+    labels = [f"r{i}" for i in range(1, len(sample) + 1)]
+    cells = {c: [_format_value(v) for v in sample[c].tolist()] for c in columns}
+    # The outcome leads every table, so a record can be read against its class
+    # without scrolling back - the comparison the rows exist to support.
+    classes = ([_format_value(v) for v in sample[label].tolist()]
+               if label is not None and label in sample.columns else None)
+
+    chunks: list[list[str]] = []
+    current: list[str] = []
+    width = 0
+    for column in columns:
+        needed = max([len(column), *(len(v) for v in cells[column])]) + 3
+        if current and width + needed > max_width:
+            chunks.append(current)
+            current, width = [], 0
+        current.append(column)
+        width += needed
+    if current:
+        chunks.append(current)
+
+    lead = ["row"] + ([label] if classes is not None else [])
+    tables = []
+    for chunk in chunks:
+        header = "| " + " | ".join([*lead, *chunk]) + " |"
+        rule = "| --- " * (len(lead) + len(chunk)) + "|"
+        body = []
+        for i, row_label in enumerate(labels):
+            front = [row_label] + ([classes[i]] if classes is not None else [])
+            body.append("| " + " | ".join([*front, *(cells[c][i] for c in chunk)]) + " |")
+        tables.append("\n".join([header, rule, *body]))
+    return tables
+
+
 def describe_columns(
     sample: pd.DataFrame,
     columns: Sequence[str],
     descriptions: Mapping[str, str] | None = None,
     categorical: Sequence[str] = (),
     low_variation: Sequence[str] = (),
+    label: str | None = None,
 ) -> str:
     """
-    One block per column: dtype, range or categories, description, real values.
+    The column catalogue, then the example rows laid out as rows.
 
-    Ranges come from the sample actually shown rather than the full table, so the
-    numbers quoted are the numbers the model can see - a range it cannot reconcile
-    with the samples below it is worse than no range at all.
+    One line per column - identifier, dtype, range or categories, description -
+    and under the catalogue the rows themselves, as records. Printed by row and
+    not by column because a proposal is a *relationship* between columns: with a
+    value list per column, seeing any relationship means aligning 84 lists by
+    position, which the prompt never even says is possible.
+
+    Ranges come from the rows actually shown rather than the full table, so the
+    numbers quoted are the numbers the model can see - a range it cannot
+    reconcile with the rows below is worse than no range at all.
+
+    ``label`` is the outcome column. It leads every row table, because rows
+    without their class show what the columns look like but not what separates
+    the two groups - which is the question a feature is proposed to answer. It
+    is never listed in the catalogue: it is evidence to read, not an input to
+    compute with.
+
+    How those rows were chosen is the prepare step's business - cluster
+    representatives today, task-relevant examples later - and nothing here
+    depends on it.
     """
     descriptions = descriptions or {}
     categorical = set(categorical)
     flat = set(low_variation)
-    lines: list[str] = []
+    catalogue: list[str] = []
 
     for column in columns:
         values = sample[column]
@@ -132,19 +200,56 @@ def describe_columns(
                 if len(numeric)
                 else "continuous; no numeric values in the sample"
             )
-        shown = ", ".join(_format_value(v) for v in values.tolist())
-        # The identifier leads and is quoted exactly as it must be typed. With the
-        # description first, a model reliably writes df["Debt ratio %"] instead of
-        # df["X36"] - 10 of 10 proposals failed that way in one run.
         if column in flat:
             # Flagged inline, where the column is actually read, rather than in a
             # list further up that a model scanning 95 columns will skip.
             detail += "; NEARLY CONSTANT across rows"
+        # The identifier leads and is quoted exactly as it must be typed. With the
+        # description first, a model reliably writes df["Debt ratio %"] instead of
+        # df["X36"] - 10 of 10 proposals failed that way in one run.
         head = f'df["{column}"] ({values.dtype}; {detail})'
-        lines.append(f"{head} - {description}\nSamples [{shown}]" if description
-                     else f"{head}\nSamples [{shown}]")
+        catalogue.append(f"{head} - {description}" if description else head)
 
-    return "\n\n".join(lines)
+    shown_label = label if (label is not None and label in sample.columns) else None
+    tables = _row_tables(sample, list(columns), label=shown_label)
+    if not tables:
+        return "\n".join(catalogue)
+
+    intro = (
+        f"Example rows ({len(sample)} of them). One line is one record: the values "
+        "on a line belong together, and r1 is the same record in every table below."
+    )
+    if shown_label is not None:
+        counts = sample[shown_label].value_counts().sort_index()
+        mix = ", ".join(f"{n} with {shown_label}={_format_value(v)}"
+                        for v, n in counts.items())
+        intro += (
+            f" The first column is the outcome: {mix}. That mix comes from how these "
+            f"rows were chosen and is not the table's rate. Read `{shown_label}` to see "
+            "what separates the records; it is not a column of `df` and no proposal may "
+            "use it."
+        )
+    return "\n".join(catalogue) + "\n\n" + intro + "\n\n" + "\n\n".join(tables)
+
+
+def format_task_context(text: str) -> str:
+    """
+    Domain background for the task, as its own block. Empty when none is set.
+
+    Separate from ``task_description`` - which says what a row is - because this
+    says what the work is about: how the score is used, what the incumbent model
+    already leans on, which quantities must not be mixed. A proposer that knows
+    the columns but not the business proposes arithmetic; this is what lets it
+    propose something a domain expert would recognise.
+    """
+    text = (text or "").strip()
+    if not text:
+        return ""
+    return (
+        "Domain context for this task. Background for judging what is worth "
+        "combining - the column catalogue below remains the authority on what "
+        "exists and how it is named:\n" + text
+    )
 
 
 def format_history(records: Sequence[Mapping[str, Any]], metric_name: str) -> str:
@@ -213,6 +318,7 @@ def build_prompt(
     column_context: str,
     history: str,
     metric_name: str,
+    task_context: str = "",
     metric_explanation: str = "",
     already_proposed: Sequence[str] = (),
     n_rows: int | None = None,
@@ -220,6 +326,14 @@ def build_prompt(
     redundancy_max_abs: float | None = None,
 ) -> str:
     """Assemble the instructions. Everything lives in one human message."""
+    # The rules quote a real identifier from the catalogue above rather than a
+    # fixed example: a demo's columns get renamed, and an example that no longer
+    # matches the list two screens up teaches the wrong lesson.
+    match = re.search(r'df\["([^"]+)"\]', column_context)
+    example = match.group(1) if match else "the_column_identifier"
+
+    context_block = format_task_context(task_context)
+    context_block = f"\n{context_block}\n" if context_block else ""
     proposed_block = ""
     if already_proposed:
         names = ", ".join(f'"{name}"' for name in already_proposed)
@@ -267,8 +381,8 @@ def build_prompt(
      df["x"] = df["a"] / df["b"].where(df["b"] != 0)               # undefined rows become NaN
      df["x"] = (df["a"] / df["b"].clip(lower=df["b"][df["b"] > 0].min())).clip(upper=<a sane bound>)
    Marking an undefined row NaN is correct - the model treats it as missing rather than as a real value. Substituting an epsilon is not.
-{'4' if redundancy_max_abs is not None else '3'}. WRONG SHAPE. Exactly one new column per block, and no modification of any existing column. Name it descriptively in snake_case for what it measures - `debt_to_equity_ratio`, `cash_coverage_gap` - and never by continuing the table's own identifier scheme. `X96` is not an acceptable name: the name and the comment header are how a reader will understand the feature later, and both are required.
-{'5' if redundancy_max_abs is not None else '4'}. UNKNOWN COLUMN. Every column you read must be indexed by the identifier shown in the list above - `df["X36"]`, not `df["Total debt/Total net worth"]`. Descriptions tell you what a column means; they are not keys."""
+{'4' if redundancy_max_abs is not None else '3'}. WRONG SHAPE. Exactly one new column per block, and no modification of any existing column. Name it descriptively in snake_case for what it measures - `debt_to_equity_ratio`, `cash_coverage_gap` - and never by continuing the table's own naming scheme, whatever that is. The name and the comment header are how a reader will understand the feature later, and both are required.
+{'5' if redundancy_max_abs is not None else '4'}. UNKNOWN COLUMN. Every column you read must be indexed by the identifier shown in the list above - `df["{example}"]` - and never by the description that follows it. Descriptions tell you what a column means; they are not keys."""
     diversity = (
         "Make the columns different from one another: several variations on one "
         "idea are worth little more than the idea alone, since each is judged on "
@@ -280,8 +394,8 @@ def build_prompt(
 
 Description of the dataset in `df`:
 {task_description}
-
-Columns in `df`. Each line begins with the exact expression to index it by, followed by its type and what it means; categorical variables may be numerically encoded. Index `df` ONLY by those identifiers - never by a column's description:
+{context_block}
+Columns in `df`. Each line begins with the exact expression to index it by, followed by its type and what it means; categorical variables may be numerically encoded. Index `df` ONLY by those identifiers - never by a column's description. Example rows follow the catalogue, one line per record:
 {column_context}
 
 This code is written by an expert data scientist working to improve predictions. It is pandas code that adds {n_features} new column{plural} to the dataset, one per code block.
@@ -303,7 +417,7 @@ Format:
 ```python
 # (<feature name>, <short description>)
 # Usefulness: <why this adds useful real-world knowledge for this prediction problem>
-# Input samples: '<column>': [v1, v2, v3], '<column>': [v1, v2, v3]
+# Evidence: <the rows that motivated it, e.g. r17, r19 against r1, r4>
 df["<new_feature_name>"] = <vectorised pandas/numpy expression>
 ```end
 
@@ -349,7 +463,7 @@ def parse_candidate(code: str) -> CandidateText:
     """
     from discovery.sandbox import referenced_columns
 
-    display_name = description = rationale = None
+    display_name = description = rationale = evidence = None
     for line in code.splitlines():
         stripped = line.strip()
         if not stripped.startswith("#"):
@@ -364,6 +478,8 @@ def parse_candidate(code: str) -> CandidateText:
                 display_name, description = str(parsed[0]), str(parsed[1])
         elif rationale is None and body.lower().startswith("usefulness:"):
             rationale = body.split(":", 1)[1].strip()
+        elif evidence is None and body.lower().startswith("evidence:"):
+            evidence = body.split(":", 1)[1].strip()
 
     expression = None
     try:
@@ -379,6 +495,7 @@ def parse_candidate(code: str) -> CandidateText:
         display_name=display_name,
         description=description,
         rationale=rationale,
+        evidence=evidence,
         input_columns=referenced_columns(code),
         expression=expression,
     )

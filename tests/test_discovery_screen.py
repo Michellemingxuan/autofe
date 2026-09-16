@@ -173,7 +173,34 @@ def test_column_context_shows_types_ranges_and_values(frame):
     text = describe_columns(sample, ["a", "b"], {"a": "numerator"}, categorical=[])
     # the identifier leads, quoted exactly as it must be typed
     assert 'df["a"] (' in text and "numerator" in text
-    assert "observed range=" in text and "Samples [" in text
+    assert "observed range=" in text
+    # and the rows themselves, as rows: one line per record, aligned across columns
+    assert "Example rows (4 of them)" in text
+    assert "| row | a | b |" in text
+    records = [l for l in text.splitlines() if l.startswith("| r") and not l.startswith("| row")]
+    assert len(records) == 4
+
+
+def test_example_rows_carry_the_class_label(frame):
+    """Rows without their class show the columns, not what separates the groups."""
+    text = describe_columns(frame.head(4), ["a", "b"], label="class")
+    assert "| row | class | a | b |" in text
+    assert 'df["class"]' not in text          # evidence to read, not an input to use
+    assert "no proposal may use it" in text
+
+
+def test_the_task_context_is_its_own_block_before_the_columns():
+    """Domain background the proposer needs before it can judge what to combine."""
+    text = build_prompt("task", 'df["a"] (float64)', "none", "adjusted Gini",
+                        task_context="The score declines applications; spend is not payment.")
+    assert "Domain context for this task" in text
+    assert "spend is not payment" in text
+    assert text.index("Domain context") < text.index("Columns in `df`")
+
+
+def test_without_a_task_context_the_block_is_absent():
+    text = build_prompt("task", 'df["a"] (float64)', "none", "adjusted Gini")
+    assert "Domain context for this task" not in text
 
 
 def test_categorical_columns_list_their_values(frame):
@@ -195,10 +222,12 @@ def test_indexing_by_description_is_answered_with_the_identifier(frame):
 
 
 def test_the_prompt_spells_out_that_descriptions_are_not_keys():
-    text = build_prompt("task", 'df["X36"] (float64) - Total debt/Total net worth',
+    """And quotes a real identifier from the catalogue, so the example cannot go stale."""
+    text = build_prompt("task", 'df["debt_ratio_pct"] (float64) - Total debt/Total net worth',
                         "none", "adjusted Gini", redundancy_max_abs=0.95)
-    assert "never by a column's description" in text
-    assert 'df["X36"]`, not `df["Total debt/Total net worth"]' in text
+    assert "never by the description that follows it" in text
+    assert 'df["debt_ratio_pct"]' in text
+    assert "X36" not in text
 
 
 def test_history_reports_scores_and_failures():
@@ -442,5 +471,5 @@ def test_the_prompt_shows_a_safe_division_not_only_an_unsafe_one():
 def test_the_prompt_forbids_continuing_the_tables_naming_scheme():
     """Emphasising identifiers made the model name its features X96..X105."""
     text = build_prompt("task", 'df["X95"] (float64)', "none", "adjusted Gini")
-    assert "`X96` is not an acceptable name" in text
+    assert "never by continuing the table's own naming scheme" in text
     assert "snake_case" in text

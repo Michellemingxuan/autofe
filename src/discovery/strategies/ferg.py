@@ -46,7 +46,7 @@ class FergProposer(TwoPhaseProposer):
             )
         return f"""domain : {domain}
 type: {self.context.task_type}
-present variable in dataframe:
+{self.context.task_context_block}present variable in dataframe:
 {self.context.context_for(self.round_index)}
 
 Provide key ideas for creating new derived variables to improve the performance

@@ -88,6 +88,17 @@ def _column_descriptions(discovery_cfg: Any) -> dict[str, str]:
     return descriptions
 
 
+def _task_context(discovery_cfg: Any) -> str:
+    """The domain block's text: inline, or read from the file it names."""
+    inline = (discovery_cfg.task_context or "").strip()
+    path = discovery_cfg.task_context_path
+    if not path:
+        return inline
+    text = Path(path).read_text(encoding="utf-8").strip()
+    # Inline wins, so a config can override a file it otherwise shares.
+    return inline or text
+
+
 def _categorical_columns(discovery_cfg: Any, base_features: list[str],
                          known: list[str] | None = None) -> list[str]:
     """
@@ -423,6 +434,7 @@ def run_discovery_stage(
     shot_batches = _load_shot_batches(cfg, dataset)
     context = PromptContext(
         task_description=discovery_cfg.task_description,
+        task_context=_task_context(discovery_cfg),
         column_contexts=[
             describe_columns(
                 batch,
@@ -432,6 +444,7 @@ def run_discovery_stage(
                 # Computed on the whole sample, not the handful of rows shown,
                 # since a few values cannot reveal that a column barely moves.
                 low_variation=flat_columns,
+                label=dataset.target,
             )
             for batch in shot_batches
         ],

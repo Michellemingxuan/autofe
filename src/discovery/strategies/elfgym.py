@@ -37,7 +37,7 @@ class ElfGymProposer(TwoPhaseProposer):
             )
         return f"""Dataset description:
 {self.context.task_description}
-
+{self.context.task_context_block}
 Columns available in the table. Each line begins with the exact expression used to index it:
 {self.context.context_for(self.round_index)}
 

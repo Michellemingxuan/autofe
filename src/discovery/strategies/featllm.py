@@ -100,7 +100,7 @@ class FeatLlmProposer(StrategyBase):
 
 Task:
 {self.context.task_description}
-
+{self.context.task_context_block}
 Features (each line begins with the exact expression used to index the column):
 {self.context.context_for(self.round_index)}
 
