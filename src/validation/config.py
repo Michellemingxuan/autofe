@@ -222,11 +222,24 @@ class AnalysisConfig:
 
 @dataclass
 class VerdictConfig:
-    """Thresholds for the four gates a proposed feature has to clear."""
+    """Thresholds for the four gates a proposed feature has to clear.
+
+    Test is the hold-out and the only evidence about a proposed feature. Valid
+    is a tool: it tunes hyperparameters, stops training, and gives the discovery
+    screen its feedback. That division is what makes the test number mean
+    something, and it decides the default below.
+    """
     enabled: bool = True
     gini_split: str = "test"            # split the gini gain is judged on
     min_gini_gain: float = 0.005        # below this, the feature did not move the model
-    require_valid_too: bool = True      # the gain must hold on valid as well
+    # Off, because valid is machinery rather than evidence. A discovered feature
+    # was *selected* on valid rows, so requiring a valid gain asks it to repeat
+    # the thing it was picked for - a gate that cannot fail for the reason it
+    # exists. It stays meaningful for hand-declared candidates, which discovery
+    # never touched, so one flag would mean two different things depending on
+    # where the candidate came from. Set it True only for a run with no
+    # discovery, where valid really is an independent second look.
+    require_valid_too: bool = False
     max_shap_rank_pct: float = 0.5      # must land in the top half by mean |SHAP|
     shap_variant: str = "base_plus_new"
 

@@ -123,5 +123,10 @@ verdict:
   enabled: true
   gini_split: test
   min_gini_gain: 0.005
-  require_valid_too: true
+  # Off: valid is machinery, not evidence. The discovery screen scores
+  # proposals on valid rows, so a discovered feature was selected for a valid
+  # gain - requiring one asks it to repeat what it was picked for. Test is the
+  # hold-out and the only evidence. Set true for a run with discovery disabled,
+  # where valid is an independent second look at a hand-declared batch.
+  require_valid_too: false
   max_shap_rank_pct: 0.5

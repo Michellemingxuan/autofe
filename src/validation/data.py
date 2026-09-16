@@ -16,6 +16,26 @@ The steps, in order:
     clean       clean_missing            sentinel codes and +/-inf -> NaN
     indicators  add_missing_indicators   optional 0/1 "was missing" columns
 
+What each split is for
+    train   fits every model, and is where feature selection and the data
+            quality reference look.
+    valid   a tool, never evidence. It tunes hyperparameters, stops training,
+            and gives the discovery screen the feedback it reports back to the
+            proposer. Because proposals are *selected* on it, a gain here is
+            not independent confirmation of anything.
+    test    the hold-out, and the only evidence about a proposed feature.
+            Nothing fits on it, tunes on it, stops on it, or screens on it.
+            Two things read it: the analysis and verdict gates, which is the
+            evidence; and the data quality stability check, which compares each
+            column's distribution across all three splits. The latter is not a
+            leak - PSI never looks at the target, so it measures whether a
+            column is stable, not whether it predicts.
+
+    Keeping test out of every loop is what makes its number mean something. The
+    cost of breaking that rule is invisible - the run still completes, the
+    numbers still look reasonable, and they are simply no longer about
+    unseen data.
+
 Relative paths resolve against the working directory, so run from the repo root.
 """
 
