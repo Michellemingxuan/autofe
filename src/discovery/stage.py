@@ -18,7 +18,9 @@ Two properties worth protecting:
 
 from __future__ import annotations
 
+import json
 from dataclasses import dataclass, field
+from datetime import datetime
 from pathlib import Path
 from typing import Any, Optional
 
@@ -99,6 +101,27 @@ def _task_context(discovery_cfg: Any) -> str:
     return inline or text
 
 
+def _additional_data(discovery_cfg: Any) -> tuple[str | dict[str, Any] | None, str, str]:
+    """Load the optional discovery resource from config schema paths."""
+    extra = getattr(discovery_cfg, "additional_data", None)
+    if extra is None or not getattr(extra, "enabled", False):
+        return None, "additional data resource", ""
+
+    payload: dict[str, Any] = {}
+    for path in getattr(extra, "schema_paths", []) or []:
+        file_path = Path(path)
+        if not file_path.exists():
+            raise FileNotFoundError(f"additional data schema path not found: {file_path}")
+        loaded = json.loads(file_path.read_text(encoding="utf-8"))
+        payload[file_path.name] = loaded
+
+    return (
+        payload if payload else None,
+        getattr(extra, "name", "additional data resource"),
+        getattr(extra, "description", ""),
+    )
+
+
 def _categorical_columns(discovery_cfg: Any, base_features: list[str],
                          known: list[str] | None = None) -> list[str]:
     """
@@ -168,7 +191,7 @@ def _read_rows(cfg: Any, dataset: Dataset, path: str | Path,
     absent = [c for c in columns if c not in frame.columns]
     if absent:
         if not has_ids:
-            raise ValueError(f"{path} lacks column(s) {absent[:5]} and has no "
+            raise ValueError(f"{path} lacks column(s) {absent} and has no "
                              f"{id_col or 'id'!r} column to join them by")
         pool = pd.concat([dataset.frames[name] for name in ("train", "valid")
                           if name in dataset.frames]).set_index(id_col)
@@ -310,6 +333,17 @@ def append_history(
     return len(rows)
 
 
+def _discovery_output_dir(base_dir: str | Path | None) -> Path | None:
+    """Return a timestamped subdirectory under the given output root."""
+    if base_dir is None:
+        return None
+    base = Path(base_dir)
+    stamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+    target = base / stamp
+    target.mkdir(parents=True, exist_ok=True)
+    return target
+
+
 def run_discovery_stage(
     cfg: Any,
     dataset: Dataset,
@@ -324,6 +358,7 @@ def run_discovery_stage(
     time by leave_one_in, and judged by the verdict gates.
     """
     discovery_cfg = cfg.discovery
+    output_dir = _discovery_output_dir(output_dir)
     if not discovery_cfg.enabled:
         return DiscoveryResult(dataset=dataset, enabled=False,
                                stopped_because="discovery disabled")
@@ -428,6 +463,12 @@ def run_discovery_stage(
             "discovery: %d/%d columns presented as coded categories (levels, not ranges)",
             len(categorical_columns), len(base_features),
         )
+    additional_schema, additional_name, additional_description = _additional_data(discovery_cfg)
+    if additional_schema is not None:
+        logger.info(
+            "discovery: additional data enabled (%s): %d schema file(s) loaded",
+            additional_name, len(getattr(discovery_cfg.additional_data, "schema_paths", [])),
+        )
     # One batch of example rows per round, precomputed by the dataset's prepare
     # step, so a later round reasons from new evidence instead of re-reading the
     # same rows.
@@ -452,6 +493,9 @@ def run_discovery_stage(
         metric_explanation=metric_explanation,
         n_rows=len(dataset.split("train")),
         redundancy_max_abs=redundancy_max_abs,
+        additional_data_schema=additional_schema,
+        additional_data_name=additional_name,
+        additional_data_description=additional_description,
     )
     proposer = STRATEGIES[discovery_cfg.strategy](
         context,

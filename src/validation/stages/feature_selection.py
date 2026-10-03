@@ -94,7 +94,7 @@ def pairwise_complete_corr(x: np.ndarray, y: np.ndarray) -> np.ndarray:
 
 def rank_columns(values: np.ndarray) -> np.ndarray:
     """Average-rank transform per column, NaNs preserved."""
-    return pd.DataFrame(values).rank(method="average", na_option="keep").to_numpy(dtype=np.float64)
+    return pd.DataFrame(values).rank(method="average", na_option="keep").to_numpy(dtype=np.float32)
 
 
 def quantile_codes(values: np.ndarray, bins: int) -> Tuple[np.ndarray, np.ndarray]:
@@ -223,8 +223,8 @@ def run_feature_selection(dataset: Dataset, cfg: Config) -> FeatureSelectionResu
 
     frame = _sample_frame(dataset, cfg)
     logger.info("feature selection on %d row(s) x %d feature(s)", len(frame), len(all_features))
-    values = frame[all_features].to_numpy(dtype=np.float64)
-    target = frame[dataset.target].to_numpy(dtype=np.float64)
+    values = frame[all_features].to_numpy(dtype=np.float32)
+    target = frame[dataset.target].to_numpy(dtype=np.float32)
 
     chunks = list(chunked(new_idx, fs.chunk_size))
     stats = pd.DataFrame({"feature": new_features}).set_index("feature")

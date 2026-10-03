@@ -50,6 +50,9 @@ class CaafeProposer(StrategyBase):
             n_rows=self.context.n_rows,
             n_features=n_features,
             redundancy_max_abs=self.context.redundancy_max_abs,
+            additional_data_schema=self.context.additional_data_schema,
+            additional_data_name=self.context.additional_data_name,
+            additional_data_description=self.context.additional_data_description,
         )
 
         reply, telemetry = self._ask(prompt)

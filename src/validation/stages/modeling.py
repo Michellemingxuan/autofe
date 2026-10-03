@@ -18,7 +18,7 @@ from __future__ import annotations
 import json
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Dict, List, Optional
+from typing import Any, Dict, List, Optional
 
 import numpy as np
 import pandas as pd
@@ -365,7 +365,7 @@ def run_modeling(
     with timed(logger, "model training"):
         results = parallel_map(
             _train_variant, variants,
-            n_jobs=cfg.run.n_jobs, backend=cfg.run.backend, desc="variant",
+            n_jobs=cfg.run.n_jobs, backend=cfg.run.backend, desc="variant", log_progress=True,
             matrices=matrices, targets=targets, weights=weights, column_index=column_index,
             params_by_variant=params_by_variant, num_boost_round=cfg.model.num_boost_round,
             early_stopping_rounds=cfg.model.early_stopping_rounds,

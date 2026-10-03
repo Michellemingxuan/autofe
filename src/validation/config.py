@@ -196,6 +196,7 @@ class ShapConfig:
     enabled: bool = True
     sample_size: int = 20_000
     on_split: str = "test"
+    chunk_size: Optional[int] = None
 
 
 @dataclass
@@ -268,6 +269,19 @@ class LLMConfig:
 
 
 @dataclass
+class AdditionalDataConfig:
+    """Optional external schema/resource for feature discovery.
+
+    This is loaded from YAML and provided to the prompt builder as a structured
+    summary of the extra resource. The LLM may use it to propose features that
+    combine current model columns with source fields from the external table(s)."""
+    enabled: bool = False
+    name: str = "additional data resource"
+    description: str = ""
+    schema_paths: List[str] = field(default_factory=list)
+
+
+@dataclass
 class DiscoveryConfig:
     """Propose candidate features, then screen them on a small sample.
 
@@ -284,6 +298,7 @@ class DiscoveryConfig:
     # it must stay out of the repository.
     task_context: str = ""
     task_context_path: Optional[str] = None
+    additional_data: AdditionalDataConfig = field(default_factory=AdditionalDataConfig)
 
     # Each round asks for a batch and screens it one feature at a time, folding
     # every outcome into the history the next round sees.
@@ -369,6 +384,8 @@ class DiscoveryConfig:
     llm: LLMConfig = field(default_factory=LLMConfig)
 
     def __post_init__(self):
+        if isinstance(self.additional_data, dict):
+            self.additional_data = _subset(AdditionalDataConfig, self.additional_data)
         if isinstance(self.llm, dict):
             self.llm = _subset(LLMConfig, self.llm)
 
@@ -412,6 +429,9 @@ class Config:
 
     def validate(self) -> None:
         if self.discovery.enabled:
+            if self.discovery.additional_data.enabled and not self.discovery.additional_data.schema_paths:
+                raise ValueError("discovery.additional_data.schema_paths is required when "
+                                 "discovery.additional_data.enabled is true")
             if self.discovery.llm.backend not in ("openai", "safechain"):
                 raise ValueError("discovery.llm.backend must be openai|safechain, "
                                  f"got {self.discovery.llm.backend!r}")

@@ -23,7 +23,7 @@ from __future__ import annotations
 import re
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any, Sequence
+from typing import Any, Mapping, Sequence
 
 from discovery.llm import call_llm
 from discovery.prompt import extract_blocks, format_task_context
@@ -93,6 +93,10 @@ class PromptContext:
     target: str = "the target"
     task_type: str = "binary classification"
     domain: str = ""
+
+    additional_data_schema: str | Mapping[str, Any] | None = None
+    additional_data_name: str = "additional data resource"
+    additional_data_description: str = ""
 
     def __post_init__(self) -> None:
         if isinstance(self.column_contexts, str):

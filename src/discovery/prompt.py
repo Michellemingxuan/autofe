@@ -1,25 +1,27 @@
-"""Build what the proposer sees, and read back what it wrote.
+"""Build feature-generation prompts and parse generated feature candidates.
 
-Three jobs, kept separate because they fail differently:
+The prompt is organized into explicit sections and supports an optional
+additional data resource represented as JSON objects whose keys identify the
+fields and whose values provide representative sample values. The additional
+resource may be used to design new transaction-level or aggregated features,
+while temporal leakage requirements are made explicit for any historical
+feature.
 
-    describe_columns   what the data looks like - types, ranges, real values
-    format_history     what previous rounds tried and what it cost them
-    build_prompt       the instructions wrapped around both
-
-Plus the inverse: :func:`extract_code` pulls the block out of a reply, and
-:func:`parse_candidate` lifts the rationale comments into structured fields so a
-feature's reasoning survives next to its numbers instead of only inside a
-comment nobody reads.
-
-The sample rows matter more than they look. They are the only concrete data the
-model ever sees, and on an imbalanced target a uniform draw is usually all one
-class - so the caller is expected to pass a class-balanced sample, and the
-context says how many of each are present.
+Public helpers are kept compatible with the previous implementation:
+    describe_columns
+    format_task_context
+    low_variation_columns
+    format_history
+    build_prompt
+    extract_blocks
+    extract_code
+    parse_candidate
 """
 
 from __future__ import annotations
 
 import ast
+import json
 import re
 from dataclasses import dataclass, field
 from typing import Any, Mapping, Sequence
@@ -34,17 +36,25 @@ __all__ = [
     "low_variation_columns",
     "format_history",
     "build_prompt",
+    "extract_blocks",
     "extract_code",
     "parse_candidate",
 ]
 
-_CODE_FENCE_END = re.compile(r"```python\s*(.*?)```end", re.DOTALL | re.IGNORECASE)
-_CODE_FENCE = re.compile(r"```(?:python)?\s*(.*?)```", re.DOTALL | re.IGNORECASE)
+
+_CODE_FENCE_END = re.compile(
+    r"```python\s*(.*?)```end",
+    re.DOTALL | re.IGNORECASE,
+)
+_CODE_FENCE = re.compile(
+    r"```(?:python)?\s*(.*?)```",
+    re.DOTALL | re.IGNORECASE,
+)
 
 
 @dataclass
 class CandidateText:
-    """The rationale a proposer attached to a block, lifted out of its comments."""
+    """Structured metadata parsed from a generated feature code block."""
 
     display_name: str | None = None
     description: str | None = None
@@ -64,6 +74,11 @@ class CandidateText:
         }
 
 
+# ============================================================================
+# General formatting helpers
+# ============================================================================
+
+
 def _format_value(value: Any) -> str:
     if pd.isna(value):
         return "NaN"
@@ -77,28 +92,20 @@ def low_variation_columns(
     columns: Sequence[str],
     threshold: float = 0.05,
 ) -> list[str]:
-    """
-    Columns that barely vary across rows, relative to their own level.
-
-    Worth naming because of a specific, measurable failure: a ratio A/B is a
-    monotone function of whichever input actually varies, so pairing a varying
-    column with a near-constant one reproduces the varying column's ordering
-    exactly - Spearman |rho| around 1.0 - and is rejected as redundant.
-
-    On the bankruptcy table 34 of 95 columns fall below this threshold, and every
-    single redundancy rejection in one run was a ratio involving one of them. The
-    model cannot see this from descriptions or from a handful of sample values, so
-    it has to be told.
-    """
+    """Return columns whose relative variation is below ``threshold``."""
     found: list[str] = []
+
     for column in columns:
         values = pd.to_numeric(sample[column], errors="coerce").dropna()
         if len(values) < 2:
             continue
+
         level = abs(float(values.mean()))
         spread = float(values.std())
+
         if level > 0 and spread / level < threshold:
             found.append(column)
+
     return found
 
 
@@ -108,45 +115,57 @@ def _row_tables(
     label: str | None = None,
     max_width: int = 240,
 ) -> list[str]:
-    """
-    The shown rows as rows: markdown tables, split so that a line stays readable.
-
-    Wide chunks on purpose: every split is a pair of columns the reader has to
-    join by row label, and joining is exactly what a proposal needs to do.
-
-    Every table repeats the row label, so one record can be followed across the
-    splits - which is the whole point of showing rows rather than columns.
-    """
+    """Render sample rows as readable markdown tables."""
     labels = [f"r{i}" for i in range(1, len(sample) + 1)]
-    cells = {c: [_format_value(v) for v in sample[c].tolist()] for c in columns}
-    # The outcome leads every table, so a record can be read against its class
-    # without scrolling back - the comparison the rows exist to support.
-    classes = ([_format_value(v) for v in sample[label].tolist()]
-               if label is not None and label in sample.columns else None)
+    cells = {
+        column: [_format_value(value) for value in sample[column].tolist()]
+        for column in columns
+    }
+
+    classes = (
+        [_format_value(value) for value in sample[label].tolist()]
+        if label is not None and label in sample.columns
+        else None
+    )
 
     chunks: list[list[str]] = []
     current: list[str] = []
     width = 0
+
     for column in columns:
-        needed = max([len(column), *(len(v) for v in cells[column])]) + 3
+        needed = max(len(column), *(len(value) for value in cells[column])) + 3
         if current and width + needed > max_width:
             chunks.append(current)
-            current, width = [], 0
+            current = []
+            width = 0
         current.append(column)
         width += needed
+
     if current:
         chunks.append(current)
 
     lead = ["row"] + ([label] if classes is not None else [])
-    tables = []
+    tables: list[str] = []
+
     for chunk in chunks:
         header = "| " + " | ".join([*lead, *chunk]) + " |"
         rule = "| --- " * (len(lead) + len(chunk)) + "|"
         body = []
-        for i, row_label in enumerate(labels):
-            front = [row_label] + ([classes[i]] if classes is not None else [])
-            body.append("| " + " | ".join([*front, *(cells[c][i] for c in chunk)]) + " |")
+
+        for index, row_label in enumerate(labels):
+            front = [row_label] + (
+                [classes[index]] if classes is not None else []
+            )
+            body.append(
+                "| "
+                + " | ".join(
+                    [*front, *(cells[column][index] for column in chunk)]
+                )
+                + " |"
+            )
+
         tables.append("\n".join([header, rule, *body]))
+
     return tables
 
 
@@ -158,159 +177,730 @@ def describe_columns(
     low_variation: Sequence[str] = (),
     label: str | None = None,
 ) -> str:
-    """
-    The column catalogue, then the example rows laid out as rows.
-
-    One line per column - identifier, dtype, range or categories, description -
-    and under the catalogue the rows themselves, as records. Printed by row and
-    not by column because a proposal is a *relationship* between columns: with a
-    value list per column, seeing any relationship means aligning 84 lists by
-    position, which the prompt never even says is possible.
-
-    Ranges come from the rows actually shown rather than the full table, so the
-    numbers quoted are the numbers the model can see - a range it cannot
-    reconcile with the rows below is worse than no range at all.
-
-    ``label`` is the outcome column. It leads every row table, because rows
-    without their class show what the columns look like but not what separates
-    the two groups - which is the question a feature is proposed to answer. It
-    is never listed in the catalogue: it is evidence to read, not an input to
-    compute with.
-
-    How those rows were chosen is the prepare step's business - cluster
-    representatives today, task-relevant examples later - and nothing here
-    depends on it.
-    """
+    """Build the current-feature catalogue followed by example rows."""
     descriptions = descriptions or {}
-    categorical = set(categorical)
-    flat = set(low_variation)
+    categorical_set = set(categorical)
+    low_variation_set = set(low_variation)
     catalogue: list[str] = []
 
     for column in columns:
         values = sample[column]
         description = str(descriptions.get(column, "")).strip()
-        if column in categorical:
+
+        if column in categorical_set:
             seen = sorted(values.dropna().unique().tolist(), key=str)
             detail = f"categorical; values seen={seen}"
         else:
             numeric = pd.to_numeric(values, errors="coerce").dropna()
-            detail = (
-                f"continuous; observed range=[{_format_value(numeric.min())}, "
-                f"{_format_value(numeric.max())}]"
-                if len(numeric)
-                else "continuous; no numeric values in the sample"
-            )
-        if column in flat:
-            # Flagged inline, where the column is actually read, rather than in a
-            # list further up that a model scanning 95 columns will skip.
-            detail += "; NEARLY CONSTANT across rows"
-        # The identifier leads and is quoted exactly as it must be typed. With the
-        # description first, a model reliably writes df["Debt ratio %"] instead of
-        # df["X36"] - 10 of 10 proposals failed that way in one run.
-        head = f'df["{column}"] ({values.dtype}; {detail})'
-        catalogue.append(f"{head} - {description}" if description else head)
+            if len(numeric):
+                detail = (
+                    "continuous; observed range=["
+                    f"{_format_value(numeric.min())}, "
+                    f"{_format_value(numeric.max())}]"
+                )
+            else:
+                detail = "continuous; no numeric values in the sample"
 
-    shown_label = label if (label is not None and label in sample.columns) else None
+        if column in low_variation_set:
+            detail += "; NEARLY CONSTANT across rows"
+
+        head = f'df["{column}"] ({values.dtype}; {detail})'
+        catalogue.append(
+            f"{head} - {description}" if description else head
+        )
+
+    shown_label = (
+        label if label is not None and label in sample.columns else None
+    )
     tables = _row_tables(sample, list(columns), label=shown_label)
+
     if not tables:
         return "\n".join(catalogue)
 
     intro = (
-        f"Example rows ({len(sample)} of them). One line is one record: the values "
-        "on a line belong together, and r1 is the same record in every table below."
+        f"Example rows ({len(sample)} of them). One line is one record: the "
+        "values on a line belong together, and r1 is the same record in every "
+        "table below."
     )
+
     if shown_label is not None:
         counts = sample[shown_label].value_counts().sort_index()
-        mix = ", ".join(f"{n} with {shown_label}={_format_value(v)}"
-                        for v, n in counts.items())
-        intro += (
-            f" The first column is the outcome: {mix}. That mix comes from how these "
-            f"rows were chosen and is not the table's rate. Read `{shown_label}` to see "
-            "what separates the records; it is not a column of `df` and no proposal may "
-            "use it."
+        mix = ", ".join(
+            f"{count} with {shown_label}={_format_value(value)}"
+            for value, count in counts.items()
         )
+        intro += (
+            f" The first column is the outcome: {mix}. That mix comes from how "
+            "these rows were chosen and is not the table's rate. Read "
+            f"`{shown_label}` to see what separates the records; it is not a "
+            "column of `df` and no proposal may use it."
+        )
+
     return "\n".join(catalogue) + "\n\n" + intro + "\n\n" + "\n\n".join(tables)
 
 
 def format_task_context(text: str) -> str:
-    """
-    Domain background for the task, as its own block. Empty when none is set.
-
-    Separate from ``task_description`` - which says what a row is - because this
-    says what the work is about: how the score is used, what the incumbent model
-    already leans on, which quantities must not be mixed. A proposer that knows
-    the columns but not the business proposes arithmetic; this is what lets it
-    propose something a domain expert would recognise.
-    """
-    text = (text or "").strip()
-    if not text:
-        return ""
-    return (
-        "Domain context for this task. Background for judging what is worth "
-        "combining - the column catalogue below remains the authority on what "
-        "exists and how it is named:\n" + text
-    )
+    """Return domain context as a standalone text block for compatibility."""
+    return (text or "").strip()
 
 
-def format_history(records: Sequence[Mapping[str, Any]], metric_name: str) -> str:
-    """
-    What earlier rounds produced, and what happened to it.
-
-    This is the only learning signal in the loop: no weights change, nothing is
-    fine-tuned, the proposer simply reads its own scoreboard. So failures are
-    reported as plainly as successes - a block that would not run is more useful
-    feedback than one that merely did not help.
-    """
+def format_history(
+    records: Sequence[Mapping[str, Any]],
+    metric_name: str,
+) -> str:
+    """Format prior generated features and their evaluation outcomes."""
     pieces: list[str] = []
+
     for record in records:
         index = record.get("round")
         code = str(record.get("code") or "").strip()
         if not code:
             continue
+
         header = f"Previous code block {index}:\n```python\n{code}\n```end"
 
         if record.get("error"):
             pieces.append(
-                f"{header}\nThis block was rejected: {record['error']}\n"
+                f"{header}\n"
+                f"This block was rejected: {record['error']}\n"
                 "It was not added to the dataframe. Fix or avoid this problem."
             )
             continue
 
-        base, cand = record.get("base_score"), record.get("candidate_score")
+        base = record.get("base_score")
+        candidate = record.get("candidate_score")
         delta = record.get("delta")
+
+        score_lines: list[str] = []
+        if base is not None:
+            score_lines.append(
+                f"Score without the feature ({metric_name}): {base:.4f}"
+            )
+        if candidate is not None:
+            score_lines.append(
+                f"Score with the feature ({metric_name}): {candidate:.4f}"
+            )
+        if delta is not None:
+            score_lines.append(
+                f"Change ({metric_name}): {delta:+.4f}"
+            )
+
         pieces.append(
-            f"{header}\n"
-            f"Score without the feature ({metric_name}): {base:.4f}\n"
-            f"Score with the feature ({metric_name}): {cand:.4f}\n"
-            f"Change ({metric_name}): {delta:+.4f}\n"
-            + (verdict_line(record) or "This column was recorded as a proposal.")
-            + " It is not present in `df` for later blocks: every block starts from "
-            "the same original columns."
+            "\n".join(
+                [
+                    header,
+                    *score_lines,
+                    verdict_line(record)
+                    or "This column was recorded as a proposal.",
+                    "It is not present in `df` for later blocks: every block "
+                    "starts from the same original columns.",
+                ]
+            )
         )
 
     return "\n\n".join(pieces) or "No previous code blocks or feedback are available."
 
 
 def verdict_line(record: Mapping[str, Any]) -> str:
-    """
-    The final verdict on an earlier proposal, once validation has judged it.
+    """Return the validation outcome for a previous proposal."""
+    outcome = record.get("outcome")
+    failed_at = record.get("failed_at")
 
-    Empty for a proposal of the current run, which has only its screen score so
-    far. Earlier runs' proposals come from the discovery history with an outcome,
-    and saying why one failed is what stops the next proposal repeating it.
-    """
-    outcome, failed_at = record.get("outcome"), record.get("failed_at")
     if outcome == "accepted":
-        return ("Validated on the full data: ACCEPTED - it cleared every gate and is "
-                "kept as a candidate feature. Do not propose it, or a close variant, "
-                "again.")
+        return (
+            "Validated on the full data: ACCEPTED - it cleared every gate and "
+            "is kept as a candidate feature. Do not propose it, or a close "
+            "variant, again."
+        )
+
     if outcome == "rejected" and failed_at == "screen":
         return f"It was not forwarded to validation: {record.get('reason')}."
+
     if outcome == "rejected" and failed_at:
-        return (f"Validated on the full data: REJECTED at the {failed_at} gate - "
-                f"{record.get('reason') or 'no reason recorded'}. Do not repeat this "
-                "idea; propose something that avoids the reason it failed.")
+        return (
+            f"Validated on the full data: REJECTED at the {failed_at} gate - "
+            f"{record.get('reason') or 'no reason recorded'}. Do not repeat "
+            "this idea; propose something that avoids the reason it failed."
+        )
+
     return ""
+
+
+# ============================================================================
+# Prompt section builders
+# ============================================================================
+
+
+def _extract_example_column(column_context: str) -> str:
+    """Return one real df column identifier for examples in the prompt."""
+    match = re.search(r'df\["([^"]+)"\]', column_context)
+    return match.group(1) if match else "the_column_identifier"
+
+
+def _build_task_context_section(
+    task_description: str,
+    task_context: str = "",
+    n_rows: int | None = None,
+) -> str:
+    """Build the task and domain-context section."""
+    row_text = (
+        f"The current model data contains approximately {n_rows:,} "
+        "transaction rows."
+        if n_rows
+        else ""
+    )
+
+    parts = [
+        "## 1. Task & Domain Context",
+        "",
+        "### Task",
+        "",
+        task_description.strip(),
+    ]
+
+    if row_text:
+        parts.extend(["", row_text])
+
+    if task_context.strip():
+        parts.extend([
+            "",
+            "### Domain context",
+            "",
+            task_context.strip(),
+        ])
+
+    return "\n".join(parts)
+
+
+def _build_current_features_section(
+    column_context: str,
+    example_column: str,
+) -> str:
+    """Build the current transaction-level feature section."""
+    return f"""## 2. Current Model Features
+
+The current model data is transaction-level.
+
+The dataframe `df` contains the features currently available to the model.
+The information below provides:
+
+- exact dataframe column identifiers;
+- data types;
+- observed ranges or categorical values;
+- feature descriptions; and
+- representative transaction-level sample rows.
+
+The feature catalogue is authoritative for the exact identifiers that can be
+used in current-model Python expressions.
+
+When referencing an existing model feature, always use its exact identifier,
+for example:
+
+    df["{example_column}"]
+
+Never use a natural-language feature description as a dataframe key.
+
+The sample rows are actual observations from the current model data. They may
+be used as empirical evidence when identifying relationships between current
+features and the target.
+
+{column_context}"""
+
+
+def _format_json_schema(
+    schema: str | Mapping[str, Any],
+) -> str:
+    """Format a schema as readable JSON."""
+    if isinstance(schema, str):
+        return schema.strip()
+
+    return json.dumps(
+        schema,
+        indent=2,
+        ensure_ascii=False,
+        default=str,
+    )
+
+
+def _build_additional_data_section(
+    schema: str | Mapping[str, Any],
+    source_name: str = "additional data resource",
+    source_description: str = "",
+) -> str:
+    """Build the optional additional-data section.
+
+    The source is provided as JSON objects where each key identifies an
+    available field and the corresponding value contains representative sample
+    values. These samples help the model understand field format, plausible
+    values, and semantics, but do not establish relationships with the model
+    target unless such evidence is explicitly supplied and aligned to the
+    current transactions.
+    """
+    schema_text = _format_json_schema(schema)
+    if not schema_text:
+        return ""
+
+    parts = [
+        "## 3. Optional Additional Data Resource",
+        "",
+        (
+            f"An additional data resource named `{source_name}` is available "
+            "for feature discovery."
+        ),
+        "",
+        (
+            "The resource is represented as JSON. Each JSON key identifies an "
+            "available source field, and its value contains representative "
+            "sample values for that field."
+        ),
+    ]
+
+    if source_description.strip():
+        parts.extend([
+            "",
+            "### Source description",
+            "",
+            source_description.strip(),
+        ])
+
+    parts.extend([
+        "",
+        "### How to use this resource",
+        "",
+        (
+            "Use the field names, descriptions/schema information, and sample "
+            "values to identify useful information that could complement the "
+            "current model features."
+        ),
+        "",
+        "A proposed feature may:",
+        "",
+        "1. use information entirely from this resource;",
+        "2. combine information from this resource with current `df` features;",
+        "3. aggregate historical information to the customer or another entity;",
+        "4. create a transaction-level feature from customer history; or",
+        "5. create a customer-level or customer-time feature that can be aligned "
+        "to each transaction.",
+        "",
+        (
+            "The feature does not have to be transaction-level. Choose the "
+            "natural grain of the signal, provided that it can be aligned to "
+            "the transaction-level model without temporal leakage."
+        ),
+        "",
+        "### What the sample values mean",
+        "",
+        (
+            "The supplied values are representative examples of what the source "
+            "fields may contain. They are useful for understanding data format, "
+            "units, coding, possible value ranges, and whether a field appears "
+            "numeric, categorical, textual, or temporal."
+        ),
+        "",
+        "Do NOT treat the sample values as customer-level observations for the "
+        "current model population unless the data is explicitly identified as "
+        "aligned to the current transactions.",
+        "",
+        "In particular, do not infer from these samples:",
+        "",
+        "- correlations with the default target;",
+        "- class-specific behavior;",
+        "- population distributions or prevalence;",
+        "- customer-level relationships; or",
+        "- time trends in the model population.",
+        "",
+        "Do not invent fields that are not present in the supplied JSON.",
+        "",
+        "### Requirements for downstream data retrieval",
+        "",
+        (
+            "When a feature uses this resource, specify enough information for "
+            "another agent to retrieve and prepare the underlying data."
+        ),
+        "",
+        "The feature specification should identify:",
+        "",
+        "- required source fields;",
+        "- entity or join key;",
+        "- feature grain;",
+        "- historical lookback window, if applicable;",
+        "- event timestamp or other temporal field;",
+        "- as-of cutoff required to avoid leakage; and",
+        "- required aggregation or transformation.",
+        "",
+        "### Additional data JSON",
+        "",
+        "```json",
+        schema_text,
+        "```",
+    ])
+
+    return "\n".join(parts)
+
+def _build_feature_discovery_section(
+    n_features: int,
+    has_additional_data: bool,
+    section_number: int,
+) -> str:
+    """Build the feature-generation objective."""
+    plural = "s" if n_features != 1 else ""
+
+    if has_additional_data:
+        source_guidance = """
+A proposed feature may use:
+
+1. current transaction-level features in `df`;
+2. variables from the optional additional data resource; or
+3. a combination of current model features and additional-resource variables.
+
+Actively look for information that is not represented by the current model
+features alone.
+
+The additional resource can support both transaction-level features and
+historical customer-level features, including rolling, cumulative, recency,
+frequency, trend, concentration, and behavioral measures.
+"""
+    else:
+        source_guidance = """
+A proposed feature should be derived from the current transaction-level
+features available in `df`.
+"""
+
+    diversity = ""
+    if n_features > 1:
+        diversity = """
+When generating multiple features, make them meaningfully different from one
+another. Avoid producing minor variations of the same underlying idea.
+"""
+
+    return f"""## {section_number}. Feature Discovery Objective
+
+Generate exactly {n_features} new feature{plural}.
+
+The objective is to identify features that add **incremental predictive
+information** rather than simply rename, rescale, or mechanically reproduce
+existing variables.
+
+{source_guidance}
+
+Prioritize meaningful constructions involving:
+
+- behavioral patterns;
+- spending and payment dynamics;
+- temporal deterioration or improvement;
+- recency, frequency, and persistence;
+- concentration or diversification;
+- financial pressure relative to capacity;
+- discrepancies between related signals;
+- interactions across different risk dimensions;
+- structural or operational patterns;
+- sudden transitions or escalation; and
+- customer history that adds information to an individual transaction.
+
+Straightforward arithmetic combinations of existing variables should only be
+proposed when they express a genuinely meaningful relationship that is likely
+to add information beyond the incumbent feature set.
+
+Scale and offset alone do not add useful semantic information.
+{diversity}"""
+
+
+def _build_temporal_rules_section(section_number: int) -> str:
+    """Build leakage-prevention rules for transaction-level modeling."""
+    return f"""## {section_number}. Temporal Leakage & As-of Rules
+
+The underlying model is transaction-level.
+
+For every transaction occurring at time `t`, a feature must use only
+information that would have been available by the prediction time.
+
+This is a hard requirement.
+
+### Historical features
+
+For any feature based on historical events:
+
+- use only events at or before the transaction's as-of time;
+- exclude future events;
+- use a strict `< t` cutoff when same-timestamp events would not have been
+  available at prediction time;
+- explicitly state the lookback window;
+- explicitly state the event timestamp; and
+- explicitly state whether the current transaction/event is included.
+
+### Allowed feature grains
+
+A feature may be:
+
+- transaction-level;
+- customer-level;
+- customer-time-level; or
+- another aggregated level,
+
+as long as the value assigned to each transaction is computed only from
+information available at that transaction's as-of time.
+
+### Forbidden information
+
+Never use:
+
+- future transactions;
+- future payments;
+- future delinquency events;
+- future bureau information;
+- future account state;
+- future aggregates;
+- the target; or
+- any feature derived using information after the prediction timestamp.
+
+When the available schema does not provide enough temporal information to
+define a leakage-safe feature, state the missing temporal requirement instead
+of inventing one."""
+
+
+def _build_previous_proposals_block(
+    already_proposed: Sequence[str],
+) -> str:
+    """Build the already-proposed-feature block."""
+    if not already_proposed:
+        return ""
+
+    names = ", ".join(f"`{name}`" for name in already_proposed)
+
+    return f"""### Already proposed features
+
+The following features have already been proposed:
+
+{names}
+
+These are recorded as results only and are NOT present in `df`.
+
+Do not regenerate them, reuse their names, or reference them as previously
+generated columns.
+
+A previous idea may inspire a genuinely different feature, but it must be
+re-derived from the original available information."""
+
+
+def _build_evaluation_section(
+    metric_name: str,
+    metric_explanation: str,
+    history: str,
+    already_proposed: Sequence[str],
+    section_number: int,
+) -> str:
+    """Build the evaluation and previous-feedback section."""
+    metric_detail = (
+        f"\n\n{metric_explanation.strip()}"
+        if metric_explanation.strip()
+        else ""
+    )
+
+    previous = _build_previous_proposals_block(already_proposed)
+
+    return f"""## {section_number}. Evaluation & Previous Feedback
+
+Each proposal is evaluated independently against the same baseline.
+
+The baseline contains the original transaction-level model features.
+Previously generated features are not present in `df`, regardless of whether
+they improved or worsened the metric.
+
+Evaluation metric: **{metric_name}**.{metric_detail}
+
+{previous}
+
+### Generation history
+
+{history}
+
+Use previous results to avoid repeating rejected ideas and to avoid regenerating
+features that have already been explored."""
+
+
+def _build_redundancy_rule(
+    redundancy_max_abs: float | None,
+) -> str:
+    """Build the optional feature-redundancy rule."""
+    if redundancy_max_abs is None:
+        return ""
+
+    return f"""### Redundancy
+
+A feature is rejected if its absolute Spearman correlation with an existing
+model feature exceeds:
+
+    |rho| = {redundancy_max_abs:.2f}
+
+The feature should introduce new information rather than reproduce an existing
+feature under another representation.
+
+Be especially cautious with ratios involving nearly constant variables. Such
+ratios can reproduce the ordering of the varying input rather than introducing
+genuinely new information."""
+
+
+def _build_constraints_section(
+    example_column: str,
+    redundancy_max_abs: float | None,
+    has_additional_data: bool,
+    section_number: int,
+) -> str:
+    """Build hard validation and implementation constraints."""
+    redundancy = _build_redundancy_rule(redundancy_max_abs)
+
+    external_rules = ""
+    if has_additional_data:
+        external_rules = """
+### Additional-resource references
+
+Any additional-resource field used by a proposal must exist explicitly in the
+provided schema.
+
+Do not invent fields, source tables, join keys, timestamps, or measurements.
+
+The supplied sample values describe the source fields but are not evidence
+about their relationship with the model target or current customer population
+unless explicit alignment is provided.
+
+The proposal must contain enough information for a downstream data-retrieval
+agent to obtain the required source data.
+"""
+
+    return f"""## {section_number}. Hard Constraints
+
+These are hard constraints, not suggestions. A violation causes rejection.
+
+### 1. Numeric validity
+
+The resulting feature must be numeric.
+
+Infinity and other non-numeric values are not allowed.
+
+NaN is allowed when the feature is genuinely undefined or unavailable.
+
+### 2. Extreme values
+
+Do not create artificial extreme values through unsafe numerical operations.
+
+Avoid using a small epsilon merely to prevent division by zero.
+
+Bad:
+
+    df["x"] = df["a"] / (df["b"] + 1e-6)
+
+Prefer an explicitly undefined value when the denominator is zero:
+
+    df["x"] = df["a"] / df["b"].where(df["b"] != 0)
+
+### 3. Feature shape
+
+Each code block defines exactly one new feature.
+
+Do not drop, rename, or modify existing model columns.
+
+Use a descriptive `snake_case` feature name that explains what the feature
+measures.
+
+### 4. Current model feature references
+
+Every current-model feature used in executable Python must be referenced using
+the exact identifier in the feature catalogue.
+
+For example:
+
+    df["{example_column}"]
+
+Never use a natural-language description as a dataframe identifier.
+
+Never reference the target variable.
+
+### 5. Implementation
+
+For features that are executable using currently available dataframe columns,
+use vectorized pandas/numpy operations only.
+
+Available objects:
+
+- `df`
+- `pd`
+- `np`
+
+Do not import modules, define functions, access files, use `eval`, or use
+`exec`.
+
+{external_rules}
+
+{redundancy}"""
+
+
+def _build_output_section(
+    n_features: int,
+    has_additional_data: bool,
+    section_number: int,
+) -> str:
+    """Build the final feature-specification output contract."""
+    plural = "s" if n_features != 1 else ""
+
+    if has_additional_data:
+        evidence_line = (
+            "# Evidence: <observed current-data evidence and/or schema-based "
+            "reasoning; clearly distinguish the two>"
+        )
+        resource_lines = """
+# Source fields: <additional-resource fields used, if any>
+# Feature grain: <transaction / customer / customer-time / other>
+# Join key: <customer or other alignment key, if external data is used>
+# Event timestamp: <source timestamp, if applicable>
+# Lookback window: <historical window, if applicable>
+# As-of rule: <exact leakage-safe cutoff>
+# Query requirements: <data that the downstream query agent must retrieve>"""
+    else:
+        evidence_line = (
+            "# Evidence: <the observed rows that motivated the feature, "
+            "e.g. r17, r19 against r1, r4>"
+        )
+        resource_lines = ""
+
+    return f"""## {section_number}. Output Format
+
+Generate exactly {n_features} feature{plural}.
+
+Return one code block per feature and nothing else.
+
+Each block must follow this structure:
+
+```python
+# (<feature name>, <short description>)
+# Usefulness: <why this feature could add incremental predictive information>
+{evidence_line}
+{resource_lines}
+df["<new_feature_name>"] = <feature calculation>
+```end
+
+### Output requirements
+
+- Exactly one feature per code block.
+- Exactly {n_features} code block{plural}.
+- No explanatory text outside the code blocks.
+- Start every block with ```python.
+- End every block with ```end.
+- Use the exact feature name in the assignment.
+
+For current-data-only features, provide executable vectorized pandas/numpy
+code.
+
+For features requiring the optional additional data resource, the code should
+serve as a **feature implementation specification**. The comments must clearly
+describe the external fields, grain, temporal logic, and retrieval requirements
+needed by the downstream query agent.
+
+Codeblock{plural}:"""
+
+
+# ============================================================================
+# Main prompt builder
+# ============================================================================
 
 
 def build_prompt(
@@ -324,172 +914,199 @@ def build_prompt(
     n_rows: int | None = None,
     n_features: int = 1,
     redundancy_max_abs: float | None = None,
+    additional_data_schema: str | Mapping[str, Any] | None = None,
+    additional_data_name: str = "additional data resource",
+    additional_data_description: str = "",
 ) -> str:
-    """Assemble the instructions. Everything lives in one human message."""
-    # The rules quote a real identifier from the catalogue above rather than a
-    # fixed example: a demo's columns get renamed, and an example that no longer
-    # matches the list two screens up teaches the wrong lesson.
-    match = re.search(r'df\["([^"]+)"\]', column_context)
-    example = match.group(1) if match else "the_column_identifier"
+    """Build the feature-generation prompt.
 
-    context_block = format_task_context(task_context)
-    context_block = f"\n{context_block}\n" if context_block else ""
-    proposed_block = ""
-    if already_proposed:
-        names = ", ".join(f'"{name}"' for name in already_proposed)
-        proposed_block = (
-            f"\n\nThese columns have already been proposed: {names}. They are recorded "
-            "as results only and are NOT present in `df`. Be aware of them so you do "
-            "not regenerate them: do not propose them again, do not reuse their names, "
-            "and do not reference them in your expression. To build on one of those "
-            "ideas, re-derive it inline from the original columns."
+    ``additional_data_schema`` is optional. When it is omitted or empty, the
+    generated prompt does not mention an additional resource and follows the
+    current transaction-level feature-generation workflow.
+
+    When supplied, the schema-only resource becomes an additional design
+    space. The LLM may propose transaction-level or aggregated features using
+    the source, but must document temporal/as-of requirements so another agent
+    can retrieve the underlying data without leakage.
+    """
+    if n_features < 1:
+        raise ValueError("n_features must be at least 1")
+
+    example_column = _extract_example_column(column_context)
+
+    if isinstance(additional_data_schema, Mapping):
+        has_additional_data = bool(additional_data_schema)
+    else:
+        has_additional_data = bool(
+            additional_data_schema
+            and str(additional_data_schema).strip()
         )
 
-    size = f" It holds {n_rows:,} rows." if n_rows else ""
-    plural = "s" if n_features != 1 else ""
+    sections: list[str] = []
 
-    # Stated up front rather than learned one rejection at a time. Each of these
-    # is a rule a proposal is actually checked against, so a column that breaks
-    # one is discarded before it is ever scored - the round is spent either way.
-    redundancy_rule = ""
-    if redundancy_max_abs is not None:
-        redundancy_rule = (
-            f"\n2. REDUNDANT WITH AN EXISTING COLUMN. A proposal correlating above "
-            f"|rho| = {redundancy_max_abs:.2f} (Spearman) with any column listed above is "
-            "discarded, however well it scores, because it re-derives information the "
-            "table already holds under another name. This is by far the most common "
-            "rejection, and it usually happens for a mechanical reason rather than a "
-            "conceptual one:\n"
-            "   A ratio A/B is a monotone function of whichever input actually varies. "
-            "So dividing by a column marked NEARLY CONSTANT above - or dividing a nearly "
-            "constant column by a varying one - reproduces the varying column's ordering "
-            "exactly and is always rejected. Check that BOTH inputs vary substantially "
-            "before proposing a ratio of them.\n"
-            "   Safer shapes: combine three or more columns; take a difference of two "
-            "ratios; compare a column to a group-level or distribution-level reference; "
-            "or express a contrast that no single listed column can be monotone in."
+    # 1. Why are we doing this?
+    sections.append(
+        _build_task_context_section(
+            task_description=task_description,
+            task_context=task_context,
+            n_rows=n_rows,
         )
-
-    rejections = f"""A proposal is checked before it is scored, and discarded if it breaks any of these. Read them as hard constraints, not advice:
-
-1. INFINITE OR NON-NUMERIC VALUES. Any infinity, or any value that is not a number, in the new column is a rejection. NaN is allowed: the model reads it as missing, so it is the right value for a row where the feature is undefined.{redundancy_rule}
-{'3' if redundancy_max_abs is not None else '2'}. EXTREME VALUES. A single value far above the column's own bulk is a rejection.
-
-   A division needs a fallback for the rows where it is undefined. This fails:
-     df["x"] = df["a"] / (df["b"] + 1e-6)                          # one b == 0 becomes ~1e6
-   These work:
-     df["x"] = df["a"] / df["b"].where(df["b"] != 0)               # undefined rows become NaN
-     df["x"] = (df["a"] / df["b"].clip(lower=df["b"][df["b"] > 0].min())).clip(upper=<a sane bound>)
-   Marking an undefined row NaN is correct - the model treats it as missing rather than as a real value. Substituting an epsilon is not.
-{'4' if redundancy_max_abs is not None else '3'}. WRONG SHAPE. Exactly one new column per block, and no modification of any existing column. Name it descriptively in snake_case for what it measures - `debt_to_equity_ratio`, `cash_coverage_gap` - and never by continuing the table's own naming scheme, whatever that is. The name and the comment header are how a reader will understand the feature later, and both are required.
-{'5' if redundancy_max_abs is not None else '4'}. UNKNOWN COLUMN. Every column you read must be indexed by the identifier shown in the list above - `df["{example}"]` - and never by the description that follows it. Descriptions tell you what a column means; they are not keys."""
-    diversity = (
-        "Make the columns different from one another: several variations on one "
-        "idea are worth little more than the idea alone, since each is judged on "
-        "what it adds beyond the same baseline."
-        if n_features > 1 else ""
     )
 
-    return f"""The dataframe `df` is loaded and in memory.{size}
+    # 2. What does the incumbent model already know?
+    sections.append(
+        _build_current_features_section(
+            column_context=column_context,
+            example_column=example_column,
+        )
+    )
 
-Description of the dataset in `df`:
-{task_description}
-{context_block}
-Columns in `df`. Each line begins with the exact expression to index it by, followed by its type and what it means; categorical variables may be numerically encoded. Index `df` ONLY by those identifiers - never by a column's description. Example rows follow the catalogue, one line per record:
-{column_context}
+    # 3. Optional additional source.
+    if has_additional_data:
+        sections.append(
+            _build_additional_data_section(
+                schema=additional_data_schema,
+                source_name=additional_data_name,
+                source_description=additional_data_description,
+            )
+        )
 
-This code is written by an expert data scientist working to improve predictions. It is pandas code that adds {n_features} new column{plural} to the dataset, one per code block.
+    # Remaining section numbering depends on whether section 3 is present.
+    discovery_number = 4 if has_additional_data else 3
+    sections.append(
+        _build_feature_discovery_section(
+            n_features=n_features,
+            has_additional_data=has_additional_data,
+            section_number=discovery_number,
+        )
+    )
 
-{diversity}
+    if has_additional_data:
+        sections.append(
+            _build_temporal_rules_section(
+                section_number=5,
+            )
+        )
+        evaluation_number = 6
+    else:
+        evaluation_number = 5
 
-The column should add new semantic information: real-world knowledge about the dataset, expressed as a combination, transformation or aggregation of existing columns. Scale and offset do not matter. Use only columns that exist, and follow the descriptions above closely.
+    sections.append(
+        _build_evaluation_section(
+            metric_name=metric_name,
+            metric_explanation=metric_explanation,
+            history=history,
+            already_proposed=already_proposed,
+            section_number=evaluation_number,
+        )
+    )
 
-Each proposal is evaluated independently against the same baseline: `df` always contains exactly the original columns listed above. No previously generated column is present, whether it helped or not. The evaluation metric is {metric_name}.{metric_explanation}{proposed_block}
+    constraints_number = evaluation_number + 1
+    sections.append(
+        _build_constraints_section(
+            example_column=example_column,
+            redundancy_max_abs=redundancy_max_abs,
+            has_additional_data=has_additional_data,
+            section_number=constraints_number,
+        )
+    )
 
-Previously generated code and feedback:
-{history}
+    output_number = constraints_number + 1
+    sections.append(
+        _build_output_section(
+            n_features=n_features,
+            has_additional_data=has_additional_data,
+            section_number=output_number,
+        )
+    )
 
-Do not drop or modify existing columns. Generate exactly {n_features} additive column{plural}, each in its own code block. Use only the columns listed above, and never the target column. Use only vectorised pandas/numpy expressions with `df`, `pd` and `np`; do not import modules, define functions, access files, or use eval/exec.
+    return "\n\n".join(
+        section.strip()
+        for section in sections
+        if section and section.strip()
+    ) + "\n"
 
-{rejections}
 
-Format:
-```python
-# (<feature name>, <short description>)
-# Usefulness: <why this adds useful real-world knowledge for this prediction problem>
-# Evidence: <the rows that motivated it, e.g. r17, r19 against r1, r4>
-df["<new_feature_name>"] = <vectorised pandas/numpy expression>
-```end
-
-Each code block adds exactly one column, starts with ```python and ends with ```end. Emit {n_features} such block{plural} and nothing else.
-
-Codeblock{plural}:
-"""
+# ============================================================================
+# Reply extraction and candidate parsing
+# ============================================================================
 
 
 def extract_blocks(reply: str) -> list[str]:
-    """
-    Pull every code block out of a reply, in order.
+    """Extract all generated Python blocks from an LLM reply, in order."""
+    blocks = [
+        match.group(1).strip()
+        for match in _CODE_FENCE_END.finditer(reply)
+    ]
 
-    A round asks for several features at once, so a reply normally holds several
-    fenced blocks. The ```end form is preferred because that is what the prompt
-    specifies; a reply that used plain fences is still read rather than discarded,
-    since the blocks themselves are usually fine.
-    """
-    blocks = [m.group(1).strip() for m in _CODE_FENCE_END.finditer(reply)]
     if not blocks:
-        blocks = [m.group(1).strip() for m in _CODE_FENCE.finditer(reply)]
+        blocks = [
+            match.group(1).strip()
+            for match in _CODE_FENCE.finditer(reply)
+        ]
+
     if not blocks and "df[" in reply and "=" in reply:
-        # Unfenced but recognisably code: take it. The check matters - without it
-        # a refusal ("I cannot write that.") became a candidate that then failed
-        # in the sandbox with an error about syntax rather than about the refusal.
+        # Preserve the previous fallback for unfenced but recognisable code.
         blocks = [reply.strip()]
-    return [b for b in blocks if b]
+
+    return [block for block in blocks if block]
 
 
 def extract_code(reply: str) -> str:
-    """The first block of a reply. Kept for callers that ask for exactly one."""
+    """Return the first generated code block, or the stripped reply."""
     blocks = extract_blocks(reply)
     return blocks[0] if blocks else reply.strip()
 
 
 def parse_candidate(code: str) -> CandidateText:
-    """
-    Lift the rationale comments into fields.
+    """Parse rationale metadata and the feature expression from a code block.
 
-    ``input_columns`` comes from the AST, not the "Input samples" comment: the
-    comment is what the proposer believes it used, the AST is what the code
-    actually reads, and they do diverge.
+    ``input_columns`` is derived from the AST/sandbox helper rather than from
+    the human-written comments. This keeps the parsed dependency list tied to
+    what the expression actually references.
     """
     from discovery.sandbox import referenced_columns
 
-    display_name = description = rationale = evidence = None
+    display_name: str | None = None
+    description: str | None = None
+    rationale: str | None = None
+    evidence: str | None = None
+
     for line in code.splitlines():
         stripped = line.strip()
         if not stripped.startswith("#"):
             continue
+
         body = stripped.lstrip("#").strip()
+
         if display_name is None and body.startswith("(") and body.endswith(")"):
             try:
                 parsed = ast.literal_eval(body)
             except (ValueError, SyntaxError):
                 continue
+
             if isinstance(parsed, tuple) and len(parsed) >= 2:
-                display_name, description = str(parsed[0]), str(parsed[1])
+                display_name = str(parsed[0])
+                description = str(parsed[1])
+
         elif rationale is None and body.lower().startswith("usefulness:"):
             rationale = body.split(":", 1)[1].strip()
+
         elif evidence is None and body.lower().startswith("evidence:"):
             evidence = body.split(":", 1)[1].strip()
 
-    expression = None
+    expression: str | None = None
+
     try:
         tree = ast.parse(code)
     except SyntaxError:
         tree = None
+
     if tree is not None:
         for node in tree.body:
             if isinstance(node, ast.Assign):
                 expression = ast.unparse(node.value)
+                break
 
     return CandidateText(
         display_name=display_name,

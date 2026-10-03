@@ -53,134 +53,233 @@ about the patient, and hiding it from the proposer would misrepresent the table.
 from __future__ import annotations
 
 import logging
-from typing import Any, Sequence
+from typing import Sequence
 
 import numpy as np
 import pandas as pd
 
-__all__ = ["build_shot_batches", "balanced_assignment"]
+from sklearn.cluster import MiniBatchKMeans
+from sklearn.impute import SimpleImputer
+from sklearn.preprocessing import OneHotEncoder, StandardScaler
+from sklearn.metrics import pairwise_distances
 
 
-def _encode(
+def _encode_fast(
     frame: pd.DataFrame,
     continuous: Sequence[str],
     categorical: Sequence[str],
-) -> np.ndarray:
-    """
-    One numeric matrix for clustering: standardised numbers, one-hot codes.
+):
+    """Efficient clustering encoding."""
 
-    Written out rather than delegated to a ColumnTransformer because the input
-    can be missing anything: KMeans cannot take NaN, and autofe - unlike the
-    benchmark this came from - does not impute its tables. Continuous columns
-    are filled with their median and categorical ones get an explicit "missing"
-    level, so a column that is 99% absent contributes "absent" as a real
-    category instead of dropping its rows out of the clustering.
-    """
-    blocks: list[np.ndarray] = []
+    blocks = []
 
-    if len(continuous):
-        values = frame[list(continuous)].apply(pd.to_numeric, errors="coerce")
-        values = values.fillna(values.median())
-        # A column with no observed value at all medians to NaN; it carries no
-        # information for clustering, so it becomes a constant zero column.
-        matrix = values.to_numpy(dtype=float)
-        matrix = np.nan_to_num(matrix, nan=0.0, posinf=0.0, neginf=0.0)
-        centre = matrix.mean(axis=0)
-        spread = matrix.std(axis=0)
-        spread[spread == 0] = 1.0            # a constant column scales to zero
-        blocks.append((matrix - centre) / spread)
+    # -----------------------------
+    # Numeric features
+    # -----------------------------
+    if continuous:
+        X_num = (
+            frame[list(continuous)]
+            .apply(pd.to_numeric, errors="coerce")
+            .replace([np.inf, -np.inf], np.nan)
+            .astype(np.float32)
+        )
 
-    for column in categorical:
-        codes = frame[column]
-        # NaN becomes its own level rather than being dropped or filled.
-        levels = pd.Index(sorted(codes.dropna().unique().tolist(), key=str))
-        indicators = np.zeros((len(frame), len(levels) + 1), dtype=float)
-        position = {level: i for i, level in enumerate(levels)}
-        for row, value in enumerate(codes.tolist()):
-            indicators[row, position.get(value, len(levels))] = 1.0
-        blocks.append(indicators)
+        # Median imputation.
+        imputer = SimpleImputer(
+            strategy="median",
+            keep_empty_features=True,
+        )
+        X_num = imputer.fit_transform(X_num).astype(np.float32)
+
+        # Protect against extreme values.
+        low = np.nanpercentile(X_num, 0.5, axis=0)
+        high = np.nanpercentile(X_num, 99.5, axis=0)
+
+        X_num = np.clip(X_num, low, high)
+
+        # Standardize.
+        scaler = StandardScaler()
+        X_num = scaler.fit_transform(X_num).astype(np.float32)
+
+        # Final safety check.
+        X_num = np.nan_to_num(
+            X_num,
+            nan=0.0,
+            posinf=0.0,
+            neginf=0.0,
+        )
+
+        blocks.append(X_num)
+
+    # -----------------------------
+    # Categorical features
+    # -----------------------------
+    if categorical:
+        X_cat = frame[list(categorical)].copy()
+
+        # IMPORTANT:
+        # Mixed float/string values were causing your
+        # OneHotEncoder TypeError.
+        X_cat = X_cat.astype("string")
+        X_cat = X_cat.fillna("__MISSING__")
+
+        encoder = OneHotEncoder(
+            handle_unknown="ignore",
+            sparse_output=True,
+            dtype=np.float32,
+        )
+
+        X_cat = encoder.fit_transform(X_cat)
+
+        blocks.append(X_cat)
 
     if not blocks:
-        raise ValueError("no columns to cluster on")
-    return np.hstack(blocks)
+        raise ValueError("No columns to cluster on")
 
+    # -----------------------------
+    # Combine
+    # -----------------------------
+    if len(blocks) == 1:
+        return blocks[0]
 
-def balanced_assignment(distances: np.ndarray) -> np.ndarray:
-    """
-    Assign rows to clusters keeping cluster sizes as equal as possible.
+    from scipy.sparse import csr_matrix, hstack
 
-    Repeatedly commits the row with the most to lose: the one whose gap between
-    its best and second-best still-open cluster ("regret") is largest, breaking
-    ties by smaller distance and then by lower index.
+    sparse_blocks = []
 
-    Vectorised over the unassigned set; equivalent to the row-by-row loop this
-    was ported from but without its quadratic Python overhead.
-    """
-    n_samples, n_clusters = distances.shape
-    base_size, remainder = divmod(n_samples, n_clusters)
-    capacities = np.full(n_clusters, base_size, dtype=int)
-    capacities[:remainder] += 1
-
-    labels = np.full(n_samples, -1, dtype=int)
-    remaining = capacities.copy()
-    unassigned = np.arange(n_samples)
-
-    while unassigned.size:
-        available = np.flatnonzero(remaining > 0)
-        block = distances[np.ix_(unassigned, available)]
-
-        if available.size > 1:
-            # The two smallest per row, in order.
-            part = np.argpartition(block, 1, axis=1)[:, :2]
-            rows = np.arange(block.shape[0])[:, None]
-            two = block[rows, part]
-            swap = two[:, 0] > two[:, 1]
-            part[swap] = part[swap][:, ::-1]
-            best_local = part[:, 0]
-            preferred = block[rows[:, 0], best_local]
-            second = block[rows[:, 0], part[:, 1]]
-            regret = second - preferred
+    for block in blocks:
+        if isinstance(block, np.ndarray):
+            sparse_blocks.append(csr_matrix(block))
         else:
-            best_local = np.zeros(block.shape[0], dtype=int)
-            preferred = block[:, 0]
-            regret = np.full(block.shape[0], np.inf)
+            sparse_blocks.append(block)
 
-        # max regret, then min distance, then min row index
-        winner = np.lexsort((unassigned, preferred, -regret))[0]
-        labels[unassigned[winner]] = available[best_local[winner]]
-        remaining[available[best_local[winner]]] -= 1
-        unassigned = np.delete(unassigned, winner)
-
-    return labels
+    return hstack(sparse_blocks, format="csr")
 
 
-def _cluster_one_class(
-    matrix: np.ndarray,
+def _get_cluster_orders(
+    matrix,
     n_clusters: int,
     seed: int,
-    balance: bool,
-) -> list[list[int]]:
-    """Cluster one class and order each cluster's rows from its centre outward."""
-    from sklearn.cluster import KMeans
+    batches: int,
+    *,
+    kmeans_batch_size: int = 4096,
+    distance_chunk_size: int = 50_000,
+):
+    """
+    Cluster the rows and return up to `batches` representative
+    rows per cluster, ordered from closest to furthest from
+    the KMeans cluster center.
+    """
 
-    kmeans = KMeans(n_clusters=n_clusters, random_state=seed, n_init=10)
-    distances = kmeans.fit(matrix).transform(matrix)
-    # Equal sizes trade coverage for rotation depth; only worth it when there
-    # is more than one batch to keep disjoint.
-    labels = balanced_assignment(distances) if balance else distances.argmin(axis=1)
+    n_rows = matrix.shape[0]
 
-    orders: list[list[int]] = []
-    for cluster in range(n_clusters):
-        members = np.flatnonzero(labels == cluster)
-        if members.size == 0:
-            continue
-        centre = matrix[members].mean(axis=0)
-        distance = np.linalg.norm(matrix[members] - centre, axis=1)
-        orders.append(members[np.argsort(distance)].tolist())
+    if n_rows == 0:
+        return []
+
+    if n_rows <= n_clusters:
+        return [
+            [i]
+            for i in range(n_rows)
+        ]
+
+    kmeans = MiniBatchKMeans(
+        n_clusters=n_clusters,
+        random_state=seed,
+        n_init=3,
+        batch_size=min(kmeans_batch_size, n_rows),
+        max_iter=100,
+        max_no_improvement=10,
+        reassignment_ratio=0.01,
+    )
+
+    kmeans.fit(matrix)
+
+    centers = kmeans.cluster_centers_
+
+    # For each cluster we retain only the closest `batches`
+    # rows. We NEVER build a full N x K matrix.
+    candidates = [
+        []
+        for _ in range(n_clusters)
+    ]
+
+    for start in range(0, n_rows, distance_chunk_size):
+        stop = min(
+            start + distance_chunk_size,
+            n_rows,
+        )
+
+        chunk = matrix[start:stop]
+
+        distances = pairwise_distances(
+            chunk,
+            centers,
+            metric="euclidean",
+            squared=True,
+        )
+
+        labels = distances.argmin(axis=1)
+
+        for cluster in range(n_clusters):
+            local_rows = np.flatnonzero(
+                labels == cluster
+            )
+
+            if local_rows.size == 0:
+                continue
+
+            local_distances = distances[
+                local_rows,
+                cluster,
+            ]
+
+            keep = min(
+                batches,
+                local_rows.size,
+            )
+
+            if local_rows.size > keep:
+                part = np.argpartition(
+                    local_distances,
+                    keep - 1,
+                )[:keep]
+
+                local_rows = local_rows[part]
+                local_distances = local_distances[part]
+
+            candidates[cluster].extend(
+                (
+                    float(distance),
+                    int(start + row),
+                )
+                for row, distance
+                in zip(local_rows, local_distances)
+            )
+
+    # Keep the globally closest rows for every cluster.
+    orders = []
+
+    for cluster_candidates in candidates:
+
+        cluster_candidates.sort(
+            key=lambda x: (x[0], x[1])
+        )
+
+        cluster_candidates = cluster_candidates[
+            :batches
+        ]
+
+        orders.append(
+            [
+                row_index
+                for _, row_index
+                in cluster_candidates
+            ]
+        )
+
     return orders
 
 
-def build_shot_batches(
+def build_shot_batches_fast(
     sample: pd.DataFrame,
     target: str,
     *,
@@ -190,67 +289,222 @@ def build_shot_batches(
     batches: int = 1,
     seed: int = 42,
     logger: logging.Logger | None = None,
-) -> list[pd.DataFrame]:
+    max_cluster_rows_per_class: int = 50_000,
+):
     """
-    Class-aware, cluster-representative example rows, one frame per batch.
+    Fast class-aware representative-shot selection.
 
-    Degrades rather than raising: a class with fewer rows than the cluster
-    budget gets as many clusters as it has rows, and a request for more batches
-    than the smallest cluster can fill starts reusing rows. Both are logged:
-    a shot budget that does not divide neatly should cost a warning, not the
-    build.
+    For 2 classes and shots=32:
+        16 clusters per class
+        32 rows per batch
+
+    Only up to `max_cluster_rows_per_class` rows from each
+    class are used for clustering, which avoids running KMeans
+    over millions of rows.
     """
+
     log = logger or logging.getLogger(__name__)
-    columns = [c for c in columns if c in sample.columns]
-    categorical = [c for c in categorical if c in columns]
-    continuous = [c for c in columns if c not in set(categorical)]
 
-    classes = sorted(sample[target].dropna().unique().tolist(), key=str)
+    columns = [
+        c for c in columns
+        if c in sample.columns
+    ]
+
+    categorical = [
+        c for c in categorical
+        if c in columns
+    ]
+
+    continuous = [
+        c for c in columns
+        if c not in set(categorical)
+    ]
+
+    classes = sorted(
+        sample[target]
+        .dropna()
+        .unique()
+        .tolist(),
+        key=str,
+    )
+
     if not classes or shots < 1:
-        return [sample.head(shots).reset_index(drop=True)] * max(1, batches)
+        return [
+            sample.head(shots)
+            .reset_index(drop=True)
+        ] * max(1, batches)
 
-    per_class_budget = max(1, shots // len(classes))
-    matrix = _encode(sample[columns], continuous, categorical)
+    # --------------------------------------
+    # Number of clusters per class
+    # --------------------------------------
+    per_class_budget = max(
+        1,
+        shots // len(classes),
+    )
 
-    # Positions into `matrix`, which is row-aligned with `sample`.
-    orders_by_class: list[tuple[np.ndarray, list[list[int]]]] = []
-    for value in classes:
-        rows = np.flatnonzero((sample[target] == value).to_numpy())
-        n_clusters = min(per_class_budget, len(rows))
-        if n_clusters < 1:
-            continue
-        if n_clusters < per_class_budget:
-            log.warning(
-                "shots: class %r has only %d row(s) in the sample, so it "
-                "contributes %d example(s) instead of %d",
-                value, len(rows), n_clusters, per_class_budget,
-            )
-        orders = _cluster_one_class(matrix[rows], n_clusters, seed,
-                                    balance=batches > 1)
-        orders_by_class.append((rows, orders))
+    log.info(
+        "shots=%d batches=%d classes=%d -> %d clusters/class",
+        shots,
+        batches,
+        len(classes),
+        per_class_budget,
+    )
 
-    smallest = min((len(o) for _, orders in orders_by_class for o in orders),
-                   default=0)
-    if 0 < smallest < batches:
-        log.info(
-            "shots: the smallest cluster holds %d row(s) but %d batch(es) were "
-            "requested, so some rows repeat across rounds", smallest, batches,
+    # --------------------------------------
+    # IMPORTANT:
+    # Don't encode all 2M rows.
+    #
+    # Take a balanced clustering sample.
+    # --------------------------------------
+    cluster_parts = []
+
+    for class_number, value in enumerate(classes):
+
+        class_rows = sample[
+            sample[target] == value
+        ]
+
+        n_take = min(
+            len(class_rows),
+            max_cluster_rows_per_class,
         )
 
-    built: list[pd.DataFrame] = []
-    for batch in range(max(1, batches)):
-        picked: list[int] = []
-        for rows, orders in orders_by_class:
-            for order in orders:
-                # Batch b takes the b-th closest row of each cluster, so
-                # batches stay disjoint until a cluster has to cycle.
-                picked.append(int(rows[order[batch % len(order)]]))
-        built.append(sample.iloc[picked].reset_index(drop=True))
+        if n_take == 0:
+            continue
 
-    total = len(built[0]) if built else 0
-    log.info(
-        "shots: %d example row(s) per batch x %d batch(es), one per cluster "
-        "across %d class(es) (%d requested)",
-        total, len(built), len(orders_by_class), shots,
+        # Deterministic class-specific sampling.
+        class_sample = class_rows.sample(
+            n=n_take,
+            random_state=seed + class_number,
+        )
+
+        cluster_parts.append(class_sample)
+
+        log.info(
+            "class=%r: %d rows available, %d used for clustering",
+            value,
+            len(class_rows),
+            n_take,
+        )
+
+    if not cluster_parts:
+        return [
+            sample.head(shots)
+            .reset_index(drop=True)
+        ] * max(1, batches)
+
+    cluster_sample = pd.concat(
+        cluster_parts,
+        ignore_index=True,
     )
+
+    log.info(
+        "clustering sample: %d rows",
+        len(cluster_sample),
+    )
+
+    # --------------------------------------
+    # Encode ONLY the smaller clustering set
+    # --------------------------------------
+    matrix = _encode_fast(
+        cluster_sample[columns],
+        continuous,
+        categorical,
+    )
+
+    # Safety check
+    if hasattr(matrix, "data"):
+        if not np.isfinite(matrix.data).all():
+            raise ValueError(
+                "Clustering matrix contains non-finite sparse values"
+            )
+    else:
+        if not np.isfinite(matrix).all():
+            raise ValueError(
+                "Clustering matrix contains non-finite values"
+            )
+
+    # --------------------------------------
+    # Cluster each class independently
+    # --------------------------------------
+    orders_by_class = []
+
+    for class_number, value in enumerate(classes):
+
+        rows = np.flatnonzero(
+            (
+                cluster_sample[target] == value
+            ).to_numpy()
+        )
+
+        n_clusters = min(
+            per_class_budget,
+            len(rows),
+        )
+
+        if n_clusters == 0:
+            continue
+
+        log.info(
+            "class=%r: clustering %d rows into %d clusters",
+            value,
+            len(rows),
+            n_clusters,
+        )
+
+        class_matrix = matrix[rows]
+
+        orders = _get_cluster_orders(
+            class_matrix,
+            n_clusters=n_clusters,
+            seed=seed + 1000 + class_number,
+            batches=batches,
+        )
+
+        orders_by_class.append(
+            (rows, orders)
+        )
+
+    # --------------------------------------
+    # Build batches
+    # --------------------------------------
+    built = []
+
+    for batch in range(max(1, batches)):
+
+        picked = []
+
+        for rows, orders in orders_by_class:
+
+            for order in orders:
+
+                if not order:
+                    continue
+
+                # Batch 0 = closest
+                # Batch 1 = second closest
+                # ...
+                # Batch 9 = tenth closest
+                picked.append(
+                    rows[
+                        order[
+                            batch % len(order)
+                        ]
+                    ]
+                )
+
+        batch_frame = (
+            cluster_sample
+            .iloc[picked]
+            .reset_index(drop=True)
+        )
+
+        built.append(batch_frame)
+
+        log.info(
+            "batch %d: %d rows",
+            batch,
+            len(batch_frame),
+        )
+
     return built

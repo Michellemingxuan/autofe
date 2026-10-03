@@ -46,6 +46,7 @@ def parallel_map(
     n_jobs: int = -1,
     backend: str = "loky",
     desc: str = "task",
+    log_progress: bool = False,
     **kwargs,
 ) -> List[R]:
     """Apply ``func`` to every item, in parallel unless there is nothing to gain.
@@ -58,12 +59,31 @@ def parallel_map(
     workers = resolve_n_jobs(n_jobs)
     if workers == 1 or len(items) == 1 or backend == "sequential":
         logger.debug("running %d %s(s) sequentially", len(items), desc)
-        return [func(item, **kwargs) for item in items]
+        results = []
+        for completed, item in enumerate(items, start=1):
+            results.append(func(item, **kwargs))
+            if log_progress:
+                logger.info("%s: %d/%d completed", desc, completed, len(items))
+        return results
 
     logger.info("running %d %s(s) across %d worker(s) [%s]", len(items), desc, workers, backend)
-    return Parallel(n_jobs=workers, backend=backend)(
-        delayed(func)(item, **kwargs) for item in items
+    if not log_progress:
+        return Parallel(n_jobs=workers, backend=backend)(
+            delayed(func)(item, **kwargs) for item in items
+        )
+
+    completed_results = Parallel(n_jobs=workers, backend=backend, return_as="generator_unordered")(
+        delayed(_indexed_call)(index, func, item, kwargs) for index, item in enumerate(items)
     )
+    ordered_results: List[R] = [None] * len(items)  # type: ignore[list-item]
+    for completed, (index, result) in enumerate(completed_results, start=1):
+        ordered_results[index] = result
+        logger.info("%s: %d/%d completed", desc, completed, len(items))
+    return ordered_results
+
+
+def _indexed_call(index: int, func: Callable[..., R], item: T, kwargs: dict) -> tuple[int, R]:
+    return index, func(item, **kwargs)
 
 
 def chunked(items: Sequence[T], size: int) -> Iterable[List[T]]:

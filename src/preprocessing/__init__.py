@@ -34,7 +34,7 @@ from preprocessing.dataset import (
     stratified_split,
     write_splits,
 )
-from preprocessing.shots import build_shot_batches
+from preprocessing.shots import build_shot_batches_fast
 
 __all__ = [
     "SPLITS",
@@ -43,7 +43,7 @@ __all__ = [
     "fetch_archive",
     "stratified_split",
     "build_sample",
-    "build_shot_batches",
+    "build_shot_batches_fast",
     "declared_candidates",
     "resolve_path",
     "write_splits",
