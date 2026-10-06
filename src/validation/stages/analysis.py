@@ -375,7 +375,7 @@ def _run_shap(
     # Optional settings. Defaults are intentionally conservative for a
     # memory-constrained laptop. They can be added to config later without
     # breaking older configs.
-    chunk_size = int(getattr(shap_cfg, "chunk_size", 2000))
+    chunk_size = int(getattr(shap_cfg, "chunk_size", None) or 2000)
     requested_jobs = getattr(shap_cfg, "n_jobs", None)
 
     if requested_jobs is None:

@@ -115,6 +115,7 @@ def run_preflight(cfg: Config, dataset: Dataset) -> PreflightReport:
             "add base_plus_new to model.variants for batch gain", warning=True)
         shap_ready = (not cfg.analysis.shap.enabled or
                       (cfg.model.save_models and cfg.verdict.shap_variant in variants))
+        # (leave_one_in reads each candidate's own loi__ model)
         add("SHAP verdict evidence", shap_ready,
             ("available" if shap_ready else
              "SHAP needs model.save_models and verdict.shap_variant among model.variants"),

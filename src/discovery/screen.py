@@ -100,6 +100,7 @@ class Screener:
         spike_factor: float = 1000.0,
         redundancy_max_abs: float | None = None,
         column_aliases: Mapping[str, str] | None = None,
+        also_score: Mapping[str, Callable[[pd.DataFrame, str, str], float]] | None = None,
     ):
         if not len(train) or not len(valid):
             raise ValueError("the screen needs rows to fit on and rows to score on; "
@@ -113,6 +114,9 @@ class Screener:
         self.base_features = list(base_features)
         self.params = self._measurable(params)
         self.score = score
+        # Further metrics read off the same fits, each reported as its own gain:
+        # the agent's analyst gates a feature on Gini and capture rate at once.
+        self.also_score = dict(also_score or {})
         self.num_boost_round = num_boost_round
         self.nthread = nthread
         self.spike_factor = spike_factor
@@ -126,7 +130,7 @@ class Screener:
         )
 
         self._y = self.sample[self.target].to_numpy()
-        self._base_score = self._fit_and_score(
+        self._base_score, self._base_also = self._fit_and_score(
             self.sample[self.base_features], self.base_features
         )
 
@@ -153,7 +157,8 @@ class Screener:
     def base_score(self) -> float:
         return self._base_score
 
-    def _fit_and_score(self, matrix: pd.DataFrame, names: Sequence[str]) -> float:
+    def _fit_and_score(self, matrix: pd.DataFrame,
+                       names: Sequence[str]) -> tuple[float, dict[str, float]]:
         """Fit on the screen's train rows, score on its held-out rows.
 
         The holdout is not optional. Scored in-sample, a gradient-boosted fit
@@ -183,7 +188,8 @@ class Screener:
         scored = pd.DataFrame(
             {"y": self._y[self._eval_rows], "p": fitted.predictions["eval"]}
         )
-        return float(self.score(scored, "y", "p"))
+        also = {key: float(fn(scored, "y", "p")) for key, fn in self.also_score.items()}
+        return float(self.score(scored, "y", "p")), also
 
     def evaluate(self, code: str, reserved_names: Sequence[str] = ()) -> ScreenResult:
         """
@@ -202,19 +208,7 @@ class Screener:
             validate_references(code, self.base_features, self.column_aliases)
 
             extended = apply_code(self.sample[self.base_features], [code])
-            check_finite(extended, name, "sample")
-            check_scale({"sample": extended}, name, self.spike_factor)
-            if self._base_ranks is not None:
-                check_redundancy(
-                    extended[name], self._base_ranks, name, self.redundancy_max_abs
-                )
-            check_matrix_finite(extended, "sample")
-
-            features = [*self.base_features, name]
-            result.base_score = self._base_score
-            result.candidate_score = self._fit_and_score(extended[features], features)
-            result.delta = result.candidate_score - result.base_score
-            result.ok = True
+            self._score_extended(extended, name, result)
 
         except CandidateError as error:
             result.error = str(error)
@@ -223,3 +217,52 @@ class Screener:
 
         result.elapsed_seconds = time.perf_counter() - started
         return result
+
+    def evaluate_values(self, name: str, values: Any) -> ScreenResult:
+        """
+        Score a column computed elsewhere, one value per screen row, in order.
+
+        For code the screen cannot run in-process - an agent's script that joins
+        an external source, run in a subprocess or on Spark. The guards and the
+        fit are the same as :meth:`evaluate`'s, so the two deltas compare.
+        """
+        import time
+
+        started = time.perf_counter()
+        result = ScreenResult(feature_name=name, n_rows=len(self.sample))
+        try:
+            if name in self.sample.columns:
+                raise CandidateError(f"{name!r} already exists; choose a new name")
+            column = pd.Series(np.asarray(values, dtype=float), index=self.sample.index)
+            if len(column) != len(self.sample):
+                raise CandidateError(f"{name!r} has {len(column)} values for "
+                                     f"{len(self.sample)} screen rows")
+            extended = self.sample[self.base_features].assign(**{name: column})
+            self._score_extended(extended, name, result)
+        except CandidateError as error:
+            result.error = str(error)
+        except Exception as error:  # noqa: BLE001 - any failure is feedback
+            result.error = f"{type(error).__name__}: {error}"
+        result.elapsed_seconds = time.perf_counter() - started
+        return result
+
+    def _score_extended(self, extended: pd.DataFrame, name: str,
+                        result: ScreenResult) -> None:
+        """Guard the new column, then fit base + it and record the delta."""
+        check_finite(extended, name, "sample")
+        check_scale({"sample": extended}, name, self.spike_factor)
+        if self._base_ranks is not None:
+            check_redundancy(
+                extended[name], self._base_ranks, name, self.redundancy_max_abs
+            )
+        check_matrix_finite(extended, "sample")
+
+        features = [*self.base_features, name]
+        result.base_score = self._base_score
+        result.candidate_score, also = self._fit_and_score(extended[features], features)
+        result.delta = result.candidate_score - result.base_score
+        for key, value in also.items():
+            result.extras[f"{key}_base"] = self._base_also[key]
+            result.extras[f"{key}_candidate"] = value
+            result.extras[f"{key}_delta"] = value - self._base_also[key]
+        result.ok = True

@@ -1,0 +1,75 @@
+# synthetic_agent - a CDSS-shaped synthetic use case for building the agent.
+#
+#   PYTHONPATH=src python -m agent.synthetic data/synthetic_agent   # writes the data
+#   PYTHONPATH=src python -m agent.cli -c configs/synthetic_agent.yaml \
+#       -d "use payment behaviour relative to spend" -k 5
+#
+# Planted: default risk depends on the share of the last 90 days' spend paid
+# back (no base column has it), and defaulters carry collections spends dated
+# after their as-of date - a leak the point-in-time linkage must stop.
+
+run:
+  name: synthetic_agent
+  output_dir: outputs
+  seed: 42
+  n_jobs: 1
+
+data:
+  paths:
+    train: data/synthetic_agent/train.csv
+    valid: data/synthetic_agent/valid.csv
+    test:  data/synthetic_agent/test.csv     # out of time: the latest months
+  target: default
+  id_cols: [id]
+
+features:
+  base: []
+
+discovery:
+  task_description: "Find features that add predictive information on default to the incumbent model, measured by Gini gain."
+  task_context_path: data/synthetic_agent/task_context.md
+  screen_data: files
+  screen_paths:
+    train: data/synthetic_agent/screen_train.csv
+    valid: data/synthetic_agent/screen_valid.csv
+  screen_boost_rounds: 150
+  metric: adj_gini
+  column_descriptions_path: data/synthetic_agent/column_descriptions.json
+  few_shot_path: data/synthetic_agent/few_shot.csv
+
+agent:
+  additional_data_dir: data/synthetic_agent/additional_data
+  linkage_dir: data/synthetic_agent/linkage
+  id_format: "<customer_id>_<dt>_<marker>; dt is the as-of date as YYYYMMDD; customer_id joins to the sources' customer_id"
+  engine: pandas
+  max_intents: 5
+  min_gini_gain: 0.0          # analyst gates on the screen; min_capture_gain: off unless set
+  run_dir: outputs/agent
+  llm:
+    backend: openai
+    model: gpt-4.1
+  models: [gpt-4.1, gpt-4.1-mini, gpt-5]     # offered per run in the UI
+
+feature_selection:
+  enabled: true
+  spearman:
+    redundancy_max_abs: 0.80
+
+model:
+  task: binary
+  num_boost_round: 300
+  early_stopping_rounds: 30
+  threads_per_model: 4
+  variants: [base, leave_one_in]
+  params:
+    eta: 0.05
+    max_depth: 3
+    min_child_weight: 5
+    subsample: 0.8
+    colsample_bytree: 1.0
+    eval_metric: auc
+    tree_method: hist
+
+verdict:
+  gini_split: test
+  require_valid_too: false

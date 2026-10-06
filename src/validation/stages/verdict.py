@@ -117,10 +117,12 @@ def build_verdicts(
     stats = (fs.target_stats.set_index("feature")
              if fs is not None and not fs.target_stats.empty else pd.DataFrame())
     gini = _gini_lookup(analysis, vc.gini_split)
-    shap = _shap_lookup(analysis, vc.shap_variant)
+    own_model = vc.shap_variant == "leave_one_in"     # each feature in base + it
+    shared = pd.DataFrame() if own_model else _shap_lookup(analysis, vc.shap_variant)
 
     rows = []
     for feature in candidates:
+        shap = _shap_lookup(analysis, f"loi__{feature}") if own_model else shared
         row: Dict[str, object] = {"feature": feature}
         for gate in GATES:
             row[gate] = NOT_REACHED

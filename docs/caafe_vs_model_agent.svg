@@ -1,0 +1,161 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1400 821"
+     font-family="ui-sans-serif, -apple-system, 'Segoe UI', system-ui, Helvetica, sans-serif">
+  <defs>
+    <filter id="shadow" x="-20%" y="-20%" width="140%" height="140%">
+      <feGaussianBlur in="SourceAlpha" stdDeviation="1.2"/><feOffset dy="1.5"/>
+      <feComponentTransfer><feFuncA type="linear" slope="0.14"/></feComponentTransfer>
+      <feMerge><feMergeNode/><feMergeNode in="SourceGraphic"/></feMerge>
+    </filter>
+    <marker id="a-p" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,1 L10,5 L0,9 Z" fill="#7A5AA8"/></marker>
+    <marker id="a-g" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,1 L10,5 L0,9 Z" fill="#8A8275"/></marker>
+  </defs>
+  <rect width="1400" height="821" fill="#FAF9F5"/>
+<text x="30" y="38" font-size="20" fill="#2D2D2D" font-weight="700">CAAFE vs the Model Agent</text>
+<text x="310" y="38" font-size="12" fill="#7A7569">what differs in the code, and what it buys</text>
+<line x1="30" y1="54" x2="1370" y2="54" stroke="#E5E0D2"/>
+<text x="30" y="80" font-size="11" fill="#8A8275" font-weight="700">CAAFE · src/discovery - a fixed loop</text>
+<rect x="30" y="92" width="200" height="58" rx="8" fill="#FFFFFF" stroke="#D4C5A9" filter="url(#shadow)"/>
+<text x="130.0" y="110" font-size="10" fill="#5C5044" font-weight="700" text-anchor="middle">Program builds the prompt</text>
+<text x="130.0" y="124" font-size="8.4" fill="#5C5044" text-anchor="middle">task · columns · example rows</text>
+<text x="130.0" y="136" font-size="8.4" fill="#5C5044" text-anchor="middle">· history of earlier rounds</text>
+<line x1="230" y1="121" x2="258" y2="121" stroke="#8A8275" stroke-width="1.6" marker-end="url(#a-g)"/>
+<rect x="260" y="92" width="190" height="58" rx="8" fill="#EDE9F3" stroke="#C3B6D8" filter="url(#shadow)"/>
+<text x="355.0" y="110" font-size="10" fill="#4A3B69" font-weight="700" text-anchor="middle">LLM · one call per round</text>
+<text x="355.0" y="124" font-size="8.4" fill="#4A3B69" text-anchor="middle">writes a batch of code:</text>
+<text x="355.0" y="136" font-size="8.4" fill="#4A3B69" text-anchor="middle">expressions over df only</text>
+<line x1="450" y1="121" x2="478" y2="121" stroke="#8A8275" stroke-width="1.6" marker-end="url(#a-g)"/>
+<rect x="480" y="92" width="170" height="58" rx="8" fill="#FFFFFF" stroke="#D4C5A9" filter="url(#shadow)"/>
+<text x="565.0" y="110" font-size="10" fill="#5C5044" font-weight="700" text-anchor="middle">Program screens each</text>
+<text x="565.0" y="124" font-size="8.4" fill="#5C5044" text-anchor="middle">discovery.screen + guards</text>
+<text x="565.0" y="136" font-size="8.4" fill="#5C5044" text-anchor="middle">on the model table</text>
+<line x1="650" y1="121" x2="678" y2="121" stroke="#8A8275" stroke-width="1.6" marker-end="url(#a-g)"/>
+<rect x="680" y="92" width="150" height="58" rx="8" fill="#FFFFFF" stroke="#D4C5A9" filter="url(#shadow)"/>
+<text x="755.0" y="110" font-size="10" fill="#5C5044" font-weight="700" text-anchor="middle">Stop or loop</text>
+<text x="755.0" y="124" font-size="8.4" fill="#5C5044" text-anchor="middle">max_rounds (default 1)</text>
+<text x="755.0" y="136" font-size="8.4" fill="#5C5044" text-anchor="middle">results → next prompt</text>
+<path d="M755,150 V166 H130 V152" stroke="#8A8275" stroke-width="1.4" stroke-dasharray="4,3" fill="none" marker-end="url(#a-g)"/>
+<text x="442" y="162" font-size="8.6" fill="#8A8275" font-style="italic" text-anchor="middle">the program decides the next step; the LLM only writes code</text>
+<text x="870" y="80" font-size="11" fill="#7A5AA8" font-weight="700">Model Agent · src/agent - an agent loop</text>
+<rect x="870" y="92" width="170" height="58" rx="8" fill="#F4F0E6" stroke="#D4C5A9" filter="url(#shadow)"/>
+<text x="955.0" y="110" font-size="10" fill="#5C5044" font-weight="700" text-anchor="middle">Brief</text>
+<text x="955.0" y="124" font-size="8.4" fill="#5C5044" text-anchor="middle">task · skills · memory of earlier</text>
+<text x="955.0" y="136" font-size="8.4" fill="#5C5044" text-anchor="middle">runs · this run&#x27;s focus lenses</text>
+<line x1="1040" y1="121" x2="1068" y2="121" stroke="#7A5AA8" stroke-width="1.6" marker-end="url(#a-p)"/>
+<rect x="1070" y="92" width="140" height="58" rx="8" fill="#7A5AA8" stroke="#7A5AA8" filter="url(#shadow)"/>
+<text x="1140.0" y="110" font-size="10" fill="#FFFFFF" font-weight="700" text-anchor="middle">LLM picks a tool</text>
+<text x="1140.0" y="124" font-size="8.4" fill="#FFFFFF" text-anchor="middle">reads each result,</text>
+<text x="1140.0" y="136" font-size="8.4" fill="#FFFFFF" text-anchor="middle">then the next tool</text>
+<line x1="1210" y1="114" x2="1238" y2="114" stroke="#7A5AA8" stroke-width="1.6" marker-end="url(#a-p)"/>
+<line x1="1238" y1="130" x2="1210" y2="130" stroke="#7A5AA8" stroke-width="1.6" marker-end="url(#a-p)"/>
+<rect x="1240" y="92" width="130" height="58" rx="8" fill="#FFFFFF" stroke="#7A5AA8" filter="url(#shadow)"/>
+<text x="1305.0" y="110" font-size="10" fill="#4A3B69" font-weight="700" text-anchor="middle">Tools · code</text>
+<text x="1305.0" y="124" font-size="8.4" fill="#4A3B69" text-anchor="middle">run · check · record</text>
+<text x="1305.0" y="136" font-size="8.4" fill="#4A3B69" text-anchor="middle">· refuse at no cost</text>
+<path d="M1140,150 V158 H1305 V152" stroke="#7A5AA8" stroke-width="1.4" stroke-dasharray="4,3" fill="none"/>
+<text x="1120" y="170" font-size="8.6" fill="#7A5AA8" font-style="italic" text-anchor="middle">until report_findings · then evaluation on the full splits</text>
+<rect x="870" y="176" width="46.300000000000004" height="16" rx="8" fill="#FFFFFF" stroke="#7A5AA8"/>
+<text x="893.15" y="187.5" font-size="8" fill="#4A3B69" text-anchor="middle" font-family="ui-monospace, Menlo, monospace">catalog</text>
+<rect x="921.3" y="176" width="36.5" height="16" rx="8" fill="#FFFFFF" stroke="#7A5AA8"/>
+<text x="939.55" y="187.5" font-size="8" fill="#4A3B69" text-anchor="middle" font-family="ui-monospace, Menlo, monospace">scope</text>
+<rect x="962.8" y="176" width="36.5" height="16" rx="8" fill="#FFFFFF" stroke="#7A5AA8"/>
+<text x="981.05" y="187.5" font-size="8" fill="#4A3B69" text-anchor="middle" font-family="ui-monospace, Menlo, monospace">shots</text>
+<rect x="1004.3" y="176" width="56.1" height="16" rx="8" fill="#FFFFFF" stroke="#7A5AA8"/>
+<text x="1032.35" y="187.5" font-size="8" fill="#4A3B69" text-anchor="middle" font-family="ui-monospace, Menlo, monospace">run_probe</text>
+<rect x="1065.3999999999999" y="176" width="61.0" height="16" rx="8" fill="#FFFFFF" stroke="#7A5AA8"/>
+<text x="1095.8999999999999" y="187.5" font-size="8" fill="#4A3B69" text-anchor="middle" font-family="ui-monospace, Menlo, monospace">brainstorm</text>
+<rect x="870" y="196" width="85.5" height="16" rx="8" fill="#FFFFFF" stroke="#7A5AA8"/>
+<text x="912.75" y="207.5" font-size="8" fill="#4A3B69" text-anchor="middle" font-family="ui-monospace, Menlo, monospace">propose_linkage</text>
+<rect x="960.5" y="196" width="80.60000000000001" height="16" rx="8" fill="#FFFFFF" stroke="#7A5AA8"/>
+<text x="1000.8" y="207.5" font-size="8" fill="#4A3B69" text-anchor="middle" font-family="ui-monospace, Menlo, monospace">screen_feature</text>
+<rect x="1046.1" y="196" width="95.30000000000001" height="16" rx="8" fill="#FFFFFF" stroke="#7A5AA8"/>
+<text x="1093.75" y="207.5" font-size="8" fill="#4A3B69" text-anchor="middle" font-family="ui-monospace, Menlo, monospace">request_data_pull</text>
+<rect x="1146.3999999999999" y="196" width="95.30000000000001" height="16" rx="8" fill="#FFFFFF" stroke="#7A5AA8"/>
+<text x="1194.05" y="207.5" font-size="8" fill="#4A3B69" text-anchor="middle" font-family="ui-monospace, Menlo, monospace">challenge_request</text>
+<rect x="1246.6999999999998" y="196" width="85.5" height="16" rx="8" fill="#FFFFFF" stroke="#7A5AA8"/>
+<text x="1289.4499999999998" y="207.5" font-size="8" fill="#4A3B69" text-anchor="middle" font-family="ui-monospace, Menlo, monospace">report_findings</text>
+<rect x="230" y="236" width="340" height="26" rx="6" fill="#F1EFEA" stroke="none"/>
+<text x="242" y="253" font-size="10.5" fill="#5C5044" font-weight="700">CAAFE</text>
+<rect x="580" y="236" width="440" height="26" rx="6" fill="#EDE9F3" stroke="none"/>
+<text x="592" y="253" font-size="10.5" fill="#4A3B69" font-weight="700">Model Agent</text>
+<rect x="1030" y="236" width="340" height="26" rx="6" fill="#E7F0EA" stroke="none"/>
+<text x="1042" y="253" font-size="10.5" fill="#2C5B41" font-weight="700">Benefit</text>
+<line x1="30" y1="266" x2="1370" y2="266" stroke="#E5E0D2"/>
+<text x="42" y="284" font-size="10" fill="#2D2D2D" font-weight="700">Who decides the next step</text>
+<text x="242" y="284" font-size="9.2" fill="#5C5044">A for-loop: build the prompt, one call, screen,</text>
+<text x="242" y="297" font-size="9.2" fill="#5C5044">repeat until max_rounds.</text>
+<text x="592" y="284" font-size="9.2" fill="#4A3B69">The LLM, one tool at a time, after reading each</text>
+<text x="592" y="297" font-size="9.2" fill="#4A3B69">result - inside gates the code enforces.</text>
+<text x="1042" y="284" font-size="9.2" fill="#2C5B41" font-weight="600">Adapts within the run: looks, fixes, changes</text>
+<text x="1042" y="297" font-size="9.2" fill="#2C5B41">idea, asks for data.</text>
+<line x1="30" y1="314" x2="1370" y2="314" stroke="#E5E0D2"/>
+<text x="42" y="332" font-size="10" fill="#2D2D2D" font-weight="700">Data it can use</text>
+<text x="242" y="332" font-size="9.2" fill="#5C5044">The model table only: each block is an</text>
+<text x="242" y="345" font-size="9.2" fill="#5C5044">expression over df (pandas, numpy, math).</text>
+<text x="592" y="332" font-size="9.2" fill="#4A3B69">L1 model columns or one source · L2 a source</text>
+<text x="592" y="345" font-size="9.2" fill="#4A3B69">× model columns · L3 new CAS data, by request.</text>
+<text x="1042" y="332" font-size="9.2" fill="#2C5B41" font-weight="600">Finds signal the model table does not hold -</text>
+<text x="1042" y="345" font-size="9.2" fill="#2C5B41">behaviour in spends, payments, balances.</text>
+<line x1="30" y1="362" x2="1370" y2="362" stroke="#E5E0D2"/>
+<text x="42" y="380" font-size="10" fill="#2D2D2D" font-weight="700">Looking at the data</text>
+<text x="242" y="380" font-size="9.2" fill="#5C5044">Only what the prompt shows: column</text>
+<text x="242" y="393" font-size="9.2" fill="#5C5044">descriptions and example rows.</text>
+<text x="592" y="380" font-size="9.2" fill="#4A3B69">catalog with example values, shots by category,</text>
+<text x="592" y="393" font-size="9.2" fill="#4A3B69">the CAS scope, probes of real rows.</text>
+<text x="1042" y="380" font-size="9.2" fill="#2C5B41" font-weight="600">Hypotheses grounded in what the data holds,</text>
+<text x="1042" y="393" font-size="9.2" fill="#2C5B41">not in column names.</text>
+<line x1="30" y1="410" x2="1370" y2="410" stroke="#E5E0D2"/>
+<text x="42" y="428" font-size="10" fill="#2D2D2D" font-weight="700">Leakage safety</text>
+<text x="242" y="428" font-size="9.2" fill="#5C5044">Same-row expressions; no time joins</text>
+<text x="242" y="441" font-size="9.2" fill="#5C5044">to get wrong - and none to make.</text>
+<text x="592" y="428" font-size="9.2" fill="#4A3B69">Every source joined point in time, checked</text>
+<text x="592" y="441" font-size="9.2" fill="#4A3B69">and confirmed by the analyst; a code guard;</text>
+<text x="592" y="454" font-size="9.2" fill="#4A3B69">valid and test never reach the agent.</text>
+<text x="1042" y="428" font-size="9.2" fill="#2C5B41" font-weight="600">Gains that hold out of time - the</text>
+<text x="1042" y="441" font-size="9.2" fill="#2C5B41">evaluation&#x27;s test split is the first look.</text>
+<line x1="30" y1="471" x2="1370" y2="471" stroke="#E5E0D2"/>
+<text x="42" y="489" font-size="10" fill="#2D2D2D" font-weight="700">When something fails</text>
+<text x="242" y="489" font-size="9.2" fill="#5C5044">Error text goes into the next round&#x27;s</text>
+<text x="242" y="502" font-size="9.2" fill="#5C5044">prompt; the LLM may fix it, or drop it.</text>
+<text x="592" y="489" font-size="9.2" fill="#4A3B69">Refused at once with the reason, nothing</text>
+<text x="592" y="502" font-size="9.2" fill="#4A3B69">spent; the agent fixes it in its next step.</text>
+<text x="1042" y="489" font-size="9.2" fill="#2C5B41" font-weight="600">No round lost to a typo; fewer</text>
+<text x="1042" y="502" font-size="9.2" fill="#2C5B41">wasted intents.</text>
+<line x1="30" y1="519" x2="1370" y2="519" stroke="#E5E0D2"/>
+<text x="42" y="537" font-size="10" fill="#2D2D2D" font-weight="700">Diversity of ideas</text>
+<text x="242" y="537" font-size="9.2" fill="#5C5044">One batch per round, asked to vary;</text>
+<text x="242" y="550" font-size="9.2" fill="#5C5044">history steers away from repeats.</text>
+<text x="592" y="537" font-size="9.2" fill="#4A3B69">brainstorm: ≥ K+2 ideas over ≥ 4 lenses, rotating</text>
+<text x="592" y="550" font-size="9.2" fill="#4A3B69">focus per run, a quota per level; memory</text>
+<text x="592" y="563" font-size="9.2" fill="#4A3B69">refuses identical features and requests.</text>
+<text x="1042" y="537" font-size="9.2" fill="#2C5B41" font-weight="600">New angles each run instead of the same</text>
+<text x="1042" y="550" font-size="9.2" fill="#2C5B41">obvious variable.</text>
+<line x1="30" y1="580" x2="1370" y2="580" stroke="#E5E0D2"/>
+<text x="42" y="598" font-size="10" fill="#2D2D2D" font-weight="700">Gates and cost</text>
+<text x="242" y="598" font-size="9.2" fill="#5C5044">Screen delta per block; forwards every</text>
+<text x="242" y="611" font-size="9.2" fill="#5C5044">block that ran.</text>
+<text x="592" y="598" font-size="9.2" fill="#4A3B69">The analyst&#x27;s minimum gain (Gini, capture rate)</text>
+<text x="592" y="611" font-size="9.2" fill="#4A3B69">before the slow evaluation; K intents;</text>
+<text x="592" y="624" font-size="9.2" fill="#4A3B69">SQL validated and self-challenged.</text>
+<text x="1042" y="598" font-size="9.2" fill="#2C5B41" font-weight="600">The slow evaluation sees only real lifts;</text>
+<text x="1042" y="611" font-size="9.2" fill="#2C5B41">a data pull is asked for only if needed.</text>
+<line x1="30" y1="641" x2="1370" y2="641" stroke="#E5E0D2"/>
+<text x="42" y="659" font-size="10" fill="#2D2D2D" font-weight="700">What comes out</text>
+<text x="242" y="659" font-size="9.2" fill="#5C5044">Candidate columns for the validation</text>
+<text x="242" y="672" font-size="9.2" fill="#5C5044">pipeline.</text>
+<text x="592" y="659" font-size="9.2" fill="#4A3B69">Verified features with their scripts, data</text>
+<text x="592" y="672" font-size="9.2" fill="#4A3B69">requests with validated SQL, a full trace.</text>
+<text x="1042" y="659" font-size="9.2" fill="#2C5B41" font-weight="600">Actionable and auditable: every script,</text>
+<text x="1042" y="672" font-size="9.2" fill="#2C5B41">call and decision is on record.</text>
+<line x1="30" y1="689" x2="1370" y2="689" stroke="#E5E0D2"/>
+<rect x="30" y="707" width="660" height="74" rx="8" fill="#E7F0EA" stroke="#B9D3C2" filter="url(#shadow)"/>
+<text x="46" y="727" font-size="10" fill="#2C5B41" font-weight="700">Evidence - recorded run 20261003_223829_f528</text>
+<text x="46" y="744" font-size="9.2" fill="#2C5B41">payment_to_spend_90d: the share of 90-day spend paid back, built from two linked sources</text>
+<text x="46" y="758" font-size="9.2" fill="#2C5B41">(payments, spends), joined point in time - Gini gain +0.108 on the screen, the largest in the run.</text>
+<text x="46" y="772" font-size="9.2" fill="#2C5B41" font-style="italic">A CAAFE block sees only the model table, so it cannot reach this signal at all.</text>
+<rect x="710" y="707" width="660" height="74" rx="8" fill="#F4F0E6" stroke="#D4C5A9" filter="url(#shadow)"/>
+<text x="726" y="727" font-size="10" fill="#5C5044" font-weight="700">Common ground - so the comparison is fair</text>
+<text x="726" y="744" font-size="9.2" fill="#5C5044">Both score a candidate with the same screen (discovery.screen + discovery.guards: finite,</text>
+<text x="726" y="758" font-size="9.2" fill="#5C5044">no spikes, not redundant with base) and judge it with the same validation pipeline on test.</text>
+<text x="726" y="772" font-size="9.2" fill="#5C5044" font-style="italic">What differs is how candidates are found - and how far they can reach.</text>
+<text x="700.0" y="799" font-size="8.8" fill="#7A7569" font-style="italic" text-anchor="middle">Trade-off: an agent run costs more LLM calls than one CAAFE round, and its path varies from run to run - the gates, the budget and the trace are what keep it bounded and reviewable.</text>
+</svg>

@@ -182,6 +182,9 @@ class ModelConfig:
     verbose_eval: int = 0
     variants: List[str] = field(default_factory=lambda: ["base", "base_plus_new"])
     # variants: base | base_plus_new | new_only | leave_one_in | leave_one_out
+    # Named sets of new features to add to base together, one variant each
+    # (combo__<name>): e.g. {pay_and_recency: [pay_to_spend_90d, days_since_pay]}.
+    combinations: Dict[str, List[str]] = field(default_factory=dict)
     save_models: bool = True
     threads_per_model: Optional[int] = None  # None -> divide cores across variants
     tuning: TuningConfig = field(default_factory=TuningConfig)
@@ -243,6 +246,9 @@ class VerdictConfig:
     require_valid_too: bool = False
     max_shap_rank_pct: float = 0.5      # must land in the top half by mean |SHAP|
     shap_variant: str = "base_plus_new"
+    # ^ the model whose SHAP ranking the gate reads. "leave_one_in" reads each
+    #   feature's own model (base + it), ranked among base - for runs without a
+    #   model holding every candidate together, such as the agent's evaluations.
 
 
 @dataclass
@@ -391,6 +397,58 @@ class DiscoveryConfig:
 
 
 @dataclass
+class AgentConfig:
+    """The agent-driven discovery run: one direction, up to K intents.
+
+    The agent reads the model database through the discovery section's screen
+    files, descriptions and few-shot rows; this section adds what it needs on
+    top - where the extra sources and the CAS scope live, where confirmed
+    linkage is kept, and how its code is run.
+    """
+    # Cached sources: <name>.parquet|csv beside <name>_data_sample.json (or
+    # <name>.json), the format {column: [description, [sample values]]}. The
+    # CAS scope files sit here too, matched by scope_glob.
+    additional_data_dir: Optional[str] = None
+    # The CAS scope: by default the *_flagged.csv exports in additional_data_dir,
+    # plus any scope files listed here, wherever they are.
+    scope_glob: str = "*_flagged.csv"
+    scope_paths: List[str] = field(default_factory=list)
+    # The user's own guidance on the scope - which tables to prefer, what a
+    # flag means, what is off limits. Read by the agent with the scope.
+    scope_notes_paths: List[str] = field(default_factory=list)
+    # Shot categories the user adds after the clustering shots
+    # (discovery.few_shot_path), in order: one markdown file each, with
+    # sections for the context, the ids, and whether every run sees the same
+    # examples or rotates through them by batch. See agent/tools/shots.py.
+    shot_spec_paths: List[str] = field(default_factory=list)
+    # Confirmed linkage, one <source>.py per source, reused across runs.
+    linkage_dir: Optional[str] = None
+    # How the model id encodes the join keys, in words the agent can act on.
+    id_format: str = ""
+    engine: str = "pandas"            # pandas | spark
+    max_intents: int = 10             # K: features screened per direction
+    # A mixed run splits its K intents across levels by random sampling, each
+    # level drawn with these probabilities by priority: L2 (when a linked source
+    # is allowed) > L1 > L3. Must be decreasing.
+    level_weights: List[float] = field(default_factory=lambda: [0.5, 0.3, 0.2])
+    # The analyst's gates on the screen: a feature is verified when its Gini
+    # gain is above min_gini_gain and, if set, its gain in capture rate (at
+    # discovery.capture_percent) is above min_capture_gain.
+    min_gini_gain: float = 0.0
+    min_capture_gain: Optional[float] = None
+    code_timeout_s: float = 600.0
+    max_turns: int = 200              # model calls per run, a backstop
+    run_dir: str = "outputs/agent"
+    llm: LLMConfig = field(default_factory=LLMConfig)
+    # Models offered as a per-run choice, besides llm.model (the default).
+    models: List[str] = field(default_factory=list)
+
+    def __post_init__(self):
+        if isinstance(self.llm, dict):
+            self.llm = _subset(LLMConfig, self.llm)
+
+
+@dataclass
 class Config:
     run: RunConfig = field(default_factory=RunConfig)
     data: DataConfig = field(default_factory=DataConfig)
@@ -401,6 +459,7 @@ class Config:
     model: ModelConfig = field(default_factory=ModelConfig)
     analysis: AnalysisConfig = field(default_factory=AnalysisConfig)
     verdict: VerdictConfig = field(default_factory=VerdictConfig)
+    agent: AgentConfig = field(default_factory=AgentConfig)
 
     @classmethod
     def from_dict(cls, payload: Dict[str, Any]) -> "Config":
@@ -415,6 +474,7 @@ class Config:
             model=_subset(ModelConfig, payload.pop("model", None)),
             analysis=_subset(AnalysisConfig, payload.pop("analysis", None)),
             verdict=_subset(VerdictConfig, payload.pop("verdict", None)),
+            agent=_subset(AgentConfig, payload.pop("agent", None)),
         )
         if payload:
             raise ValueError(f"unknown top-level config section(s): {sorted(payload)}")
@@ -519,6 +579,14 @@ class Config:
                 raise ValueError(f"data.paths keys must be train/valid/test, got extra: {unknown}")
             if "train" not in self.data.paths:
                 raise ValueError("data.paths must include a 'train' entry")
+        if self.agent.engine not in ("pandas", "spark"):
+            raise ValueError(f"agent.engine must be pandas|spark, got {self.agent.engine!r}")
+        w = self.agent.level_weights
+        if len(w) != 3 or any(x <= 0 for x in w) or not (w[0] > w[1] > w[2]):
+            raise ValueError("agent.level_weights must be three positive numbers, decreasing "
+                             f"(p1 > p2 > p3), got {w}")
+        if self.agent.max_intents < 1:
+            raise ValueError(f"agent.max_intents must be >= 1, got {self.agent.max_intents}")
         known_variants = {"base", "base_plus_new", "new_only", "leave_one_in", "leave_one_out"}
         bad = set(self.model.variants) - known_variants
         if bad:

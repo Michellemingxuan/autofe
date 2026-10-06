@@ -118,6 +118,138 @@ result = Pipeline(cfg).run(frames=frames)   # or run(dataset=...) for a prebuilt
 is a fully executed walkthrough — the one-line run, how to read each artifact,
 the stage-by-stage API, and a worked discover -> verify -> keep-or-shift-out loop.
 
+## Agent-driven discovery
+
+One agent works on one **direction** - a plain-text idea for improving the
+model - with up to K **intents** (features screened). It reads the model
+database and the extra sources, writes each feature as a script (L1: model
+columns or an aggregate of one source; L2: a source aggregate combined with
+model columns; L3: new data, requested as SQL), and screens it: fit on screen_train, score on
+screen_valid. A feature is verified when it clears the analyst's gates: its
+Gini gain above `agent.min_gini_gain` and, when set, its capture-rate gain
+above `agent.min_capture_gain` (both settable per run). Valid and test never
+reach the agent. The agent is briefed with three skills (`src/agent/skills/`:
+`data_sourcing`, `feature`, `evaluate`) and acts through the tools in
+`src/agent/tools/`; the screen tool reuses `discovery.screen` and
+`discovery.guards`. Overview: [`docs/modeling_agent_architecture.svg`](docs/modeling_agent_architecture.svg). Design:
+[`docs/superpowers/specs/2026-10-03-agentic-feature-discovery-design.md`](docs/superpowers/specs/2026-10-03-agentic-feature-discovery-design.md).
+
+The entry points resolve paths from the project root wherever they are run
+from, so `data/` is the one data folder.
+
+```bash
+PYTHONPATH=src python -m agent.synthetic                           # CDSS-shaped synthetic data -> data/synthetic_agent
+PYTHONPATH=src python -m agent.server -c configs/synthetic_agent.yaml   # backend, :49010
+cd web && npm install && npm run build                              # served by the backend at /
+# or: cd web && npm run dev                                         # :5173, proxies /api
+```
+
+From the terminal instead (approvals asked at the prompt; `--yes` approves all):
+
+```bash
+PYTHONPATH=src python -m agent.cli -c configs/synthetic_agent.yaml -d "payment behaviour vs spend" -k 5
+PYTHONPATH=src python -m agent.evaluate -c configs/synthetic_agent.yaml \
+    --feature <run_id>:pay_to_spend_90d --feature <other_run_id>:balance_6m_volatility \
+    --combo pay_vol=<run_id>:pay_to_spend_90d,<other_run_id>:balance_6m_volatility
+```
+
+The UI follows the journey in three steps.
+
+1. **Setup** - point at the data, in five blocks, each prefilled from the
+   config file and applied on its own (saved as overrides in
+   `<agent.run_dir>/workspace_overrides.json` only if the workspace loads):
+   * **Model database** - set the folder once, then just the split file
+     names; each path shows whether it exists and its size.
+   * **Context for the agent** - task description, and the small files
+     (task context, column descriptions): a path, or an upload kept under
+     `<agent.run_dir>/uploads`.
+   * **Shots** - labelled examples the agent reads by category with its
+     `shots` tool: the **clustering shots** - the prepare step's file
+     (`discovery.few_shot_path`), or generated on the page from the screen's
+     fit rows (KMeans per class, N rows × B batches) - then your own categories, appended in
+     order (`agent.shot_spec_paths`), one markdown file each:
+
+     ```markdown
+     # Early cures
+     ## Context
+     Customers who went 30 days past due and cured within two cycles.
+     ## IDs
+     - 105131_20240301_B
+     - 104444_20240701_A, 104990_20240501_C
+     ## Same examples each discovery?
+     No - rotate, 4 per batch
+     ```
+
+     Ids are looked up in the train split only. "Yes" shows every id in
+     every run; "no" rotates through batches of the given size, one batch
+     per discovery run (the counter carries across runs, as does the
+     clustering shots' rotation). The page lists the categories - rows
+     found, ids missing, how they rotate - and any can be deleted.
+   * **Additional data** - a folder of `<name>.parquet|csv` +
+     `<name>_data_sample.json`, or a source added by path where it lies
+     (`sources.json` - big data is never uploaded or copied; its sample JSON
+     can be uploaded). For each source with data the agent **proposes its
+     linkage** - the point-in-time join to the model ids - and you approve
+     it after seeing the code, the match rate and the point-in-time check.
+   * **Scope** - the CAS variables, flagged by whether the model uses them:
+     by default the `*_flagged.csv` files in the additional data folder
+     (`agent.scope_glob`), plus any listed in `agent.scope_paths`. **Scope
+     notes** (`agent.scope_notes_paths`; .md, .txt, .docx, .pdf - uploaded or
+     by path) are your guidance on using it, given to the agent verbatim.
+2. **Discover** - a direction plus its **parameters**, prefilled from the
+   config's `agent` section: K, the model, the engine, the verification
+   threshold, which levels (L1, L2, L3) and which sources. The run
+   shows as a trace grouped into steps - explore, linkage, each intent, data
+   requests, summary - beside a timeline. A direction, or one intent of it,
+   can be deleted.
+3. **Evaluate** - every verified feature from every direction in one pool;
+   click one to read its code and the linkage it used. Pick any, group some
+   into combinations, run: `leave_one_in` for each and `combo__<name>` for
+   each combination on the full splits. On real data this is the slow part,
+   so it streams - each feature script, each pipeline stage with its time,
+   and the pipeline's log. Results, all on test (the out-of-time hold-out):
+   Gini gain, capture-rate gain at the top 10%, 5% and 1%, the SHAP rank of
+   each new feature in its model, and the verdict. Evaluations can be deleted.
+
+**A data-request run** - tick only L3. Nothing is built or screened. One
+agent reads the CAS scope, your scope notes and the shots, and takes each data
+pull it wants (up to K) through one loop:
+
+1. *Propose* - a rationale, the features it would enable, and BigQuery SQL.
+2. *Validate* - the tool reads the SQL against the CAS column lists: a table
+   outside the scope, an invented column, no identifier selected or no
+   partition-date filter sends it back before it costs anything.
+3. *Challenge* - the agent reflects on its own proposal: can this information
+   be built from the model database and the linked sources? A pull is effort,
+   so it is worth it only if not. A "constructible" verdict must come with the
+   construction, and the construction is run on the screen rows.
+4. *Kept or dropped* - only a construction that runs drops the proposal.
+
+The run ends only when every proposal is challenged, and its summary carries
+the validated SQL of the kept requests. Nothing waits for approval; the kept
+and dropped requests are reviewed when the run ends - on the run page, or
+downloaded together as `data_requests.md` (also in the run folder, with one
+`.sql` file per kept request).
+
+As in AgenticSys_v2, the agents reason and the tools are deterministic Python:
+a tool runs code, checks it, records it - it never calls a model.
+
+What waits for you, and nothing else does: confirming a linkage (in Setup, or
+mid-run if a direction needs a source that has none), and an **L3 data pull**
+- the agent writes the gap and BigQuery SQL over the CAS scope; approve it,
+run it, and drop the result in as a source.
+
+The API the UI calls is listed in `src/agent/server.py`;
+`tests/test_agent_server.py` drives every route without an LLM and fails if
+the frontend calls a path the server lacks.
+
+Sources are `<name>.parquet|csv` beside `<name>_data_sample.json`
+(`{column: [description, [samples]]}`); CAS scope files are the
+`*_flagged.csv` exports in the same folder. Scripts run in a subprocess with a
+guard against file access, on pandas or Spark (`agent.engine`). The LLM is
+`agent.llm`: `openai`, or `safechain` through AgenticSys_v2's client
+(`AGENTICSYS_V2_PATH`).
+
 ## The demo run
 
 [UCI dataset 572](https://archive.ics.uci.edu/dataset/572/taiwanese+bankruptcy+prediction):
@@ -168,6 +300,11 @@ Two caveats that the demo makes concrete, and that apply to any run:
 | `src/validation/stages/analysis.py` | Metrics, Gini gain vs. baseline, SHAP ranking |
 | `src/validation/stages/verdict.py` | The four-gate cascade and the batch decision |
 | `src/validation/pipeline.py` | Sequences the stages, writes every artifact |
+| `src/agent/` | Agent-driven discovery: setup, workspace, guarded code runner, session (tools, events, approvals), agent, server, evaluation |
+| `src/agent/composer/` | **The prompt composer**: the brief and message templates (`templates/feature_engineer.md`, `data_scout.md`, `linkage_writer.md`, `messages.md`) and the filled-in sections - see its README; print a run's prompt with `python -m agent.composer` |
+| `src/agent/skills/` | The skills - `data_sourcing`, `feature`, `evaluate` - appended to every brief in full |
+| `src/agent/tools/` | What the agent can do - one module per kind of tool; each checks, runs and records |
+| `web/` | The frontend: Setup (data, sources, linkage), Discover (parameters, step trace, timeline), Evaluate (pool, combinations, streamed results) |
 | `notebooks/usage.ipynb` | Executed walkthrough, including the discover/verify loop |
 | `data/<use case>/` | A use case: its build script, raw input, and shaped table |
 | `data/` | Every table the pipeline reads or writes (tables git-ignored, build scripts tracked) |

@@ -26,6 +26,9 @@ dev = ["pytest", "pyarrow", "matplotlib"]   # matplotlib: the usage notebook's c
 # Only the discovery package needs an LLM client; the validation stages do not,
 # so these stay out of the core install.
 discovery = ["openai", "python-dotenv", "nest_asyncio"]
+# The agent: openai-agents SDK, the Flask backend, parquet for its scripts'
+# inputs and outputs. pyspark when agent.engine is spark.
+agent = ["openai", "openai-agents", "python-dotenv", "nest_asyncio", "flask", "pyarrow"]
 
 [project.scripts]
 autofe = "validation.cli:main"

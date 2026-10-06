@@ -1,0 +1,59 @@
+.page { flex: 1; min-height: 0; display: flex; flex-direction: column; }
+.header { padding: 14px 22px; background: var(--j-surface); border-bottom: 1px solid var(--j-border); display: flex; flex-direction: column; gap: 4px; }
+.eyebrow { color: var(--j-label); }
+.title { font-size: var(--j-fs-h1); font-weight: 600; }
+
+.body { flex: 1; min-height: 0; display: grid; grid-template-columns: minmax(0, 1fr); gap: 14px; padding: 14px; }
+.body.withPanel { grid-template-columns: minmax(0, 1fr) minmax(360px, 440px); }
+.card {
+  min-height: 0; display: flex; flex-direction: column; gap: 10px; padding: 14px;
+  background: var(--j-surface); border: 1px solid var(--j-border);
+  border-radius: var(--j-radius-card); box-shadow: var(--j-shadow-card);
+}
+.toolbar { display: flex; align-items: center; gap: 14px; flex-wrap: wrap; }
+.search { flex: 0 1 340px; border: 1px solid var(--j-border-strong); border-radius: var(--j-radius-ctl); padding: 6px 9px; }
+.meta { margin-left: auto; font-size: var(--j-fs-meta); color: var(--j-ink-4); }
+.empty { color: var(--j-ink-mute); padding: 20px 4px; }
+
+.groups { flex: 1; min-height: 0; overflow: auto; display: flex; flex-direction: column; gap: 22px; }
+.group { display: flex; flex-direction: column; gap: 6px; }
+.groupHead { display: flex; align-items: baseline; gap: 10px; padding-bottom: 2px; }
+.groupTitle { font-weight: 600; color: var(--j-ink-2); }
+.groupHead .meta { margin-left: 0; }
+.tableWrap { overflow-x: auto; }
+.members { display: flex; flex-direction: column; gap: 2px; }
+.member { display: flex; justify-content: space-between; gap: 14px; max-width: 360px; }
+.memberName { font-family: var(--j-font-mono); font-size: var(--j-fs-meta); color: var(--j-ink-3); }
+.table { width: 100%; border-collapse: collapse; font-size: var(--j-fs-sm); }
+.table th { position: sticky; top: 0; background: var(--j-surface); text-align: left; font-size: var(--j-fs-meta); color: var(--j-label); font-weight: 600; padding: 6px; border-bottom: 1px solid var(--j-border); white-space: nowrap; }
+.table td { padding: 8px 6px; border-bottom: 1px solid var(--j-border-soft); vertical-align: top; }
+.table tbody tr { cursor: pointer; }
+.table tbody tr:hover { background: var(--j-surface-soft); }
+.sortBtn { border: none; background: transparent; padding: 0; font: inherit; color: inherit; cursor: pointer; }
+.sorted { color: var(--j-accent-deep); }
+.num { font-family: var(--j-font-mono); text-align: right; white-space: nowrap; }
+.table th.num { text-align: right; }
+.variant { font-family: var(--j-font-mono); font-size: var(--j-fs-sm); }
+.sub { font-size: var(--j-fs-meta); color: var(--j-ink-4); margin-top: 2px; min-width: 220px; max-width: 360px; line-height: 1.4;
+       display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
+.level { font-size: 9.5px; font-weight: 700; padding: 1px 6px; border-radius: 4px; background: var(--j-chip); color: var(--j-ink-3); }
+.gain { font-weight: 700; }
+.up { color: var(--j-good-ink); }
+.down { color: var(--j-danger); }
+.dim { color: var(--j-ink-mute); }
+.pass { font-size: var(--j-fs-meta); font-weight: 700; color: var(--j-good-ink); }
+.fail { font-size: var(--j-fs-meta); font-weight: 700; color: var(--j-ink-4); }
+.hint { font-size: var(--j-fs-meta); color: var(--j-ink-4); line-height: 1.45; }
+
+.table tbody tr.on { background: var(--j-accent-soft); }
+.corrWith { font-size: 10px; color: var(--j-ink-4); max-width: 150px; overflow: hidden; text-overflow: ellipsis; }
+.unfinished { display: flex; flex-wrap: wrap; gap: 6px; }
+.pending { display: inline-flex; align-items: center; gap: 6px; border: 1px solid var(--j-accent-line); background: var(--j-accent-soft); color: var(--j-accent-deep); border-radius: var(--j-radius-pill); padding: 4px 11px; font-size: var(--j-fs-meta); font-family: var(--j-font-mono); }
+.pending.error { border-color: #f2b8b8; background: var(--j-danger-soft); color: var(--j-danger); }
+.pendingDot { width: 7px; height: 7px; border-radius: 50%; background: currentColor; }
+.pending.running .pendingDot { animation: pulse 1s infinite; }
+/* The confirm opens over the row, to the left - the columns never move. */
+.removeCell { width: 84px; position: relative; padding: 0 !important; }
+.removeAt { position: absolute; top: 6px; right: 6px; white-space: nowrap; background: var(--j-surface); padding-left: 8px; border-radius: 8px; z-index: 1; }
+.table tbody tr:hover .removeAt { background: var(--j-surface-soft); }
+.table tbody tr.on .removeAt { background: var(--j-accent-soft); }

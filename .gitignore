@@ -24,3 +24,8 @@ data/cdss_us_sbs/additional_data
 # The descriptions are what a discovery run reads to know what a column means,
 # and they are small, reviewable, and awkward to regenerate by hand.
 .DS_Store
+# Synthetic use case for the agent: rebuilt by `python -m agent.synthetic`.
+data/synthetic_agent/
+# Frontend build and deps
+web/node_modules/
+web/dist/

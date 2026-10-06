@@ -15,7 +15,7 @@ import time
 from dataclasses import dataclass, field
 from datetime import datetime
 from pathlib import Path
-from typing import Any, Dict, List, Optional
+from typing import Any, Callable, Dict, List, Optional
 
 import numpy as np
 import pandas as pd
@@ -81,9 +81,10 @@ class PipelineResult:
 
 
 class Pipeline:
-    def __init__(self, config: Config):
+    def __init__(self, config: Config, on_status: Optional[Callable[[Dict[str, Any]], None]] = None):
         config.validate()
         self.cfg = config
+        self.on_status = on_status
         self.output_dir = self._make_output_dir()
 
     # ------------------------------------------------------------------ #
@@ -116,7 +117,8 @@ class Pipeline:
         logger.info("run %r -> %s", self.cfg.run.name, self.output_dir)
         logger.info("pipeline: %s", self.plan())
         self._write_yaml("config.resolved.yaml", self.cfg.to_dict())
-        tracker = RunStatus(self.output_dir, self.cfg.run.name, stage_specs(self.cfg))
+        tracker = RunStatus(self.output_dir, self.cfg.run.name, stage_specs(self.cfg),
+                            listener=self.on_status)
         logger.info("structured run status: %s", self.output_dir / "pipeline_status.json")
 
         result = PipelineResult(config=self.cfg, output_dir=self.output_dir)

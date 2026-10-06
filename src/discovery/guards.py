@@ -115,7 +115,12 @@ def check_scale(
 
         largest = float(magnitudes.max())
         p99 = float(np.percentile(magnitudes, 99))
-        reference = max(p99, 1e-12)
+        # A sparse column - zero on 99% of rows or more, like a count of rare events
+        # (0, 1, 2) - has a 99th percentile of 0, so its bulk is its nonzero values:
+        # measured against them, a count's 2 is no spike, an epsilon's 1e6 still is.
+        nonzero = magnitudes[magnitudes > 0]
+        bulk = p99 if p99 > 0 else float(np.percentile(nonzero, 10))
+        reference = max(bulk, 1e-12)
         if largest <= spike_factor * reference:
             continue
 
@@ -123,7 +128,8 @@ def check_scale(
         raise CandidateError(
             f"Generated feature '{column}' spikes on the {split_name} data: "
             f"largest magnitude {largest:.6g} is {largest / reference:.0f}x its "
-            f"99th percentile ({p99:.6g}), at row {worst}. This is the signature "
+            f"{'99th percentile' if p99 > 0 else 'typical nonzero value'} "
+            f"({reference:.6g}), at row {worst}. This is the signature "
             "of a division guarded with a tiny epsilon: adding 1e-6 to a zero "
             "denominator does not prevent a blow-up, it produces a value of "
             "order 1e6, which destroys the fit. Keep the result on a scale "

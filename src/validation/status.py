@@ -14,7 +14,7 @@ from contextlib import contextmanager
 from dataclasses import asdict, dataclass, field
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Any, Dict, Iterator, List, Optional
+from typing import Any, Callable, Dict, Iterator, List, Optional
 
 
 logger = logging.getLogger(__name__)
@@ -81,7 +81,11 @@ def render_plan(cfg: Any) -> str:
 class RunStatus:
     """Persist stage transitions and render them as JSON, HTML, and text."""
 
-    def __init__(self, output_dir: Path, run_name: str, specs: List[StageSpec]):
+    def __init__(self, output_dir: Path, run_name: str, specs: List[StageSpec],
+                 listener: Optional[Callable[[Dict[str, Any]], None]] = None):
+        # Called with the payload on every transition, so a caller (the agent
+        # server) can stream the board as it moves instead of polling the file.
+        self.listener = listener
         self.output_dir = Path(output_dir)
         self.run_name = run_name
         self.started_at = _now()
@@ -172,7 +176,10 @@ class RunStatus:
 
     def _persist(self) -> None:
         self.output_dir.mkdir(parents=True, exist_ok=True)
-        self._atomic_write("pipeline_status.json", json.dumps(self.payload(), indent=2))
+        payload = self.payload()
+        self._atomic_write("pipeline_status.json", json.dumps(payload, indent=2))
+        if self.listener is not None:
+            self.listener(payload)
 
     def _atomic_write(self, name: str, content: str) -> None:
         destination = self.output_dir / name

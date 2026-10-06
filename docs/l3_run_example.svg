@@ -1,0 +1,210 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1600 1161"
+     font-family="ui-sans-serif, -apple-system, 'Segoe UI', system-ui, Helvetica, sans-serif">
+  <defs>
+    <filter id="shadow" x="-20%" y="-20%" width="140%" height="140%">
+      <feGaussianBlur in="SourceAlpha" stdDeviation="1.2"/><feOffset dy="1.5"/>
+      <feComponentTransfer><feFuncA type="linear" slope="0.14"/></feComponentTransfer>
+      <feMerge><feMergeNode/><feMergeNode in="SourceGraphic"/></feMerge>
+    </filter>
+    <marker id="call" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,1 L10,5 L0,9 Z" fill="#7A5AA8"/></marker>
+    <marker id="reply" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,1 L10,5 L0,9 Z" fill="#3F7D5A"/></marker>
+    <marker id="fail" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,1 L10,5 L0,9 Z" fill="#8A332F"/></marker>
+  </defs>
+  <rect width="1600" height="1161" fill="#FAF9F5"/>
+<text x="30" y="38" font-size="20" fill="#2D2D2D" font-weight="700">L3 data-request run</text>
+<text x="232" y="38" font-size="12" fill="#7A7569">one agent · every request: propose → validate → challenge → kept / dropped</text>
+<text x="1570" y="38" font-size="9" fill="#9A9387" font-style="italic" text-anchor="end">based on run 20261006_140818_67b5</text>
+<line x1="30" y1="54" x2="1570" y2="54" stroke="#E5E0D2"/>
+<rect x="215" y="70" width="170" height="38" rx="8" fill="#7A5AA8" stroke="#7A5AA8" filter="url(#shadow)"/>
+<text x="300" y="87" font-size="12" fill="#FFFFFF" font-weight="700" text-anchor="middle">Agent · LLM</text>
+<text x="300" y="101" font-size="8.5" fill="#EDE9F3" text-anchor="middle">reasons, writes the calls</text>
+<rect x="815" y="70" width="170" height="38" rx="8" fill="#FFFFFF" stroke="#7A5AA8" filter="url(#shadow)"/>
+<text x="900" y="87" font-size="12" fill="#4A3B69" font-weight="700" text-anchor="middle">Tools · code</text>
+<text x="900" y="101" font-size="8.5" fill="#7A7569" text-anchor="middle">validate · record · reply</text>
+<rect x="40" y="122" width="920" height="48" rx="6" fill="#F4F0E6" stroke="#D4C5A9"/>
+<text x="54" y="140" font-size="8.5" fill="#A89B7C" font-weight="700">INPUT</text>
+<text x="104" y="140" font-size="9" fill="#5C5044">brief: task · data_sourcing skill · the loop and its rules · K = 5 · the data that exists now · memory of earlier directions</text>
+<text x="104" y="157" font-size="9" fill="#5C5044">task: &quot;Direction: temporal payment and spending pattern&quot;</text>
+<line x1="300" y1="108" x2="300" y2="122" stroke="#C3B6D8" stroke-width="2"/>
+<line x1="300" y1="172" x2="300" y2="1006" stroke="#C3B6D8" stroke-width="2"/>
+<line x1="900" y1="108" x2="900" y2="1006" stroke="#C3B6D8" stroke-width="2" stroke-dasharray="5,4"/>
+<circle cx="300" cy="196" r="10" fill="#7A5AA8"/>
+<text x="300" y="199.5" font-size="9.5" fill="#FFFFFF" font-weight="700" text-anchor="middle">1</text>
+<text x="40" y="199" font-size="8.8" fill="#4A3B69" font-style="italic">&quot;First, list the unused_raw variables</text>
+<text x="40" y="211" font-size="8.8" fill="#4A3B69" font-style="italic">in the CAS scope.&quot;</text>
+<line x1="312" y1="196" x2="897" y2="196" stroke="#7A5AA8" stroke-width="1.6" marker-end="url(#call)"/>
+<text x="600.0" y="191" font-size="8.4" fill="#4A3B69" text-anchor="middle" font-family="ui-monospace, Menlo, monospace" xml:space="preserve">scope(status=&quot;unused_raw&quot;)</text>
+<line x1="900" y1="210" x2="306" y2="210" stroke="#3F7D5A" stroke-width="1.3" stroke-dasharray="5,3" marker-end="url(#reply)"/>
+<text x="600.0" y="222" font-size="8.4" fill="#2C5B41" text-anchor="middle">auth_decline_cnt_30d · cash_adv_amt_90d · merchant_country · customer_id (id) · trans_dt (partition)</text>
+<circle cx="300" cy="262" r="10" fill="#7A5AA8"/>
+<text x="300" y="265.5" font-size="9.5" fill="#FFFFFF" font-weight="700" text-anchor="middle">2</text>
+<text x="40" y="265" font-size="8.8" fill="#4A3B69" font-style="italic">&quot;What does the current data already carry?&quot;</text>
+<line x1="312" y1="262" x2="897" y2="262" stroke="#7A5AA8" stroke-width="1.6" marker-end="url(#call)"/>
+<text x="600.0" y="257" font-size="8.4" fill="#4A3B69" text-anchor="middle" font-family="ui-monospace, Menlo, monospace" xml:space="preserve">catalog(&quot;decline cash advance merchant country&quot;)</text>
+<line x1="900" y1="276" x2="306" y2="276" stroke="#3F7D5A" stroke-width="1.3" stroke-dasharray="5,3" marker-end="url(#reply)"/>
+<text x="600.0" y="288" font-size="8.4" fill="#2C5B41" text-anchor="middle">only in the CAS: all three · spends.mcc_group: retail, services, travel, grocery</text>
+<circle cx="300" cy="340" r="10" fill="#7A5AA8"/>
+<text x="300" y="343.5" font-size="9.5" fill="#FFFFFF" font-weight="700" text-anchor="middle">3</text>
+<text x="40" y="343" font-size="8.8" fill="#4A3B69" font-style="italic">&quot;No decline history, no cash advances,</text>
+<text x="40" y="355" font-size="8.8" fill="#4A3B69" font-style="italic">no merchant geography. Three pulls -</text>
+<text x="40" y="367" font-size="8.8" fill="#4A3B69" font-style="italic">all at once.&quot;</text>
+<text x="40" y="379" font-size="8.8" fill="#4A3B69" font-style="italic"></text>
+<text x="40" y="391" font-size="8.8" fill="#4A3B69" font-style="italic">→ its output is on the right</text>
+<text x="284" y="328" font-size="8" fill="#7A5AA8" font-weight="700" text-anchor="end">one LLM response</text>
+<path d="M300,350 V354 Q300,362 310,362" stroke="#7A5AA8" stroke-width="1.6" fill="none"/>
+<line x1="310" y1="362" x2="310" y2="474" stroke="#7A5AA8" stroke-width="3"/>
+<text x="318" y="346" font-size="8" fill="#7A5AA8" font-weight="700">3 tool calls, released in parallel</text>
+<line x1="312" y1="362" x2="897" y2="362" stroke="#7A5AA8" stroke-width="1.6" marker-end="url(#call)"/>
+<text x="600.0" y="357" font-size="8.4" fill="#4A3B69" text-anchor="middle" font-family="ui-monospace, Menlo, monospace" xml:space="preserve">request_data_pull(auth_declines_30d, …)</text>
+<line x1="900" y1="376" x2="306" y2="376" stroke="#3F7D5A" stroke-width="1.3" stroke-dasharray="5,3" marker-end="url(#reply)"/>
+<text x="600.0" y="388" font-size="8.4" fill="#2C5B41" text-anchor="middle">{recorded: true, intent: &quot;R1&quot;, budget: &quot;1/5&quot;, next: &quot;challenge R1 …&quot;}</text>
+<line x1="312" y1="418" x2="897" y2="418" stroke="#7A5AA8" stroke-width="1.6" marker-end="url(#call)"/>
+<text x="600.0" y="413" font-size="8.4" fill="#4A3B69" text-anchor="middle" font-family="ui-monospace, Menlo, monospace" xml:space="preserve">request_data_pull(cash_advance_windowed, … WHERE as_of_date …)</text>
+<line x1="900" y1="432" x2="306" y2="432" stroke="#8A332F" stroke-width="1.3" stroke-dasharray="5,3" marker-end="url(#fail)"/>
+<text x="600.0" y="444" font-size="8.4" fill="#8A332F" font-weight="600" text-anchor="middle">✗ columns not in [&#x27;wwcas_synthetic&#x27;]: [&#x27;as_of_date&#x27;] … Nothing was spent.</text>
+<line x1="312" y1="474" x2="897" y2="474" stroke="#7A5AA8" stroke-width="1.6" marker-end="url(#call)"/>
+<text x="600.0" y="469" font-size="8.4" fill="#4A3B69" text-anchor="middle" font-family="ui-monospace, Menlo, monospace" xml:space="preserve">request_data_pull(merchant_country_history, …)</text>
+<line x1="900" y1="488" x2="306" y2="488" stroke="#3F7D5A" stroke-width="1.3" stroke-dasharray="5,3" marker-end="url(#reply)"/>
+<text x="600.0" y="500" font-size="8.4" fill="#2C5B41" text-anchor="middle">{recorded: true, intent: &quot;R2&quot;, budget: &quot;2/5&quot;, next: &quot;challenge R2 …&quot;}</text>
+<circle cx="300" cy="540" r="10" fill="#8A332F"/>
+<text x="300" y="543.5" font-size="9.5" fill="#FFFFFF" font-weight="700" text-anchor="middle">4</text>
+<text x="40" y="543" font-size="8.8" fill="#4A3B69" font-style="italic">&quot;as_of_date is not a column of that table -</text>
+<text x="40" y="555" font-size="8.8" fill="#4A3B69" font-style="italic">its partition date is trans_dt.&quot;</text>
+<line x1="312" y1="540" x2="897" y2="540" stroke="#7A5AA8" stroke-width="1.6" marker-end="url(#call)"/>
+<text x="600.0" y="535" font-size="8.4" fill="#4A3B69" text-anchor="middle" font-family="ui-monospace, Menlo, monospace" xml:space="preserve">request_data_pull(cash_advance_windowed, … WHERE trans_dt …)</text>
+<line x1="900" y1="554" x2="306" y2="554" stroke="#3F7D5A" stroke-width="1.3" stroke-dasharray="5,3" marker-end="url(#reply)"/>
+<text x="600.0" y="566" font-size="8.4" fill="#2C5B41" text-anchor="middle">{recorded: true, intent: &quot;R3&quot;, budget: &quot;3/5&quot;, next: &quot;challenge R3 …&quot;}</text>
+<circle cx="300" cy="622" r="10" fill="#7A5AA8"/>
+<text x="300" y="625.5" font-size="9.5" fill="#FFFFFF" font-weight="700" text-anchor="middle">5</text>
+<text x="40" y="625" font-size="8.8" fill="#4A3B69" font-style="italic">&quot;Challenge each: can the current data</text>
+<text x="40" y="637" font-size="8.8" fill="#4A3B69" font-style="italic">supply it? Declines - no. Cash advances -</text>
+<text x="40" y="649" font-size="8.8" fill="#4A3B69" font-style="italic">no. mcc_group is a category, not a country.&quot;</text>
+<text x="284" y="610" font-size="8" fill="#7A5AA8" font-weight="700" text-anchor="end">one LLM response</text>
+<path d="M300,632 V636 Q300,644 310,644" stroke="#7A5AA8" stroke-width="1.6" fill="none"/>
+<line x1="310" y1="644" x2="310" y2="756" stroke="#7A5AA8" stroke-width="3"/>
+<text x="318" y="628" font-size="8" fill="#7A5AA8" font-weight="700">3 tool calls, released in parallel</text>
+<line x1="312" y1="644" x2="897" y2="644" stroke="#7A5AA8" stroke-width="1.6" marker-end="url(#call)"/>
+<text x="600.0" y="639" font-size="8.4" fill="#4A3B69" text-anchor="middle" font-family="ui-monospace, Menlo, monospace" xml:space="preserve">challenge_request(R1, verdict=&quot;new&quot;, reasoning)</text>
+<line x1="900" y1="658" x2="306" y2="658" stroke="#3F7D5A" stroke-width="1.3" stroke-dasharray="5,3" marker-end="url(#reply)"/>
+<text x="600.0" y="670" font-size="8.4" fill="#2C5B41" text-anchor="middle">{status: &quot;kept&quot;, remaining: [&quot;R2&quot;, &quot;R3&quot;]}</text>
+<line x1="312" y1="700" x2="897" y2="700" stroke="#7A5AA8" stroke-width="1.6" marker-end="url(#call)"/>
+<text x="600.0" y="695" font-size="8.4" fill="#4A3B69" text-anchor="middle" font-family="ui-monospace, Menlo, monospace" xml:space="preserve">challenge_request(R2, verdict=&quot;new&quot;, reasoning)</text>
+<line x1="900" y1="714" x2="306" y2="714" stroke="#3F7D5A" stroke-width="1.3" stroke-dasharray="5,3" marker-end="url(#reply)"/>
+<text x="600.0" y="726" font-size="8.4" fill="#2C5B41" text-anchor="middle">{status: &quot;kept&quot;, remaining: [&quot;R3&quot;]}</text>
+<line x1="312" y1="756" x2="897" y2="756" stroke="#7A5AA8" stroke-width="1.6" marker-end="url(#call)"/>
+<text x="600.0" y="751" font-size="8.4" fill="#4A3B69" text-anchor="middle" font-family="ui-monospace, Menlo, monospace" xml:space="preserve">challenge_request(R3, verdict=&quot;new&quot;, reasoning)</text>
+<line x1="900" y1="770" x2="306" y2="770" stroke="#3F7D5A" stroke-width="1.3" stroke-dasharray="5,3" marker-end="url(#reply)"/>
+<text x="600.0" y="782" font-size="8.4" fill="#2C5B41" text-anchor="middle">{status: &quot;kept&quot;, remaining: [], next: &quot;… propose the next request, or call report_findings&quot;}</text>
+<circle cx="300" cy="822" r="10" fill="#7A5AA8"/>
+<text x="300" y="825.5" font-size="9.5" fill="#FFFFFF" font-weight="700" text-anchor="middle">6</text>
+<text x="40" y="825" font-size="8.8" fill="#4A3B69" font-style="italic">&quot;Pull all three; none is in the current data.&quot;</text>
+<line x1="312" y1="822" x2="897" y2="822" stroke="#7A5AA8" stroke-width="1.6" marker-end="url(#call)"/>
+<text x="600.0" y="817" font-size="8.4" fill="#4A3B69" text-anchor="middle" font-family="ui-monospace, Menlo, monospace" xml:space="preserve">report_findings(summary)</text>
+<line x1="900" y1="836" x2="306" y2="836" stroke="#3F7D5A" stroke-width="1.3" stroke-dasharray="5,3" marker-end="url(#reply)"/>
+<text x="600.0" y="848" font-size="8.4" fill="#2C5B41" text-anchor="middle">{ok: true} · run_done</text>
+<rect x="330" y="856" width="540" height="76" rx="6" fill="#F3F8F4" stroke="#B9D3C2"/>
+<text x="342" y="872" font-size="8.4" fill="#2C5B41" font-style="italic">the run&#x27;s summary - the agent&#x27;s prose, then added by the code:</text>
+<text x="342" y="887" font-size="7.8" fill="#2C5B41" font-family="ui-monospace, Menlo, monospace" xml:space="preserve">Challenge: 3 kept, 0 dropped (constructible from current data).</text>
+<text x="342" y="898" font-size="7.8" fill="#2C5B41" font-family="ui-monospace, Menlo, monospace" xml:space="preserve">## Validated SQL - the kept requests</text>
+<text x="342" y="909" font-size="7.8" fill="#2C5B41" font-family="ui-monospace, Menlo, monospace" xml:space="preserve">### R1 auth_declines_30d   ```sql SELECT customer_id, trans_dt, auth_decline_cnt_30d …```</text>
+<text x="342" y="920" font-size="7.8" fill="#2C5B41" font-family="ui-monospace, Menlo, monospace" xml:space="preserve">### R2 merchant_country_history …   ### R3 cash_advance_windowed …</text>
+<rect x="1010" y="190" width="560" height="591.3999999999999" rx="8" fill="#FFFFFF" stroke="#7A5AA8" filter="url(#shadow)"/>
+<path d="M1018,190 h544 a8,8 0 0 1 8,8 v16 h-560 v-16 a8,8 0 0 1 8,-8 z" fill="#7A5AA8"/>
+<text x="1024" y="206" font-size="10.5" fill="#FFFFFF" font-weight="700">LLM output · step 3, one response</text>
+<rect x="1020" y="222" width="540" height="295.59999999999997" rx="6" fill="#F6F3FA" stroke="#C3B6D8"/>
+<text x="1030" y="235" font-size="7.8" fill="#A89B7C" font-weight="700">the model&#x27;s words (content) and its three calls (tool_calls) - only the calls are acted on</text>
+<text x="1030" y="247.0" font-size="7.6" fill="#4A3B69" font-family="ui-monospace, Menlo, monospace" xml:space="preserve">{</text>
+<text x="1030" y="257.6" font-size="7.6" fill="#4A3B69" font-family="ui-monospace, Menlo, monospace" xml:space="preserve">  &quot;role&quot;: &quot;assistant&quot;,</text>
+<text x="1030" y="268.2" font-size="7.6" fill="#4A3B69" font-family="ui-monospace, Menlo, monospace" xml:space="preserve">  &quot;content&quot;: &quot;I see there are six unused_raw variables in the CAS scope: …</text>
+<text x="1030" y="278.8" font-size="7.6" fill="#4A3B69" font-family="ui-monospace, Menlo, monospace" xml:space="preserve">    auth_decline_cnt_30d: The model does not have decline history … cash_adv_amt_90d: …</text>
+<text x="1030" y="289.4" font-size="7.6" fill="#4A3B69" font-family="ui-monospace, Menlo, monospace" xml:space="preserve">    rolling cash advance volume … merchant_country: The model does not encode geography of</text>
+<text x="1030" y="300.0" font-size="7.6" fill="#4A3B69" font-family="ui-monospace, Menlo, monospace" xml:space="preserve">    merchant spend … I will now propose three L3 data pulls for the most predictive and non-</text>
+<text x="1030" y="310.6" font-size="7.6" fill="#4A3B69" font-family="ui-monospace, Menlo, monospace" xml:space="preserve">    redundant features.&quot;,</text>
+<text x="1030" y="321.2" font-size="7.6" fill="#4A3B69" font-family="ui-monospace, Menlo, monospace" xml:space="preserve">  &quot;tool_calls&quot;: [</text>
+<text x="1030" y="331.8" font-size="7.6" fill="#4A3B69" font-family="ui-monospace, Menlo, monospace" xml:space="preserve">    {&quot;type&quot;: &quot;function&quot;, &quot;function&quot;: {</text>
+<text x="1030" y="342.4" font-size="7.6" fill="#4A3B69" font-family="ui-monospace, Menlo, monospace" xml:space="preserve">      &quot;name&quot;: &quot;request_data_pull&quot;,</text>
+<text x="1030" y="353.0" font-size="7.6" fill="#4A3B69" font-family="ui-monospace, Menlo, monospace" xml:space="preserve">      &quot;arguments&quot;: {</text>
+<text x="1030" y="363.6" font-size="7.6" fill="#4A3B69" font-family="ui-monospace, Menlo, monospace" xml:space="preserve">        &quot;gap&quot;: &quot;The model lacks data on the number of authorization declines</text>
+<text x="1030" y="374.2" font-size="7.6" fill="#4A3B69" font-family="ui-monospace, Menlo, monospace" xml:space="preserve">          (auth_decline_cnt_30d) for each customer in the past 30 days, which can be a</text>
+<text x="1030" y="384.79999999999995" font-size="7.6" fill="#4A3B69" font-family="ui-monospace, Menlo, monospace" xml:space="preserve">          key early warning indicator of liquidity issues or attempted overspending. …&quot;,</text>
+<text x="1030" y="395.4" font-size="7.6" fill="#4A3B69" font-family="ui-monospace, Menlo, monospace" xml:space="preserve">        &quot;sql&quot;: &quot;SELECT customer_id, trans_dt, auth_decline_cnt_30d FROM wwcas_synthetic</text>
+<text x="1030" y="406.0" font-size="7.6" fill="#4A3B69" font-family="ui-monospace, Menlo, monospace" xml:space="preserve">          WHERE trans_dt BETWEEN DATE_SUB(@min_dt, INTERVAL 90 DAY) AND @max_dt&quot;,</text>
+<text x="1030" y="416.6" font-size="7.6" fill="#4A3B69" font-family="ui-monospace, Menlo, monospace" xml:space="preserve">        &quot;source_name&quot;: &quot;auth_declines_30d&quot;,</text>
+<text x="1030" y="427.2" font-size="7.6" fill="#4A3B69" font-family="ui-monospace, Menlo, monospace" xml:space="preserve">        &quot;features&quot;: &quot;Recent authorization decline count (last 30 days)\nDecline count</text>
+<text x="1030" y="437.79999999999995" font-size="7.6" fill="#4A3B69" font-family="ui-monospace, Menlo, monospace" xml:space="preserve">          trend over time\nDays since last decline&quot;,</text>
+<text x="1030" y="448.4" font-size="7.6" fill="#4A3B69" font-family="ui-monospace, Menlo, monospace" xml:space="preserve">      }}},</text>
+<text x="1030" y="459.0" font-size="7.6" fill="#4A3B69" font-family="ui-monospace, Menlo, monospace" xml:space="preserve">    {&quot;function&quot;: {&quot;name&quot;: &quot;request_data_pull&quot;, &quot;arguments&quot;: {&quot;source_name&quot;:</text>
+<text x="1030" y="469.6" font-size="7.6" fill="#4A3B69" font-family="ui-monospace, Menlo, monospace" xml:space="preserve">      &quot;cash_advance_windowed&quot;, &quot;sql&quot;: &quot;… WHERE as_of_date BETWEEN …&quot;, …}}},</text>
+<text x="1030" y="480.2" font-size="7.6" fill="#4A3B69" font-family="ui-monospace, Menlo, monospace" xml:space="preserve">    {&quot;function&quot;: {&quot;name&quot;: &quot;request_data_pull&quot;, &quot;arguments&quot;: {&quot;source_name&quot;:</text>
+<text x="1030" y="490.79999999999995" font-size="7.6" fill="#4A3B69" font-family="ui-monospace, Menlo, monospace" xml:space="preserve">      &quot;merchant_country_history&quot;, &quot;sql&quot;: &quot;… WHERE trans_dt BETWEEN …&quot;, …}}}</text>
+<text x="1030" y="501.4" font-size="7.6" fill="#4A3B69" font-family="ui-monospace, Menlo, monospace" xml:space="preserve">  ]</text>
+<text x="1030" y="512.0" font-size="7.6" fill="#4A3B69" font-family="ui-monospace, Menlo, monospace" xml:space="preserve">}</text>
+<text x="1030" y="527.5999999999999" font-size="7.6" fill="#9A9387" font-style="italic">Narration and arguments as recorded; arranged as one parallel response, and call 2 given the invented column, to show the refusal.</text>
+<text x="1024" y="549.5999999999999" font-size="10" fill="#4A3B69" font-weight="700">request_data_pull - code, no LLM</text>
+<rect x="1020" y="557.5999999999999" width="540" height="94.2" rx="6" fill="#FBF4E6" stroke="#E4C9A0"/>
+<text x="1030" y="570.5999999999999" font-size="7.8" fill="#A89B7C" font-weight="700">VALIDATE, then record</text>
+<text x="1030" y="582.5999999999999" font-size="7.6" fill="#7C3F08" font-family="ui-monospace, Menlo, monospace" xml:space="preserve">1  source_name is snake_case</text>
+<text x="1548" y="582.5999999999999" font-size="9" fill="#3F7D5A" font-weight="700" text-anchor="end">✓</text>
+<text x="1030" y="593.1999999999999" font-size="7.6" fill="#7C3F08" font-family="ui-monospace, Menlo, monospace" xml:space="preserve">2  every table in the SQL is in the CAS scope</text>
+<text x="1548" y="593.1999999999999" font-size="9" fill="#3F7D5A" font-weight="700" text-anchor="end">✓</text>
+<text x="1030" y="603.8" font-size="7.6" fill="#7C3F08" font-family="ui-monospace, Menlo, monospace" xml:space="preserve">3  every column exists in its table</text>
+<text x="1548" y="603.8" font-size="9" fill="#3F7D5A" font-weight="700" text-anchor="end">✓</text>
+<text x="1030" y="614.3999999999999" font-size="7.6" fill="#7C3F08" font-family="ui-monospace, Menlo, monospace" xml:space="preserve">4  an identifier is selected (customer_id)</text>
+<text x="1548" y="614.3999999999999" font-size="9" fill="#3F7D5A" font-weight="700" text-anchor="end">✓</text>
+<text x="1030" y="624.9999999999999" font-size="7.6" fill="#7C3F08" font-family="ui-monospace, Menlo, monospace" xml:space="preserve">5  the partition date (trans_dt) is filtered in WHERE</text>
+<text x="1548" y="624.9999999999999" font-size="9" fill="#3F7D5A" font-weight="700" text-anchor="end">✓</text>
+<text x="1030" y="635.5999999999999" font-size="7.6" fill="#7C3F08" font-family="ui-monospace, Menlo, monospace" xml:space="preserve">6  memory: no earlier request for the same data</text>
+<text x="1548" y="635.5999999999999" font-size="9" fill="#3F7D5A" font-weight="700" text-anchor="end">✓</text>
+<text x="1030" y="646.1999999999999" font-size="7.6" fill="#7C3F08" font-family="ui-monospace, Menlo, monospace" xml:space="preserve">7  record R1 · spend 1 intent · write data_requests.json, .md</text>
+<rect x="1020" y="659.8" width="540" height="51.8" rx="6" fill="#F3F8F4" stroke="#B9D3C2"/>
+<text x="1030" y="672.8" font-size="7.8" fill="#A89B7C" font-weight="700">REPLY to call 1 - recorded</text>
+<text x="1030" y="684.8" font-size="7.6" fill="#2C5B41" font-family="ui-monospace, Menlo, monospace" xml:space="preserve">{&quot;recorded&quot;: true, &quot;intent&quot;: &quot;R1&quot;, &quot;tables&quot;: [&quot;wwcas_synthetic&quot;], &quot;budget&quot;: &quot;1/5 intents used&quot;,</text>
+<text x="1030" y="695.4" font-size="7.6" fill="#2C5B41" font-family="ui-monospace, Menlo, monospace" xml:space="preserve">&quot;next&quot;: &quot;challenge R1: can the current data supply it? Call challenge_request with your</text>
+<text x="1030" y="706.0" font-size="7.6" fill="#2C5B41" font-family="ui-monospace, Menlo, monospace" xml:space="preserve">verdict.&quot;}</text>
+<rect x="1020" y="719.5999999999999" width="540" height="51.8" rx="6" fill="#FBEDEC" stroke="#E4B5B3"/>
+<text x="1030" y="732.5999999999999" font-size="7.8" fill="#A89B7C" font-weight="700">REPLY to call 2 - refused at check 3, nothing spent</text>
+<text x="1030" y="744.5999999999999" font-size="7.6" fill="#8A332F" font-family="ui-monospace, Menlo, monospace" xml:space="preserve">{&quot;ok&quot;: false, &quot;error&quot;: &quot;columns not in [&#x27;wwcas_synthetic&#x27;]: [&#x27;as_of_date&#x27;]. Use only the</text>
+<text x="1030" y="755.1999999999999" font-size="7.6" fill="#8A332F" font-family="ui-monospace, Menlo, monospace" xml:space="preserve">provided CAS columns - scope(table=...) lists them, with the identifiers and the partition date.</text>
+<text x="1030" y="765.8" font-size="7.6" fill="#8A332F" font-family="ui-monospace, Menlo, monospace" xml:space="preserve">Nothing was spent.&quot;}</text>
+<path d="M904,362 H986 V202 H1008" stroke="#7A5AA8" stroke-width="1.2" stroke-dasharray="3,3" fill="none"/>
+<rect x="1010" y="803.3999999999999" width="560" height="234.5999999999999" rx="8" fill="#FFFFFF" stroke="#7A5AA8" filter="url(#shadow)"/>
+<path d="M1018,803.3999999999999 h544 a8,8 0 0 1 8,8 v16 h-560 v-16 a8,8 0 0 1 8,-8 z" fill="#7A5AA8"/>
+<text x="1024" y="819.3999999999999" font-size="10.5" fill="#FFFFFF" font-weight="700">challenge_request · step 5, call 2 - code, no LLM</text>
+<rect x="1020" y="835.3999999999999" width="540" height="62.4" rx="6" fill="#F6F3FA" stroke="#C3B6D8"/>
+<text x="1030" y="848.3999999999999" font-size="7.8" fill="#A89B7C" font-weight="700">INPUT - the agent&#x27;s own verdict (its words in the recorded run)</text>
+<text x="1030" y="860.3999999999999" font-size="7.6" fill="#4A3B69" font-family="ui-monospace, Menlo, monospace" xml:space="preserve">{&quot;intent&quot;: &quot;R2&quot;, &quot;verdict&quot;: &quot;new&quot;, &quot;reasoning&quot;: &quot;Merchant country is not recorded in any</text>
+<text x="1030" y="870.9999999999999" font-size="7.6" fill="#4A3B69" font-family="ui-monospace, Menlo, monospace" xml:space="preserve">existing linked sources. The spends table only offers merchant category group (mcc_group), not</text>
+<text x="1030" y="881.5999999999999" font-size="7.6" fill="#4A3B69" font-family="ui-monospace, Menlo, monospace" xml:space="preserve">country. Therefore, merchant country history and related features require the proposed new</text>
+<text x="1030" y="892.1999999999998" font-size="7.6" fill="#4A3B69" font-family="ui-monospace, Menlo, monospace" xml:space="preserve">source and cannot be built or proxied from current data.&quot;, &quot;columns&quot;: []}</text>
+<rect x="1020" y="905.7999999999998" width="540" height="83.6" rx="6" fill="#FBF4E6" stroke="#E4C9A0"/>
+<text x="1030" y="918.7999999999998" font-size="7.8" fill="#A89B7C" font-weight="700">RECORD the verdict by a fixed rule</text>
+<text x="1030" y="930.7999999999998" font-size="7.6" fill="#7C3F08" font-family="ui-monospace, Menlo, monospace" xml:space="preserve">1  R2 is a proposal, not yet decided</text>
+<text x="1548" y="930.7999999999998" font-size="9" fill="#3F7D5A" font-weight="700" text-anchor="end">✓</text>
+<text x="1030" y="941.3999999999999" font-size="7.6" fill="#7C3F08" font-family="ui-monospace, Menlo, monospace" xml:space="preserve">2  the verdict is constructible, partly or new</text>
+<text x="1548" y="941.3999999999999" font-size="9" fill="#3F7D5A" font-weight="700" text-anchor="end">✓</text>
+<text x="1030" y="951.9999999999999" font-size="7.6" fill="#7C3F08" font-family="ui-monospace, Menlo, monospace" xml:space="preserve">3  constructible must bring a build() script; it is run on the screen rows</text>
+<text x="1030" y="962.5999999999998" font-size="7.6" fill="#7C3F08" font-family="ui-monospace, Menlo, monospace" xml:space="preserve">4  constructible + the script runs  -&gt; dropped</text>
+<text x="1030" y="973.1999999999998" font-size="7.6" fill="#7C3F08" font-family="ui-monospace, Menlo, monospace" xml:space="preserve">   constructible + it fails, partly, new  -&gt; kept</text>
+<text x="1030" y="983.7999999999998" font-size="7.6" fill="#7C3F08" font-family="ui-monospace, Menlo, monospace" xml:space="preserve">5  record · rewrite data_requests.md · list what is left</text>
+<rect x="1020" y="997.3999999999999" width="540" height="30.6" rx="6" fill="#F3F8F4" stroke="#B9D3C2"/>
+<text x="1030" y="1010.3999999999999" font-size="7.8" fill="#A89B7C" font-weight="700">REPLY - kept</text>
+<text x="1030" y="1022.3999999999999" font-size="7.6" fill="#2C5B41" font-family="ui-monospace, Menlo, monospace" xml:space="preserve">{&quot;intent&quot;: &quot;R2&quot;, &quot;status&quot;: &quot;kept&quot;, &quot;code_ok&quot;: null, &quot;remaining&quot;: [&quot;R3&quot;]}</text>
+<path d="M904,700 H986 V815.3999999999999 H1008" stroke="#7A5AA8" stroke-width="1.2" stroke-dasharray="3,3" fill="none"/>
+<text x="30" y="1065.9999999999998" font-size="9" fill="#A89B7C" font-weight="700">AFTER THE RUN</text>
+<rect x="30.0" y="1075.9999999999998" width="355.0" height="44" rx="10" fill="#EDE9F3" stroke="#7A5AA8" filter="url(#shadow)"/>
+<text x="207.5" y="1093.9999999999998" font-size="10.5" fill="#4A3B69" font-weight="700" text-anchor="middle">data_requests.md</text>
+<text x="207.5" y="1108.9999999999998" font-size="8.5" fill="#4A3B69" text-anchor="middle">3 kept · 0 dropped · why, features, SQL</text>
+<rect x="425.0" y="1075.9999999999998" width="355.0" height="44" rx="10" fill="#DCE7F4" stroke="#3D6BA8" filter="url(#shadow)"/>
+<text x="602.5" y="1093.9999999999998" font-size="10.5" fill="#1F3A5F" font-weight="700" text-anchor="middle">👤 Analyst</text>
+<text x="602.5" y="1108.9999999999998" font-size="8.5" fill="#1F3A5F" text-anchor="middle">reviews · runs the validated SQL in BigQuery</text>
+<line x1="387.0" y1="1097.9999999999998" x2="422.0" y2="1097.9999999999998" stroke="#7A5AA8" stroke-width="1.6" marker-end="url(#call)"/>
+<rect x="820.0" y="1075.9999999999998" width="355.0" height="44" rx="10" fill="#E7F0EA" stroke="#3F7D5A" filter="url(#shadow)"/>
+<text x="997.5" y="1093.9999999999998" font-size="10.5" fill="#2C5B41" font-weight="700" text-anchor="middle">a new source</text>
+<text x="997.5" y="1108.9999999999998" font-size="8.5" fill="#2C5B41" text-anchor="middle">dropped in the additional data folder</text>
+<line x1="782.0" y1="1097.9999999999998" x2="817.0" y2="1097.9999999999998" stroke="#7A5AA8" stroke-width="1.6" marker-end="url(#call)"/>
+<rect x="1215.0" y="1075.9999999999998" width="355.0" height="44" rx="10" fill="#FFFFFF" stroke="#7A5AA8" stroke-dasharray="6,4" filter="url(#shadow)"/>
+<text x="1392.5" y="1093.9999999999998" font-size="10.5" fill="#4A3B69" font-weight="700" text-anchor="middle">an L1 / L2 run</text>
+<text x="1392.5" y="1108.9999999999998" font-size="8.5" fill="#4A3B69" text-anchor="middle">links it and builds the features</text>
+<line x1="1177.0" y1="1097.9999999999998" x2="1212.0" y2="1097.9999999999998" stroke="#7A5AA8" stroke-width="1.6" stroke-dasharray="5,3" marker-end="url(#call)"/>
+<text x="800.0" y="1141.9999999999998" font-size="8.5" fill="#7A7569" font-style="italic" text-anchor="middle">Each reply is part of the agent&#x27;s next input. Red: refused - nothing is spent, and the agent fixes it in its next response. The tool replies are exact, replayed through the current code.</text>
+</svg>

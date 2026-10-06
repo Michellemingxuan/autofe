@@ -1,0 +1,13 @@
+.row { display: flex; flex-wrap: wrap; gap: 4px; margin: 3px 0 2px; }
+.chip { font-family: var(--j-font-mono); font-size: 10px; padding: 1px 6px; border-radius: 4px; display: inline-flex; gap: 4px; align-items: baseline; white-space: nowrap; }
+.count { opacity: 0.75; }
+.par { font-family: var(--j-font); font-weight: 700; font-size: 9.5px; padding: 0 4px; border-radius: 3px; }
+.mark { font-weight: 700; }
+
+.light .chip { background: var(--j-chip); color: var(--j-ink-3); border: 1px solid var(--j-border); }
+.light .par { background: var(--j-accent-soft); color: var(--j-accent-deep); }
+.light .refused { background: var(--j-warn-bg); color: var(--j-warn-ink); border-color: #f5d68a; }
+
+.dark .chip { background: var(--j-sys-block); color: var(--j-sys-mono); border: 1px solid var(--j-sys-rule); }
+.dark .par { background: #2d2350; color: #c9b8f2; }
+.dark .refused { background: #2b2412; color: #f3cf7a; border-color: #6b5a2a; }

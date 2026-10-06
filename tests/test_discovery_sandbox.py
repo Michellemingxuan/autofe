@@ -182,6 +182,18 @@ def test_spike_is_caught_on_any_split():
         check_scale({"train": clean, "valid": clean, "test": dirty}, "f")
 
 
+def test_a_sparse_count_is_not_a_spike():
+    # zero on 99.5% of rows, then 1, 2 or 3: its 99th percentile is 0
+    values = pd.DataFrame({"f": [0] * 1990 + [1] * 6 + [2] * 3 + [3]})
+    check_scale({"sample": values}, "f")          # must not raise
+
+
+def test_an_epsilon_spike_in_a_sparse_column_is_still_caught():
+    values = pd.DataFrame({"f": [0.0] * 1990 + list(np.linspace(0.2, 2.0, 9)) + [1.4e6]})
+    with pytest.raises(CandidateError, match="typical nonzero value"):
+        check_scale({"sample": values}, "f")
+
+
 def test_constant_column_does_not_trip_the_spike_guard():
     check_scale({"train": pd.DataFrame({"f": np.zeros(100)})}, "f")
 

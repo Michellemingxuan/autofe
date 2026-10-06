@@ -1,0 +1,98 @@
+/*
+ * Design tokens, from CaseReviewChat's journey UI (src/journey/tokens.css).
+ * Two palettes on purpose: light slate for the user's surfaces (direction,
+ * ledger), a dark "system" panel for the agent's reasoning and code - the
+ * darkness marks machine work as a different kind of content.
+ */
+:root {
+  --j-accent: #0B78D0;
+  --j-accent-deep: #0961AB;
+  --j-accent-soft: #E2F1FC;
+  --j-accent-line: #C3E1F7;
+
+  --j-bg: #F1F5FA;
+  --j-surface: #FFFFFF;
+  --j-surface-soft: #FAFBFD;
+  --j-surface-head: #F4F6F9;
+  --j-chip: #F1F5FA;
+  --j-border: #E3E8EF;
+  --j-border-soft: #EDF1F6;
+  --j-border-strong: #D6DEE9;
+
+  --j-ink: #0F172A;
+  --j-ink-2: #334155;
+  --j-ink-3: #475569;
+  --j-ink-4: #64748B;
+  --j-ink-mute: #94A3B8;
+  --j-label: #7C8DA6;
+
+  --j-rail-bg: #0E1A2B;
+  --j-rail-active: #16294A;
+  --j-rail-accent: #4FA9E8;
+  --j-rail-rule: #1D3050;
+  --j-rail-text: #E6EDF7;
+  --j-rail-dim: #9FB0C6;
+  --j-rail-btn-border: #2A3D5C;
+
+  --j-sys-bg: #131C2B;
+  --j-sys-card: #1E2A3F;
+  --j-sys-box: #17212F;
+  --j-sys-block: #243149;
+  --j-sys-rule: #2E3B54;
+  --j-sys-head: #E8EEF9;
+  --j-sys-text: #A9BCD8;
+  --j-sys-text-strong: #E2EAF7;
+  --j-sys-dim: #8FA3C2;
+  --j-sys-link: #5FB6EE;
+  --j-sys-mono: #C7D6EE;
+
+  --j-warn-bg: #FEF3C7;
+  --j-warn-ink: #92400E;
+  --j-warn-accent: #F59E0B;
+  --j-danger: #DC2626;
+  --j-danger-soft: #FDE8E8;
+  --j-live: #22C55E;
+  --j-good-soft: #E7F8EE;
+  --j-good-ink: #157F3B;
+
+  --j-font: 'DM Sans', Inter, 'Helvetica Neue', Arial, sans-serif;
+  --j-font-mono: 'IBM Plex Mono', 'SF Mono', Menlo, Consolas, monospace;
+
+  --j-fs-h1: 18px;
+  --j-fs-h2: 11px;
+  --j-fs-h3: 13px;
+  --j-fs-body: 12.5px;
+  --j-fs-sm: 11.5px;
+  --j-fs-meta: 10.5px;
+
+  --j-radius-card: 12px;
+  --j-radius-ctl: 9px;
+  --j-radius-pill: 999px;
+  --j-shadow-card: 0 2px 3px rgba(15, 23, 42, 0.09);
+}
+
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+html, body, #root {
+  height: 100%;
+  font-family: var(--j-font);
+  font-size: var(--j-fs-body);
+  background: var(--j-bg);
+  color: var(--j-ink);
+}
+
+button { font: inherit; cursor: pointer; }
+button:disabled { cursor: default; opacity: 0.5; }
+textarea, input { font: inherit; color: inherit; }
+
+.eyebrow {
+  font-size: var(--j-fs-h2);
+  font-weight: 700;
+  letter-spacing: 0.7px;
+  text-transform: uppercase;
+}
+
+@keyframes pulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.35; }
+}

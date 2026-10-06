@@ -89,7 +89,8 @@ class ModelResult:
 # --------------------------------------------------------------------------- #
 # Variant construction
 # --------------------------------------------------------------------------- #
-def build_variants(base: List[str], new: List[str], requested: List[str]) -> List[VariantSpec]:
+def build_variants(base: List[str], new: List[str], requested: List[str],
+                   combinations: Optional[Dict[str, List[str]]] = None) -> List[VariantSpec]:
     variants: List[VariantSpec] = []
     seen = set()
 
@@ -116,6 +117,14 @@ def build_variants(base: List[str], new: List[str], requested: List[str]) -> Lis
             for feature in new:
                 rest = [f for f in new if f != feature]
                 add(VariantSpec(f"loo__{feature}", list(base) + rest, f"base + all new except {feature}"))
+    for name, chosen in (combinations or {}).items():
+        absent = [f for f in chosen if f not in new]
+        if absent:
+            logger.warning("combination %r: %s not among the new features; skipping it",
+                           name, absent)
+            continue
+        add(VariantSpec(f"combo__{name}", list(base) + list(chosen),
+                        "base + " + " + ".join(chosen)))
     return variants
 
 
@@ -330,7 +339,8 @@ def run_modeling(
     cfg: Config,
     model_dir: Optional[Path] = None,
 ) -> tuple[List[ModelResult], pd.DataFrame]:
-    variants = build_variants(dataset.base_features, dataset.new_features, cfg.model.variants)
+    variants = build_variants(dataset.base_features, dataset.new_features, cfg.model.variants,
+                              cfg.model.combinations)
     if not variants:
         raise ValueError("no model variants to train; check model.variants and the feature lists")
 

@@ -1,0 +1,149 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1400 1067"
+     font-family="ui-sans-serif, -apple-system, 'Segoe UI', system-ui, Helvetica, sans-serif">
+  <defs>
+    <filter id="shadow" x="-20%" y="-20%" width="140%" height="140%">
+      <feGaussianBlur in="SourceAlpha" stdDeviation="1.2"/><feOffset dy="1.5"/>
+      <feComponentTransfer><feFuncA type="linear" slope="0.14"/></feComponentTransfer>
+      <feMerge><feMergeNode/><feMergeNode in="SourceGraphic"/></feMerge>
+    </filter>
+    <marker id="a-p" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,1 L10,5 L0,9 Z" fill="#7A5AA8"/></marker>
+    <marker id="a-g" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,1 L10,5 L0,9 Z" fill="#2C5B41"/></marker>
+    <marker id="a-a" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,1 L10,5 L0,9 Z" fill="#B45309"/></marker>
+    <marker id="a-r" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,1 L10,5 L0,9 Z" fill="#8A332F"/></marker>
+  </defs>
+  <rect width="1400" height="1067" fill="#FAF9F5"/>
+<text x="30" y="38" font-size="20" fill="#2D2D2D" font-weight="700">How agent-written code is screened and validated</text>
+<text x="1370" y="38" font-size="10" fill="#9A9387" font-style="italic" text-anchor="end">screen_feature → verified → Evaluate</text>
+<line x1="30" y1="54" x2="1370" y2="54" stroke="#E5E0D2"/>
+<rect x="30" y="70" width="1340" height="64" rx="10" fill="#F6F3FA" stroke="#C3B6D8" stroke-width="1" filter="url(#shadow)"/>
+<text x="46" y="92" font-size="9" fill="#A89B7C" font-weight="700">IN</text>
+<text x="80" y="92" font-size="9.5" fill="#4A3B69" font-family="ui-monospace, Menlo, monospace">screen_feature(name=&quot;pay_to_spend_90d&quot;, description=…, level=&quot;L1&quot;,</text>
+<text x="80" y="108" font-size="9.5" fill="#4A3B69" font-family="ui-monospace, Menlo, monospace">               code=&quot;def build(spark, sources, base): …&quot;)</text>
+<text x="80" y="125" font-size="9" fill="#7A7569" font-style="italic">the agent&#x27;s script: one function, build(), that returns the id and one new column</text>
+<text x="1354" y="92" font-size="9" fill="#7A5AA8" font-weight="700" text-anchor="end">written by the LLM</text>
+<text x="1354" y="108" font-size="9" fill="#7A7569" text-anchor="end">everything below is code - no LLM</text>
+<text x="1354" y="124" font-size="9" fill="#7A7569" text-anchor="end">each outcome goes back to the agent as the tool&#x27;s reply</text>
+<text x="30" y="162" font-size="9" fill="#A89B7C" font-weight="700">INSIDE THE RUN · seconds · on the screen&#x27;s sample rows</text>
+<rect x="30" y="172" width="250" height="112" rx="8" fill="#FFFFFF" stroke="#7A5AA8" stroke-width="1" filter="url(#shadow)"/>
+<circle cx="50" cy="192" r="11" fill="#7A5AA8"/>
+<text x="50" y="196" font-size="10.5" fill="#FFFFFF" font-weight="700" text-anchor="middle">1</text>
+<text x="70" y="196" font-size="11" fill="#4A3B69" font-weight="700">Before running</text>
+<text x="70" y="212" font-size="8.2" fill="#7A7569" font-family="ui-monospace, Menlo, monospace">agent/tools/screen.py</text>
+<rect x="300" y="172" width="760" height="112" rx="8" fill="#FFFFFF" stroke="#E5E0D2" stroke-width="1"/>
+<text x="314" y="191" font-size="9.4" fill="#2D2D2D">ideas recorded - the brainstorm passed (ideas first)</text>
+<text x="314" y="206" font-size="9.4" fill="#2D2D2D">an intent is left in the budget K, and in the level&#x27;s share</text>
+<text x="314" y="221" font-size="9.4" fill="#2D2D2D">a valid, new column name - not a base column, not used this run</text>
+<text x="314" y="236" font-size="9.4" fill="#2D2D2D">the level is allowed in this run (L1 / L2)</text>
+<text x="314" y="251" font-size="9.4" fill="#2D2D2D">every source it names exists and is allowed - a data request is not a source</text>
+<text x="314" y="266" font-size="9.4" fill="#2D2D2D">each source has a confirmed point-in-time linkage - joined once per run</text>
+<rect x="1100" y="213.0" width="270" height="30" rx="15" fill="#FBF4E6" stroke="#E4C9A0" stroke-width="1"/>
+<text x="1235.0" y="232.0" font-size="9.4" fill="#7C3F08" font-weight="600" text-anchor="middle">✗ refused · nothing spent</text>
+<line x1="1062" y1="228.0" x2="1096" y2="228.0" stroke="#B45309" stroke-width="1.4" stroke-dasharray="4,3" marker-end="url(#a-a)"/>
+<rect x="30" y="306" width="250" height="52" rx="8" fill="#FFFFFF" stroke="#7A5AA8" stroke-width="1" filter="url(#shadow)"/>
+<circle cx="50" cy="326" r="11" fill="#7A5AA8"/>
+<text x="50" y="330" font-size="10.5" fill="#FFFFFF" font-weight="700" text-anchor="middle">2</text>
+<text x="70" y="330" font-size="11" fill="#4A3B69" font-weight="700">Code guard</text>
+<text x="70" y="346" font-size="8.2" fill="#7A7569" font-family="ui-monospace, Menlo, monospace">agent/execution.py · check_code</text>
+<rect x="300" y="306" width="760" height="52" rx="8" fill="#FFFFFF" stroke="#E5E0D2" stroke-width="1"/>
+<text x="314" y="325" font-size="9.4" fill="#2D2D2D">read, not run: refuses a script that reads or writes files, imports</text>
+<text x="314" y="340" font-size="9.4" fill="#2D2D2D">os / sys / subprocess / network modules, or runs eval / exec / __import__</text>
+<rect x="1100" y="317.0" width="270" height="30" rx="15" fill="#FBF4E6" stroke="#E4C9A0" stroke-width="1"/>
+<text x="1235.0" y="336.0" font-size="9.4" fill="#7C3F08" font-weight="600" text-anchor="middle">✗ refused · nothing spent</text>
+<line x1="1062" y1="332.0" x2="1096" y2="332.0" stroke="#B45309" stroke-width="1.4" stroke-dasharray="4,3" marker-end="url(#a-a)"/>
+<rect x="30" y="380" width="250" height="97" rx="8" fill="#FFFFFF" stroke="#7A5AA8" stroke-width="1" filter="url(#shadow)"/>
+<circle cx="50" cy="400" r="11" fill="#7A5AA8"/>
+<text x="50" y="404" font-size="10.5" fill="#FFFFFF" font-weight="700" text-anchor="middle">3</text>
+<text x="70" y="404" font-size="11" fill="#4A3B69" font-weight="700">Isolated run</text>
+<text x="70" y="420" font-size="8.2" fill="#7A7569" font-family="ui-monospace, Menlo, monospace">agent/_child.py · its own process</text>
+<rect x="300" y="380" width="760" height="97" rx="8" fill="#FFFFFF" stroke="#E5E0D2" stroke-width="1"/>
+<text x="314" y="399" font-size="9.4" fill="#2D2D2D">a child process with a timeout (agent.code_timeout_s, 600 s)</text>
+<text x="314" y="414" font-size="9.4" fill="#2D2D2D">the script sees only what it is handed: base (id + base features, no target),</text>
+<text x="314" y="429" font-size="9.4" fill="#2D2D2D">sources[...] (linked rows, events before each as-of date), pd, np (spark, F)</text>
+<text x="314" y="444" font-size="9.4" fill="#2D2D2D">the contract: build() returns the id and exactly one column, named as declared,</text>
+<text x="314" y="459" font-size="9.4" fill="#2D2D2D">one row per id - otherwise the traceback goes back to the agent</text>
+<rect x="1100" y="413.5" width="270" height="30" rx="15" fill="#FBEDEC" stroke="#E4B5B3" stroke-width="1"/>
+<text x="1235.0" y="432.5" font-size="9.4" fill="#8A332F" font-weight="600" text-anchor="middle">✗ fails · the intent is spent</text>
+<line x1="1062" y1="428.5" x2="1096" y2="428.5" stroke="#8A332F" stroke-width="1.4" stroke-dasharray="4,3" marker-end="url(#a-r)"/>
+<rect x="30" y="499" width="250" height="67" rx="8" fill="#FFFFFF" stroke="#7A5AA8" stroke-width="1" filter="url(#shadow)"/>
+<circle cx="50" cy="519" r="11" fill="#7A5AA8"/>
+<text x="50" y="523" font-size="10.5" fill="#FFFFFF" font-weight="700" text-anchor="middle">4</text>
+<text x="70" y="523" font-size="11" fill="#4A3B69" font-weight="700">Not a repeat</text>
+<text x="70" y="539" font-size="8.2" fill="#7A7569" font-family="ui-monospace, Menlo, monospace">agent/memory.py · same_feature</text>
+<rect x="300" y="499" width="760" height="67" rx="8" fill="#FFFFFF" stroke="#E5E0D2" stroke-width="1"/>
+<text x="314" y="518" font-size="9.4" fill="#2D2D2D">its values on the screen rows against every earlier feature, this run and earlier</text>
+<text x="314" y="533" font-size="9.4" fill="#2D2D2D">directions: rank correlation ≥ 0.99 is the same feature - a 30-day and a 90-day</text>
+<text x="314" y="548" font-size="9.4" fill="#2D2D2D">window are not. The values are kept for later runs</text>
+<rect x="1100" y="517.5" width="270" height="30" rx="15" fill="#FBF4E6" stroke="#E4C9A0" stroke-width="1"/>
+<text x="1235.0" y="536.5" font-size="9.4" fill="#7C3F08" font-weight="600" text-anchor="middle">✗ refused · the intent is given back</text>
+<line x1="1062" y1="532.5" x2="1096" y2="532.5" stroke="#B45309" stroke-width="1.4" stroke-dasharray="4,3" marker-end="url(#a-a)"/>
+<rect x="30" y="588" width="250" height="97" rx="8" fill="#FFFFFF" stroke="#7A5AA8" stroke-width="1" filter="url(#shadow)"/>
+<circle cx="50" cy="608" r="11" fill="#7A5AA8"/>
+<text x="50" y="612" font-size="10.5" fill="#FFFFFF" font-weight="700" text-anchor="middle">5</text>
+<text x="70" y="612" font-size="11" fill="#4A3B69" font-weight="700">The screen</text>
+<text x="70" y="628" font-size="8.2" fill="#7A7569" font-family="ui-monospace, Menlo, monospace">discovery/screen.py + guards.py</text>
+<rect x="300" y="588" width="760" height="97" rx="8" fill="#FFFFFF" stroke="#E5E0D2" stroke-width="1"/>
+<text x="314" y="607" font-size="9.4" fill="#2D2D2D">guards on the values: finite (no inf) · no spike (max ≤ 1000 × its 99th pct) ·</text>
+<text x="314" y="622" font-size="9.4" fill="#2D2D2D">not redundant with a base column (|ρ| over the limit) · a finite matrix</text>
+<text x="314" y="637" font-size="9.4" fill="#2D2D2D">fit base + feature on screen_train, score on screen_valid - the same booster and</text>
+<text x="314" y="652" font-size="9.4" fill="#2D2D2D">parameters as the evaluation, no column subsampling, the base fit once</text>
+<text x="314" y="667" font-size="9.4" fill="#2C5B41" font-weight="600">→ Gini gain Δ, capture-rate gain Δ (top p%), coverage</text>
+<rect x="1100" y="621.5" width="270" height="30" rx="15" fill="#FBEDEC" stroke="#E4B5B3" stroke-width="1"/>
+<text x="1235.0" y="640.5" font-size="9.4" fill="#8A332F" font-weight="600" text-anchor="middle">✗ not verified · spent, recorded with why</text>
+<line x1="1062" y1="636.5" x2="1096" y2="636.5" stroke="#8A332F" stroke-width="1.4" stroke-dasharray="4,3" marker-end="url(#a-r)"/>
+<rect x="30" y="707" width="250" height="52" rx="8" fill="#FFFFFF" stroke="#7A5AA8" stroke-width="1" filter="url(#shadow)"/>
+<circle cx="50" cy="727" r="11" fill="#7A5AA8"/>
+<text x="50" y="731" font-size="10.5" fill="#FFFFFF" font-weight="700" text-anchor="middle">6</text>
+<text x="70" y="731" font-size="11" fill="#4A3B69" font-weight="700">The analyst&#x27;s gate</text>
+<text x="70" y="747" font-size="8.2" fill="#7A7569" font-family="ui-monospace, Menlo, monospace">the run&#x27;s parameters</text>
+<rect x="300" y="707" width="760" height="52" rx="8" fill="#FFFFFF" stroke="#E5E0D2" stroke-width="1"/>
+<text x="314" y="726" font-size="9.4" fill="#2D2D2D">Gini gain above min_gini_gain - and, if set, capture-rate gain above min_capture_gain</text>
+<text x="314" y="741" font-size="9.4" fill="#2D2D2D" font-weight="600">verified: features/&lt;name&gt;.py, the ledger, a feature_verified event</text>
+<rect x="1100" y="718.0" width="270" height="30" rx="15" fill="#FBEDEC" stroke="#E4B5B3" stroke-width="1"/>
+<text x="1235.0" y="737.0" font-size="9.4" fill="#8A332F" font-weight="600" text-anchor="middle">✗ not verified · spent, recorded with why</text>
+<line x1="1062" y1="733.0" x2="1096" y2="733.0" stroke="#8A332F" stroke-width="1.4" stroke-dasharray="4,3" marker-end="url(#a-r)"/>
+<line x1="50" y1="284" x2="50" y2="304" stroke="#2C5B41" stroke-width="1.8" marker-end="url(#a-g)"/>
+<text x="60" y="299" font-size="8.5" fill="#2C5B41" font-style="italic">passes</text>
+<line x1="50" y1="358" x2="50" y2="378" stroke="#2C5B41" stroke-width="1.8" marker-end="url(#a-g)"/>
+<text x="60" y="373" font-size="8.5" fill="#2C5B41" font-style="italic">passes</text>
+<line x1="50" y1="477" x2="50" y2="497" stroke="#2C5B41" stroke-width="1.8" marker-end="url(#a-g)"/>
+<text x="60" y="492" font-size="8.5" fill="#2C5B41" font-style="italic">passes</text>
+<line x1="50" y1="566" x2="50" y2="586" stroke="#2C5B41" stroke-width="1.8" marker-end="url(#a-g)"/>
+<text x="60" y="581" font-size="8.5" fill="#2C5B41" font-style="italic">passes</text>
+<line x1="50" y1="685" x2="50" y2="705" stroke="#2C5B41" stroke-width="1.8" marker-end="url(#a-g)"/>
+<text x="60" y="700" font-size="8.5" fill="#2C5B41" font-style="italic">passes</text>
+<line x1="50" y1="759" x2="50" y2="789" stroke="#2C5B41" stroke-width="1.8" marker-end="url(#a-g)"/>
+<text x="60" y="775" font-size="8.5" fill="#2C5B41" font-style="italic">verified - waits in the feature pool</text>
+<line x1="30" y1="785" x2="1370" y2="785" stroke="#E5E0D2" stroke-dasharray="6,4"/>
+<text x="700.0" y="801" font-size="10" fill="#A89B7C" font-weight="700" text-anchor="middle">after the run - Evaluate: the analyst picks features from any runs</text>
+<rect x="30" y="815" width="1340" height="168" rx="10" fill="#FFFFFF" stroke="#3F7D5A" stroke-width="1" filter="url(#shadow)"/>
+<path d="M38,815 h1324 a8,8 0 0 1 8,8 v16 h-1340 v-16 a8,8 0 0 1 8,-8 z" fill="#3F7D5A"/>
+<text x="46" y="832" font-size="11" fill="#FFFFFF" font-weight="700">7 · Validation on the full splits</text>
+<text x="1354" y="832" font-size="8.6" fill="#E7F0EA" text-anchor="end" font-family="ui-monospace, Menlo, monospace">agent/evaluate.py → validation/pipeline.py</text>
+<text x="46" y="861" font-size="10" fill="#2C5B41" font-weight="700">Materialise</text>
+<text x="46" y="877" font-size="9.2" fill="#5C5044">the saved script runs again on train, valid and test, through the same confirmed</text>
+<text x="46" y="891" font-size="9.2" fill="#5C5044">linkage, in the same guarded child process - and test is touched here for the first time</text>
+<rect x="46" y="907" width="278" height="62" rx="8" fill="#E7F0EA" stroke="#B9D3C2" stroke-width="1"/>
+<text x="58" y="925" font-size="10" fill="#2C5B41" font-weight="700">1. data quality</text>
+<text x="58" y="941" font-size="8.9" fill="#2C5B41">the column is usable</text>
+<line x1="324" y1="938" x2="344" y2="938" stroke="#2C5B41" stroke-width="1.4" marker-end="url(#a-g)"/>
+<rect x="356" y="907" width="278" height="62" rx="8" fill="#E7F0EA" stroke="#B9D3C2" stroke-width="1"/>
+<text x="368" y="925" font-size="10" fill="#2C5B41" font-weight="700">2. feature selection</text>
+<text x="368" y="941" font-size="8.9" fill="#2C5B41">signal, not already carried</text>
+<text x="368" y="954" font-size="8.9" fill="#2C5B41">(Spearman, mutual information)</text>
+<line x1="634" y1="938" x2="654" y2="938" stroke="#2C5B41" stroke-width="1.4" marker-end="url(#a-g)"/>
+<rect x="666" y="907" width="278" height="62" rx="8" fill="#E7F0EA" stroke="#B9D3C2" stroke-width="1"/>
+<text x="678" y="925" font-size="10" fill="#2C5B41" font-weight="700">3. gini gain</text>
+<text x="678" y="941" font-size="8.9" fill="#2C5B41">on test, ≥ verdict.min_gini_gain</text>
+<text x="678" y="954" font-size="8.9" fill="#2C5B41">(base vs leave_one_in, combos)</text>
+<line x1="944" y1="938" x2="964" y2="938" stroke="#2C5B41" stroke-width="1.4" marker-end="url(#a-g)"/>
+<rect x="976" y="907" width="278" height="62" rx="8" fill="#E7F0EA" stroke="#B9D3C2" stroke-width="1"/>
+<text x="988" y="925" font-size="10" fill="#2C5B41" font-weight="700">4. shap rank</text>
+<text x="988" y="941" font-size="8.9" fill="#2C5B41">the model leans on it -</text>
+<text x="988" y="954" font-size="8.9" fill="#2C5B41">top half by mean |SHAP|</text>
+<text x="700" y="861" font-size="10" fill="#2C5B41" font-weight="700">The verdict cascade</text>
+<text x="700" y="877" font-size="9.2" fill="#5C5044">a feature that fails a gate never reaches the next - it cannot be measured there.</text>
+<text x="700" y="891" font-size="9.2" fill="#5C5044">In Evaluate the gates run open: every feature is measured, the table says which would pass.</text>
+<rect x="30" y="1005" width="1340" height="44" rx="10" fill="#F4F0E6" stroke="#D4C5A9" stroke-width="1"/>
+<text x="46" y="1023" font-size="9.4" fill="#5C5044" font-weight="700">The same layers 2 and 3 run every other script the agent writes:</text>
+<text x="46" y="1039" font-size="9.2" fill="#5C5044">probes (run_probe), linkages (propose_linkage, also checked point in time before the analyst sees them) and a challenge&#x27;s construction (challenge_request) - only a feature goes on to the screen.</text>
+</svg>
