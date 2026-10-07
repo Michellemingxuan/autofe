@@ -3,7 +3,7 @@ features can later be built from it without leaking the future.
 
 ## The model database
 * Id column: `{id_col}`. Id format: {id_format}.
-  In the skill's examples, `id` stands for `{id_col}`.
+  In the skill's examples, `<id>` stands for `{id_col}`.
 
 ## The source: `{source}`
 {source_columns}

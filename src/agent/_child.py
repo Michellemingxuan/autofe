@@ -5,7 +5,8 @@ result. Everything the script may touch is handed to it already loaded:
 
     base      the model rows - id + base columns, no target
     sources   each source joined through its confirmed linkage (feature mode)
-    raw       each source as it is on disk, loaded on first access (probe, linkage)
+    raw       each source as it is on disk, loaded on first access (probe, linkage) -
+              in a probe, its first PROBE_ROWS rows: a probe looks, it does not compute
     spark, F  a local SparkSession and pyspark.sql.functions (engine=spark)
     pd, np
 
@@ -30,6 +31,9 @@ import numpy as np
 import pandas as pd
 
 _MAX_TEXT = 6000
+# A probe reads this many rows of each raw source: enough to see keys, types and
+# formats, and fast on a source of any size. Linkage and features read every row.
+PROBE_ROWS = 200_000
 
 
 class _Lazy(dict):
@@ -86,8 +90,11 @@ def main(spec_path: str) -> None:
         if engine == "spark":
             from pyspark.sql import SparkSession, functions as F
 
-            spark = (SparkSession.builder.master(spec.get("spark_master", "local[*]"))
-                     .appName("autofe-agent").getOrCreate())
+            builder = (SparkSession.builder.master(spec.get("spark_master", "local[*]"))
+                       .appName("autofe-agent"))
+            for key, value in spec.get("spark_conf", {}).items():   # set before the JVM starts
+                builder = builder.config(key, value)
+            spark = builder.getOrCreate()
 
             def load(path: str):
                 return spark.read.csv(path, header=True, inferSchema=True) \
@@ -96,11 +103,24 @@ def main(spec_path: str) -> None:
             spark, F = None, None
 
             def load(path: str):
-                return pd.read_csv(path) if path.endswith(".csv") else pd.read_parquet(path)
+                # low_memory=False reads each column's type from the whole file, not
+                # chunk by chunk - no mixed-type columns from a CSV export.
+                return (pd.read_csv(path, low_memory=False) if path.endswith(".csv")
+                        else pd.read_parquet(path))
+
+        def sample(path: str):
+            if engine == "spark":
+                return load(path).limit(rows)
+            if path.endswith(".csv"):
+                return pd.read_csv(path, nrows=rows, low_memory=False)
+            import pyarrow.dataset as ds
+
+            return ds.dataset(path).head(rows).to_pandas()
 
         base = load(spec["base_path"])
         sources = _Lazy(spec.get("sources", {}), load)
-        raw = _Lazy(spec.get("raw", {}), load)
+        raw = _Lazy(spec.get("raw", {}), sample if mode == "probe" else load)
+        rows = int(spec.get("probe_rows", PROBE_ROWS))
         namespace: dict[str, Any] = {"pd": pd, "np": np, "spark": spark, "F": F,
                                      "base": base, "sources": sources, "raw": raw}
         code = open(spec["code_path"]).read()

@@ -17,46 +17,41 @@ __all__ = ["report_findings", "validated_sql"]
 def report_findings(session: Session, summary: str) -> dict[str, Any]:
     """End the run. A data-request run ends only when every proposal is challenged,
     and its summary carries the validated SQL of the kept ones, copied by the code."""
-    if session.l3_only:
+    if session.data_requests:
         undecided = [r["intent"] for r in session.data_requests if r.get("status") == "proposed"]
         if undecided:
             # The verdicts are the run's output; a report in prose is not one.
             return {"ok": False, "error": f"challenge {undecided} with challenge_request "
                                           "first, then report"}
-    if session.ideas_required and session.report_refusals < REPORT_REFUSALS:
-        # A report with intents unspent ends the direction short - unless the agent
+    if session.gated and session.report_refusals < REPORT_REFUSALS:
+        # A report short of the target ends the direction early - unless the agent
         # insists. Like ideas first, the runner asks for this; tools called directly
         # do not.
-        left = _intents_left(session)
+        left = _results_wanted(session)
         if left:
             session.report_refusals += 1
             return {"ok": False, "error": (
-                f"{left} intent(s) left ({session.budget()}). Propose from your ideas "
-                "before you report - screen_feature for an L1/L2 idea, screen_request for "
-                "an L3 one. If the direction is truly exhausted, call report_findings "
-                "again and say why. Nothing was spent.")}
-    if session.l3_only:
+                f"{left} more result(s) wanted ({session.budget()}). Propose from your ideas "
+                "before you report - screen_feature for an L1/L2 idea; for an L3 one, "
+                "screen_request within the CAS scope or propose_new_data beyond it. If the "
+                "direction is truly exhausted, call report_findings again and say why. "
+                "Nothing was spent.")}
+    if session.data_requests:
         summary = summary.strip() + "\n\n" + validated_sql(session)
     return session.end(summary)
 
 
-# How often a report with feature intents left is sent back before it is accepted.
+# How often a report short of the target is sent back before it is accepted.
 REPORT_REFUSALS = 2
 
 
-def _intents_left(session: Session) -> int:
-    """The intents a report would leave unspent: every L1/L2 one - features can
-    always be built from the data in hand - and L3 ones while a CAS column is left
-    that no request asks for."""
-    from agent.memory import open_raw_columns
-
-    l3_room = bool(open_raw_columns(session))
-    if session.quota:
-        return sum(max(n - session.used_at(lv), 0) for lv, n in session.quota.items()
-                   if lv != "L3" or l3_room)
-    if set(session.params.levels) <= {"L3"} and not l3_room:
+def _results_wanted(session: Session) -> int:
+    """How far a report would fall short of the target - while attempts remain.
+    There is always room: a feature can be built from the data in hand, and a data
+    request can look beyond the CAS scope when the scope itself is spent."""
+    if session.attempts >= session.max_attempts:
         return 0
-    return max(session.K - session.intents_used, 0)
+    return session.wanted()
 
 
 def validated_sql(session: Session) -> str:
@@ -65,10 +60,16 @@ def validated_sql(session: Session) -> str:
     dropped = [r for r in session.data_requests if r.get("status") == "dropped"]
     lines = [f"Challenge: {len(kept)} kept, {len(dropped)} dropped (constructible from "
              "current data)."]
-    if kept:
-        lines += ["", "## Validated SQL - the kept requests"]
-        for r in kept:
+    in_cas = [r for r in kept if r.get("sql")]
+    beyond = [r for r in kept if not r.get("sql")]
+    if in_cas:
+        lines += ["", "## Validated SQL - the kept requests within the CAS scope"]
+        for r in in_cas:
             lines += ["", f"### {r['intent']} {r['source_name']}", "```sql", r["sql"].strip(), "```"]
+    if beyond:
+        lines += ["", "## Beyond the CAS scope - the kept ideas and the data they need"]
+        for r in beyond:
+            lines += ["", f"### {r['intent']} {r['source_name']}", str(r.get("data", "")).strip()]
     if dropped:
         lines += ["", "Dropped: " + ", ".join(f"{r['intent']} {r['source_name']}" for r in dropped)]
     return "\n".join(lines)

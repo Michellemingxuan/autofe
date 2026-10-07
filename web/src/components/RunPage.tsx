@@ -36,6 +36,9 @@ export function RunPage({ runId, onChange, onDeleted, onRerun }: {
   const l3 = view.params?.levels?.length === 1 && view.params.levels[0] === 'L3'
   const p = view.params
   const kept = view.requests.filter((r) => r.status === 'kept').length
+  // A result is a verified feature or a kept request - a mixed run has both kinds.
+  const mixed = !l3 && !!p?.levels.includes('L3')
+  const unit = l3 ? 'kept' : mixed ? 'results' : 'verified'
 
   return (
     <div className={s.page}>
@@ -66,13 +69,14 @@ export function RunPage({ runId, onChange, onDeleted, onRerun }: {
           )}
         </div>
         <div className={s.headRight}>
-          <div className={s.counter} title={`of ${view.K || '–'} intents`}>
-            <span className={s.num}>{l3 ? view.requests.length : view.ledger.length}</span>
-            <span className={s.of}>proposed</span>
-          </div>
           <div className={s.counter}>
-            <span className={`${s.num} ${s.good}`}>{l3 ? kept : verified}</span>
-            <span className={s.of}>{l3 ? 'kept' : 'verified'}</span>
+            <span className={`${s.num} ${s.good}`}>{verified + kept}</span>
+            <span className={s.of}>/ {view.K || '–'} {unit}
+              {mixed && <span className={s.split}> · {verified} L1/L2, {kept} L3</span>}</span>
+          </div>
+          <div className={s.counter} title="features screened and data requests proposed">
+            <span className={s.num}>{view.ledger.length + view.requests.length}</span>
+            <span className={s.of}>{view.maxAttempts ? `/ ${view.maxAttempts} ` : ''}attempts</span>
           </div>
           <div className={s.actions}>
             {live && <button className={s.stop} onClick={() => api.cancel('runs', runId)}>Stop</button>}

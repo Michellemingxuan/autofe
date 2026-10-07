@@ -7,13 +7,25 @@ not model ids - before the analyst is asked; a leaky join never reaches them.
 
 from __future__ import annotations
 
+import re
 from typing import Any
 
 import pandas as pd
 
 from agent.session import Session
 
-__all__ = ["propose_linkage", "ensure_linked"]
+__all__ = ["propose_linkage", "ensure_linked", "engine_of"]
+
+
+def engine_of(code: str) -> str:
+    """The engine a confirmed linkage was written for - recorded in its header. One
+    from before engines were recorded was written for pandas."""
+    match = re.search(r"^# engine: (\w+)$", code, flags=re.M)
+    return match.group(1) if match else "pandas"
+
+
+def linkage_engine(session: Session) -> str:
+    return session.ws.cfg.agent.linkage_engine
 
 
 def propose_linkage(session: Session, source: str, code: str, time_column: str,
@@ -28,9 +40,10 @@ def propose_linkage(session: Session, source: str, code: str, time_column: str,
     if rule not in ("strict", "inclusive"):
         return {"ok": False, "error": "rule must be strict (event < as_of) or "
                                       "inclusive (event <= as_of)"}
+    engine = linkage_engine(session)
     _, result = session.run(code, "linkage", intent=f"linkage:{source}",
                             title=f"linkage for {source}", raw=session.raw_paths(),
-                            source=source)
+                            source=source, engine=engine)
     if not result.ok:
         return result.for_agent()
 
@@ -38,7 +51,7 @@ def propose_linkage(session: Session, source: str, code: str, time_column: str,
     if checks.get("error"):
         return {"ok": False, **checks}
 
-    decision = session.ask("linkage", {"source": source, "code": code,
+    decision = session.ask("linkage", {"source": source, "code": code, "engine": engine,
                                        "time_column": time_column, "rule": rule, **checks})
     if not decision.approved:
         return {"ok": False, "approved": False, "user_note": decision.note, "checks": checks}
@@ -46,7 +59,7 @@ def propose_linkage(session: Session, source: str, code: str, time_column: str,
     path = session.ws.linkage_path(source)
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(f"# linkage for {source}: time_column={time_column}, rule={rule}\n"
-                    f"# confirmed in run {session.run_id}\n{code}")
+                    f"# confirmed in run {session.run_id}\n# engine: {engine}\n{code}")
     session.linked[source] = result.out_path
     return {"ok": True, "approved": True, "user_note": decision.note,
             "saved": str(path), "checks": checks,
@@ -61,9 +74,10 @@ def ensure_linked(session: Session, source: str) -> str | None:
     if not path.exists():
         return (f"{source!r} has no confirmed linkage; call propose_linkage first "
                 f"(confirmed: {session.ws.linked()})")
-    _, result = session.run(path.read_text(), "linkage", intent=f"linkage:{source}",
+    code = path.read_text()
+    _, result = session.run(code, "linkage", intent=f"linkage:{source}",
                             title=f"reuse confirmed linkage for {source}",
-                            raw=session.raw_paths(), source=source)
+                            raw=session.raw_paths(), source=source, engine=engine_of(code))
     if not result.ok:
         return f"the confirmed linkage for {source!r} failed: {result.error}"
     session.linked[source] = result.out_path

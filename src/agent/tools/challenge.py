@@ -21,9 +21,9 @@ the outcome are fixed here, not left to the model:
 * constructible, but it does not run         -> kept, the claim not shown
 * partly / new                               -> kept
 
-A dropped request gives its intent back: the current data already covers it,
-so the agent must propose something else in its place. To keep that from
-looping, the refunds stop once a run has made 2 x K proposals.
+A dropped request is not a result: the current data already covers it, so the
+agent proposes something else toward its target of K kept requests, within the
+run's cap on attempts.
 
 A construction that works is kept on record either way: it is a feature idea
 for an L1/L2 run.
@@ -70,31 +70,24 @@ def challenge_request(session: Session, intent: str, verdict: str, reasoning: st
         if verdict == "constructible":
             result["note"] = "said to be constructible, but the construction did not run"
     record["status"], record["challenge"] = status, result
-    refunded = False
-    if status == "dropped" and session.request_spent(record) \
-            and len(session.data_requests) < 2 * session.K:
-        record["spent"], record["refunded"] = False, True
-        session.intents_used -= 1
-        refunded = True
     session.save_requests()
     session.emit("request_challenged", intent=intent, source_name=record["source_name"],
-                 status=status, refunded=refunded, **result)
+                 status=status, results=session.results(), K=session.K, **result)
     left = [r["intent"] for r in session.data_requests if r.get("status") == "proposed"]
     reply = {"intent": intent, "status": status, "code_ok": result["code_ok"],
              "remaining": left}
     if result["code_error"]:
         reply["code_error"] = result["code_error"]
-    if status == "dropped":
-        reply["next"] = (("dropped - the current data already covers it, so it does not count: "
-                          "re-propose - ask for information the model database and the linked "
-                          f"sources cannot give ({session.budget()}).") if refunded else
-                         f"dropped - and no refund: this run has made {len(session.data_requests)} "
-                         f"proposals, the limit of 2 x K ({session.budget()}).")
-        return reply
-    if not left:
-        budget = f"{session.intents_used}/{session.K} intents used"
-        reply["next"] = (f"every proposal so far is decided ({budget}); propose the next "
-                         "request, or call report_findings")
+    if (over := session.round_over()):
+        reply["next"] = over
+    elif status == "dropped":
+        reply["next"] = ("dropped - the current data already covers it, so it is not a result: "
+                         "propose something else - information the model database and the "
+                         f"linked sources cannot give ({session.budget()}).")
+    elif not left:
+        reply["next"] = (f"every proposal so far is decided ({session.budget()}); "
+                         + ("the target is reached - call report_findings"
+                            if session.wanted() == 0 else "propose the next request"))
     return reply
 
 
@@ -109,7 +102,7 @@ def _try_construction(session: Session, record: dict[str, Any], code: str) -> di
                          title=f"challenge: rebuild {record['source_name']} from current data",
                          sources={s: session.linked[s] for s in used})
     if not run.ok:
-        return {"code_ok": False, "code_error": (run.error or "")[-600:]}
+        return {"code_ok": False, "code_error": run.short_error}
     return {"code_ok": True, "code_error": None}
 
 

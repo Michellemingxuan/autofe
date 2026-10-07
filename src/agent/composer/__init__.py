@@ -69,7 +69,8 @@ def compose(session: Any) -> str:
         return _read(name).format(**fields)
 
     fields.update(
-        K=session.K, task_description=cfg.discovery.task_description.strip(),
+        K=session.K, max_attempts=session.max_attempts, n_screen=f"{len(ws.screen):,}",
+        task_description=cfg.discovery.task_description.strip(),
         task_context=ws.task_context.strip(), target=ws.target, n_base=len(ws.base_features),
         shot_list=sections.shot_list(ws), scope_notes=sections.scope_notes(ws),
         memory=sections.memory(session), ideas=sections.ideas(session),
@@ -83,6 +84,7 @@ def compose(session: Any) -> str:
         feature_levels = [lv for lv in p.levels if lv != "L3"]
         fields.update(
             engine=p.engine, code_language=_language(p.engine), quota=sections.quota(session),
+            linkage_language=_language(cfg.agent.linkage_engine),
             feature_levels=", ".join(feature_levels) or "none",
             l3_rule=("L3 is on: you may request data the direction needs and nobody has."
                      if "L3" in p.levels else "L3 is off: do not request data pulls."),

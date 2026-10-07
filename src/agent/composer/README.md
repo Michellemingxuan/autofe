@@ -26,7 +26,7 @@ ones are whole sections, built in `sections.py`:
 | `{columns}` | the columns a feature script can read - base and the run's sources, with descriptions and examples | the workspace: column descriptions, sources' sample JSON |
 | `{scope_notes}` | the analyst's notes on the CAS scope, verbatim | Setup → Scope notes |
 | `{gates}` | the analyst's minimum gains, in words | the run's parameters |
-| `{quota}` | a mixed run's split of intents across levels | the run's parameters |
+| `{quota}` | a mixed run's target, split across levels | the run's parameters |
 | `{shot_list}` | the shot categories | Setup → Shots |
 
 Two more things reach the model, kept beside the code they describe:

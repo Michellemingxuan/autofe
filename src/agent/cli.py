@@ -55,7 +55,7 @@ def print_event(e: dict[str, Any]) -> None:
         mark = "VERIFIED" if e["verified"] else "rejected"
         gini = f"{e['delta']:+.4f}" if e["delta"] is not None else "n/a"
         capture = f"{e['capture_gain']:+.4f}" if e.get("capture_gain") is not None else "n/a"
-        print(f"  [{e['intent']} {e['intents_used']}/{e['K']}] {e['name']} ({e['level']}) "
+        print(f"  [{e['intent']} {e.get('results', '?')}/{e['K']}] {e['name']} ({e['level']}) "
               f"gini={gini} capture={capture} {mark} {e['reason'] or ''}")
     elif kind in ("run_started", "run_done", "approval_resolved", "run_error"):
         print(f"[{kind}] " + _short({k: v for k, v in e.items()

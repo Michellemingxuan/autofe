@@ -39,6 +39,7 @@ from typing import Any
 import pandas as pd
 
 from agent.events import EventLog, read_events, run_logged
+from agent.tools.linkage import engine_of
 from agent.workspace import Workspace
 from validation.data import read_frame
 from validation.pipeline import Pipeline
@@ -65,7 +66,9 @@ def run_linkage(events: list[dict[str, Any]]) -> dict[str, str]:
     reused: dict[str, tuple[str, str]] = {}
     for e in events:
         if e["event"] == "approval_required" and e.get("kind") == "linkage":
-            proposed[e["req_id"]] = (e["source"], e["code"])
+            # The engine travels with the code, as in a confirmed linkage file.
+            header = f"# engine: {e['engine']}\n" if e.get("engine") else ""
+            proposed[e["req_id"]] = (e["source"], header + e["code"])
         elif e["event"] == "approval_resolved" and e.get("approved") and e["req_id"] in proposed:
             source, code = proposed[e["req_id"]]
             used[source] = code
@@ -108,6 +111,8 @@ def feature_pool(ws: Workspace) -> list[dict[str, Any]]:
                     codes[source] = code
             pool.append({**entry, "key": f"{folder.name}:{entry['name']}",
                          "run_id": folder.name, "direction": started.get("direction", ""),
+                         # the feature's script reruns on the engine it was written for
+                         "engine": started.get("engine") or ws.cfg.agent.engine,
                          "linkage": codes, "missing_linkage": missing})
     return pool
 
@@ -215,10 +220,11 @@ class Evaluation:
         return self.log.emit(event, **payload)
 
     # ------------------------------------------------------------ the work
-    def _run(self, code: str, mode: str, base_path: Path, **kwargs: Any):
+    def _run(self, code: str, mode: str, base_path: Path, *, engine: str, **kwargs: Any):
         agent = self.ws.cfg.agent
-        return run_logged(self.log, code, mode, engine=agent.engine, id_col=self.ws.id_col,
-                          base_path=base_path, timeout_s=agent.code_timeout_s, **kwargs)
+        return run_logged(self.log, code, mode, engine=engine, id_col=self.ws.id_col,
+                          base_path=base_path, timeout_s=agent.code_timeout_s,
+                          spark_conf=agent.spark_conf, **kwargs)
 
     def materialise(self) -> dict[str, pd.DataFrame]:
         """The three splits with the chosen features added, each by its own script."""
@@ -237,7 +243,8 @@ class Evaluation:
         for source, code in sorted({(s, f["linkage"][s]) for f in self.chosen
                                     for s in f["sources"]}):
             version = len([k for k in linked if k[0] == source]) + 1
-            _, result = self._run(code, "linkage", base_path, intent="evaluate",
+            _, result = self._run(code, "linkage", base_path, engine=engine_of(code),
+                                  intent="evaluate",
                                   title=f"linkage for {source} on the full splits"
                                         + (f" (v{version})" if version > 1 else ""),
                                   raw=raw, source=source)
@@ -247,7 +254,8 @@ class Evaluation:
             linked[(source, code)] = result.out_path
 
         for f in self.chosen:
-            _, result = self._run(f["code"], "feature", base_path, intent="evaluate",
+            _, result = self._run(f["code"], "feature", base_path, engine=f["engine"],
+                                  intent="evaluate",
                                   level=f["level"], title=f"{f['column']} on the full splits",
                                   sources={s: linked[(s, f["linkage"][s])] for s in f["sources"]})
             if not result.ok:

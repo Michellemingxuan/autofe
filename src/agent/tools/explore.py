@@ -67,4 +67,5 @@ def run_probe(session: Session, code: str, purpose: str = "") -> dict[str, Any]:
                 return {"ok": False, "error": problem}
     _, result = session.run(code, "probe", intent="probe", title=purpose,
                             raw=session.raw_paths(), sources=dict(session.linked))
+    session.failed_streak = 0                      # it looked: the next screen may go
     return result.for_agent()

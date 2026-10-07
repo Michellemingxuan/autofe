@@ -4,7 +4,7 @@
     shots      shots                                    labelled examples by category, rotated
     linkage    propose_linkage                          join a source, point in time
     screen     screen_feature                           build + score one feature
-    data_pull  screen_request                           L3: ask for missing data
+    data_pull  screen_request · propose_new_data        L3: data within the CAS scope (SQL) or beyond it
     challenge  challenge_request                        L3: record a verdict, run its construction
     report     report_findings                          end the run with a summary
 
@@ -25,7 +25,7 @@ from pydantic import BaseModel, Field
 
 from agent.session import Session
 from agent.tools.challenge import challenge_request
-from agent.tools.data_pull import screen_request
+from agent.tools.data_pull import propose_new_data, screen_request
 from agent.tools.explore import catalog, run_probe, sample_rows, scope
 from agent.tools.linkage import propose_linkage
 from agent.tools.report import report_findings
@@ -33,18 +33,19 @@ from agent.tools.screen import screen_feature
 from agent.tools.shots import shots
 
 __all__ = ["catalog", "scope", "sample_rows", "run_probe", "shots", "propose_linkage", "screen_feature",
-           "screen_request", "challenge_request", "report_findings", "for_agent",
+           "screen_request", "propose_new_data", "challenge_request", "report_findings", "for_agent",
            "Ideas", "Idea", "TOOLSETS", "END_TOOL"]
 
 # Which tools each kind of run gets. A linkage job only explores and links.
 TOOLSETS = {
     "direction": ("catalog", "scope", "sample_rows", "shots", "run_probe", "propose_linkage",
-                  "screen_feature", "screen_request", "report_findings"),
+                  "screen_feature", "screen_request", "propose_new_data", "challenge_request",
+                  "report_findings"),
     "linkage": ("sample_rows", "run_probe", "propose_linkage", "report_findings"),
     # A data-request run (L3 only): explore, then for each pull - propose it (the
     # SQL is validated), challenge it yourself, and it is kept or dropped. No screening.
     "l3": ("catalog", "scope", "sample_rows", "shots", "run_probe", "screen_request",
-           "challenge_request", "report_findings"),
+           "propose_new_data", "challenge_request", "report_findings"),
     # Before any of them: the ideas stage, which looks and answers with ideas.
     "ideas": ("catalog", "scope", "sample_rows", "shots", "run_probe"),
 }
@@ -57,8 +58,13 @@ class Idea(BaseModel):
     level: str = Field(description="L1, L2 or L3 - one of the levels this run allows")
     lens: str = Field(description="one of the brief's lenses")
     description: str = Field(description="what it measures, and why it should carry default risk")
-    data: str = Field(description="the columns and sources it uses. For L3: the CAS variables "
-                                  "it needs, spelled exactly as scope() lists them")
+    data: str = Field(description="the columns and sources it uses. For L3 within the CAS "
+                                  "scope: the CAS variables it needs, spelled exactly as "
+                                  "scope() lists them. Beyond it: the data and where it would "
+                                  "come from")
+    beyond_cas: bool = Field(description="L3 only: true when the data lies outside the CAS "
+                                         "scope - external information, strategies applied "
+                                         "(RLA), calling or contact history, ...; false otherwise")
 
 
 class Ideas(BaseModel):
@@ -119,6 +125,7 @@ def for_agent(session: Session, toolset: str | None = None) -> list[Any]:
     @function_tool(name_override="run_probe")
     def _run_probe(code: str, purpose: str) -> str:
         """Run exploratory code over base, raw[...] and sources[...]; returns printed output.
+        raw[...] here is the first 200,000 rows of each source - for looking, not computing.
 
         Args:
             code: the script; print results or set `result` to a frame.
@@ -141,7 +148,7 @@ def for_agent(session: Session, toolset: str | None = None) -> list[Any]:
 
     @function_tool(name_override="screen_feature")
     def _screen_feature(name: str, description: str, level: str, code: str) -> str:
-        """Build one feature on the screen rows and score it against base. Spends one intent.
+        """Build one feature on the screen rows and score it against base. One attempt.
 
         Args:
             name: the new column's name.
@@ -162,6 +169,21 @@ def for_agent(session: Session, toolset: str | None = None) -> list[Any]:
             features: the features this data would enable, one per line.
         """
         return _dump(screen_request(session, gap, sql, source_name, features))
+
+    @function_tool(name_override="propose_new_data")
+    def _propose_new_data(gap: str, source_name: str, data: str, features: str = "") -> str:
+        """L3 beyond the CAS scope: propose data the bank or the market may hold outside CAS -
+        external information, strategies applied (RLA), calling or contact history ... No SQL:
+        the idea is the deliverable. It is challenged like any request.
+
+        Args:
+            gap: the rationale - what is missing, and why the direction needs it.
+            source_name: snake_case name for the new source.
+            data: the data it needs and where it would come from - the system or team that
+                holds it, its grain, how far back it should go.
+            features: the features this data would enable, one per line.
+        """
+        return _dump(propose_new_data(session, gap, source_name, data, features))
 
     @function_tool(name_override="challenge_request")
     def _challenge_request(intent: str, verdict: str, reasoning: str,
@@ -194,6 +216,7 @@ def for_agent(session: Session, toolset: str | None = None) -> list[Any]:
     tools = {"catalog": _catalog, "scope": _scope, "sample_rows": _sample_rows, "shots": _shots,
              "run_probe": _run_probe,
              "propose_linkage": _propose_linkage, "screen_feature": _screen_feature,
-             "screen_request": _screen_request, "challenge_request": _challenge_request,
+             "screen_request": _screen_request, "propose_new_data": _propose_new_data,
+             "challenge_request": _challenge_request,
              "report_findings": _report_findings}
     return [tools[name] for name in TOOLSETS[toolset or ("l3" if session.l3_only else session.kind)]]

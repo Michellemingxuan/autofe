@@ -84,6 +84,7 @@ export type Params = {
   capture_percent?: number          // the capture rate's top share, from the config
   levels: Level[]
   sources: string[]
+  ideas_per_round?: number          // ideas asked for at a time; more rounds for a large K
 }
 
 export type Workspace = {
@@ -112,6 +113,7 @@ export type RunSummary = {
   started: number
   params: Params | null
   quota?: Record<string, number>
+  maxAttempts?: number                // K is a target of results; attempts are capped
   verified: number
   mode: 'features' | 'l3'
   requests: number
@@ -176,9 +178,11 @@ export type DataRequest = {
   source_name: string
   gap: string
   features: string
-  sql: string
+  sql: string                  // empty beyond the CAS scope
   tables: string[]
   columns?: string[]
+  scope?: 'cas' | 'beyond_cas'  // within the CAS scope (SQL, screened) or beyond it (an idea)
+  data?: string                // beyond CAS: the data it needs and where it would come from
   refunded?: boolean           // dropped as covered by current data - its intent came back
   status: 'proposed' | 'kept' | 'dropped' | string
   challenge?: {
@@ -194,7 +198,7 @@ export type DataRequest = {
 
 /** One idea of the brainstorm. Older runs carry a hypothesis and no name. */
 export type Idea = { n: number; name?: string; level?: string; lens: string
-                     description?: string; hypothesis?: string; data: string }
+                     description?: string; hypothesis?: string; data: string; beyond_cas?: boolean }
 
 export type StepKind = 'explore' | 'ideas' | 'linkage' | 'intent' | 'l3' | 'challenge' | 'stage' | 'summary'
 
@@ -231,6 +235,7 @@ export type RunView = {
   K: number
   params: Params | null
   quota?: Record<string, number>
+  maxAttempts?: number                // K is a target of results; attempts are capped
   startTs: number
   steps: Step[]
   ledger: LedgerRow[]

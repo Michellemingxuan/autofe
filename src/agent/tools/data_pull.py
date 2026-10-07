@@ -1,13 +1,20 @@
-"""L3: ask for data nobody has, as a rationale plus BigQuery SQL over the CAS scope.
+"""L3: ask for data nobody has - within the CAS scope as SQL, beyond it as an idea.
+
+Two kinds of request, both challenged (``agent.tools.challenge``):
+
+* **Within the CAS scope** (``screen_request``) - a rationale plus BigQuery SQL,
+  screened against the CAS column lists before it costs anything (below).
+* **Beyond the CAS scope** (``propose_new_data``) - external information, the
+  strategies applied to an account (RLA), calling and contact history, and any
+  other data the bank holds outside CAS: a rationale, the data and where it would
+  come from, the features it enables. No SQL - nobody here knows those tables, so
+  the creative idea is the deliverable, and there is nothing to screen.
 
 Two ways a run uses it:
 
-* **Alongside features** (L3 with L1/L2) - each request waits for the analyst's
-  approval, as before; an approved one is run in BigQuery and comes back as a
-  source.
-* **A data-request run** (L3 only) - nothing is screened and nothing waits.
-  Each proposal is recorded - rationale, the features it would enable, the SQL,
-  the CAS tables it reads - and spends one intent. The agent then challenges it
+* **Alongside features** (L3 with L1/L2) and **in a data-request run** (L3 only)
+  alike - nothing waits for the analyst. Each proposal is recorded - rationale, the features it would enable, the SQL,
+  the CAS tables it reads - as one attempt. The agent then challenges it
   itself: can it be built from the current data? (``agent.tools.challenge``)
   It is kept or dropped; the run's summary carries the kept requests' SQL, and
   the analyst reviews kept and dropped in ``data_requests.md``.
@@ -33,7 +40,7 @@ from agent.memory import same_request
 from agent.session import Session
 from agent.tools.ideas import ideas_needed
 
-__all__ = ["screen_request", "sql_tables", "sql_columns", "save_requests",
+__all__ = ["screen_request", "propose_new_data", "sql_tables", "sql_columns", "save_requests",
            "write_requests_report"]
 
 
@@ -95,9 +102,13 @@ def _check_columns(session: Session, sql: str, tables: list[str]) -> str | None:
         return None
     unknown = sorted(sql_columns(sql) - known)
     if unknown:
+        # Name the columns that ARE there to join and filter on: the usual slip is an
+        # invented key or date (id, as_of_date), and a pointer to scope() is not enough.
+        keys = "; ".join(f"{p['table']}: identifiers {p['identifiers'][:6]}, partition date "
+                         f"{p['partition']}" for p in profiles)
         return (f"columns not in {[p['table'] for p in profiles]}: {unknown}. Use only the "
-                "provided CAS columns - scope(table=...) lists them, with the identifiers "
-                "and the partition date.")
+                f"provided CAS columns. To link and filter, use {keys}; scope(table=...) "
+                "lists every column.")
     used = sql_columns(sql)
     identifiers = {c.lower() for p in profiles for c in p["identifiers"]}
     if identifiers and not used & identifiers:
@@ -121,19 +132,41 @@ def _unknown(session: Session, tables: list[str]) -> list[str]:
     return [t for t in tables if t.split(".")[-1].lower() not in known]
 
 
-def screen_request(session: Session, gap: str, sql: str, source_name: str,
-                      features: str = "") -> dict[str, Any]:
-    """Propose a data pull: why, what it enables, and the SQL."""
+def _can_propose(session: Session, source_name: str) -> dict[str, Any] | None:
+    """Why no data request may be proposed now - or None."""
     if "L3" not in session.params.levels:
-        return {"approved": False, "error": "L3 data pulls are off for this run"}
-    if session.intents_used >= session.K:
-        return {"ok": False, "error": f"all {session.K} intents are used; call report_findings"}
-    if (problem := session.level_full("L3")):
+        return {"approved": False, "error": "L3 data requests are off for this run"}
+    if (problem := session.target_met("L3")):
         return {"ok": False, "error": problem}
     if (missing := ideas_needed(session)):
         return missing
     if not re.fullmatch(r"[a-z][a-z0-9_]{0,63}", source_name or ""):
         return {"ok": False, "error": f"{source_name!r}: name the source in snake_case"}
+    if any(r["source_name"] == source_name for r in session.data_requests):
+        return {"ok": False, "error": f"{source_name!r} is already proposed; choose a new name"}
+    return None
+
+
+def propose_new_data(session: Session, gap: str, source_name: str, data: str,
+                     features: str = "") -> dict[str, Any]:
+    """Propose data beyond the CAS scope: why, what data and from where, what it
+    enables. No SQL and nothing to screen - it goes straight to the challenge."""
+    if (problem := _can_propose(session, source_name)):
+        return problem
+    if len(data.split()) < 4:
+        return {"ok": False, "error": "say what data it needs and where it would come from - "
+                                      "the system or team that holds it, the grain, the history. "
+                                      "Nothing was spent."}
+    payload = {"scope": "beyond_cas", "gap": gap, "data": data.strip(), "sql": "",
+               "source_name": source_name, "features": features, "tables": [], "columns": []}
+    return _propose(session, payload)
+
+
+def screen_request(session: Session, gap: str, sql: str, source_name: str,
+                      features: str = "") -> dict[str, Any]:
+    """Propose a data pull within the CAS scope: why, what it enables, and the SQL."""
+    if (problem := _can_propose(session, source_name)):
+        return problem
     tables = sql_tables(sql)
     if not tables:
         return {"ok": False, "error": "the SQL selects from no table"}
@@ -150,48 +183,26 @@ def screen_request(session: Session, gap: str, sql: str, source_name: str,
         return {"ok": False, "error": f"this asks for {twin}. Nothing was spent - ask for "
                                       "different data, or build on what is already requested."}
 
-    if session.l3_only:
-        return _record(session, gap, sql, source_name, features, tables)
-
-    # A mixed run: the request spends one of the run's L3 intents, then waits
-    # for the analyst.
-    session.intents_used += 1
-    payload = {"intent": f"R{len(session.data_requests) + 1}", "gap": gap, "sql": sql,
+    payload = {"scope": "cas", "gap": gap, "data": "", "sql": sql.strip(),
                "source_name": source_name, "features": features, "tables": tables,
                "columns": sorted(sql_columns(sql))}
-    decision = session.ask("data_pull", payload)
-    session.data_requests.append({**payload, "approved": decision.approved, "spent": True,
-                                  "note": decision.note})
-    save_requests(session)
-    if not decision.approved:
-        return {"approved": False, "user_note": decision.note}
-    return {"approved": True, "user_note": decision.note,
-            "next": (f"the analyst will run it in BigQuery and drop {source_name}.parquet "
-                     f"+ {source_name}_data_sample.json into the additional data "
-                     "folder; it appears in catalog() when it lands. Carry on with "
-                     "other intents meanwhile.")}
+    return _propose(session, payload)
 
 
-def _record(session: Session, gap: str, sql: str, source_name: str, features: str,
-            tables: list[str]) -> dict[str, Any]:
-    """A data-request run: keep the proposal for review; spend one intent."""
-    if any(r["source_name"] == source_name for r in session.data_requests):
-        return {"ok": False, "error": f"{source_name!r} is already proposed; choose a new name"}
-    session.intents_used += 1
-    # Numbered by proposal, not by intent: a dropped request is refunded, and
-    # the next one must not reuse its number.
-    record = {"intent": f"R{len(session.data_requests) + 1}", "spent": True,
-              "source_name": source_name, "gap": gap,
-              "features": features, "sql": sql.strip(), "tables": tables,
-              "columns": sorted(sql_columns(sql)), "status": "proposed"}
+def _propose(session: Session, payload: dict[str, Any]) -> dict[str, Any]:
+    """One attempt: a request, recorded for the challenge. Any run, alone or mixed
+    with features - nothing waits for the analyst, who reviews the kept requests
+    when the run ends (data_requests.md)."""
+    session.take_attempt()
+    intent = f"R{len(session.data_requests) + 1}"
+    record = {"intent": intent, **payload, "status": "proposed"}
     session.data_requests.append(record)
     save_requests(session)
-    session.emit("data_request", **record, intents_used=session.intents_used, K=session.K)
-    reply: dict[str, Any] = {"recorded": True, "intent": record["intent"], "tables": tables,
-                             "budget": session.budget()}
-    reply["next"] = (f"challenge {record['intent']}: can the current data supply it? "
-                     "Call challenge_request with your verdict.")
-    return reply
+    session.emit("data_request", **record, attempts=session.attempts, K=session.K)
+    return {"recorded": True, "intent": intent, "tables": payload["tables"],
+            "budget": session.budget(),
+            "next": f"challenge {intent}: can the current data supply it? Call "
+                    "challenge_request with your verdict."}
 
 
 def save_requests(session: Session) -> None:
@@ -201,6 +212,8 @@ def save_requests(session: Session) -> None:
     folder.mkdir(exist_ok=True)
     for r in session.data_requests:
         name = (f"{r['intent']}_" if r.get("intent") else "") + f"{r['source_name']}.sql"
+        if not r.get("sql"):                                  # beyond CAS: an idea, no SQL
+            continue
         if r.get("status") == "dropped":
             (folder / name).unlink(missing_ok=True)          # only kept requests get a file
             continue
@@ -239,11 +252,16 @@ def write_requests_report(session: Session) -> str:
                       "**Why it is needed**", "", r["gap"].strip(), ""]
             if r.get("features"):
                 lines += ["**Features it would enable**", "", str(r["features"]).strip(), ""]
-            lines += [f"**Reads** {', '.join(f'`{t}`' for t in r.get('tables', []))}"
-                      + (f" - columns {', '.join(f'`{c}`' for c in r['columns'])}"
-                         if r.get("columns") else ""), ""]
+            if r.get("sql"):
+                lines += [f"**Reads** {', '.join(f'`{t}`' for t in r.get('tables', []))}"
+                          + (f" - columns {', '.join(f'`{c}`' for c in r['columns'])}"
+                             if r.get("columns") else ""), ""]
+            else:
+                lines += ["**Beyond the CAS scope - the data it needs**", "",
+                          str(r.get("data", "")).strip(), ""]
             lines += challenge_lines(r)
-            lines += ["```sql", r["sql"].strip(), "```", ""]
+            if r.get("sql"):
+                lines += ["```sql", r["sql"].strip(), "```", ""]
     text = "\n".join(lines)
     (session.run_dir / "data_requests.md").write_text(text)
     return text

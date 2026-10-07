@@ -4,7 +4,8 @@ import type {
 } from './types'
 
 // Runs from before the rename call it request_data_pull.
-const isRequest = (tool: string) => tool === 'screen_request' || tool === 'request_data_pull'
+const isRequest = (tool: string) =>
+  tool === 'screen_request' || tool === 'propose_new_data' || tool === 'request_data_pull'
 
 const parse = (text: string): any => {
   try { return JSON.parse(text) } catch { return {} }
@@ -64,6 +65,7 @@ export function deriveRun(events: Ev[]): RunView {
         view.K = e.K
         view.params = e.params ?? null
         view.quota = e.quota ?? undefined
+        view.maxAttempts = e.max_attempts ?? undefined
         view.startTs = e.ts
         view.status = 'running'
         break
@@ -78,6 +80,7 @@ export function deriveRun(events: Ev[]): RunView {
 
       case 'tool_started': {
         const args = parse(e.args)
+        let ownRequest: Step | undefined
         if (e.tool === 'propose_linkage') open('linkage', `Linkage · ${args.source ?? ''}`)
         else if (isRequest(e.tool)) {
           // A recorded request arrives before its call is flushed: the step
@@ -93,8 +96,10 @@ export function deriveRun(events: Ev[]): RunView {
             open('l3', name)
           }
         } else if (e.tool === 'challenge_request') {
-          // The verdict is recorded before this call is flushed - same step.
-          if (at.step?.challengeOf !== args.intent) {
+          // A challenge belongs to its request's step; runs from before requests
+          // had steps of their own got a challenge step.
+          ownRequest = view.steps.find((st) => st.kind === 'l3' && st.request?.intent === args.intent)
+          if (!ownRequest && at.step?.challengeOf !== args.intent) {
             const step = open('challenge', `Challenge · ${args.intent ?? ''}`)
             step.challengeOf = args.intent
           }
@@ -123,6 +128,7 @@ export function deriveRun(events: Ev[]): RunView {
         const summary = e.tool === 'report_findings'
           ? [...view.steps].reverse().find((st) => st.kind === 'summary') : undefined
         if (summary) summary.tools!.push(use)
+        else if (ownRequest) ownRequest.tools!.push(use)
         else if (e.tool !== 'brainstorm') here().tools!.push(use)   // brainstorm: placed once its outcome is known
         break
       }
@@ -158,7 +164,7 @@ export function deriveRun(events: Ev[]): RunView {
       }
 
       case 'ideas_recorded': {
-        const step = open('ideas', `${e.ideas.length} ideas · ${new Set(e.ideas.map((i: any) => i.lens)).size} lenses`)
+        const step = open('ideas', `${e.round ? `round ${e.round} · ` : ''}${e.ideas.length} ideas · ${new Set(e.ideas.map((i: any) => i.lens)).size} lenses`)
         step.items.push({ kind: 'ideas', seq: e.seq, focus: e.focus ?? [], ideas: e.ideas })
         close('done')
         break
@@ -233,7 +239,8 @@ export function deriveRun(events: Ev[]): RunView {
       case 'data_request': {
         const request: DataRequest = {
           intent: e.intent, source_name: e.source_name, gap: e.gap, features: e.features ?? '',
-          sql: e.sql, tables: e.tables ?? [], columns: e.columns ?? [], status: e.status,
+          sql: e.sql ?? '', tables: e.tables ?? [], columns: e.columns ?? [], status: e.status,
+          scope: e.scope ?? 'cas', data: e.data ?? '',
         }
         view.requests.push(request)
         const step = at.step && !at.step.request && at.step.kind !== 'summary' && at.step.kind !== 'stage'
@@ -253,8 +260,14 @@ export function deriveRun(events: Ev[]): RunView {
                                 code: e.code ?? '', code_ok: e.code_ok, code_error: e.code_error,
                                 note: e.note }
         }
-        // Its own step: reuse the open one only if it is this verdict's call, or
-        // the challenger's look-around before it - never another verdict's step.
+        // On its request's step - the request's way, proposed to kept, in one place.
+        const own = view.steps.find((st) => st.kind === 'l3' && st.request?.intent === e.intent)
+        if (own) {
+          own.status = e.status === 'dropped' ? 'rejected' : 'verified'
+          break
+        }
+        // A run from before: its own step - reuse the open one only if it is this
+        // verdict's call, or the challenger's look-around before it.
         const reusable = at.step && (at.step.challengeOf === e.intent ||
           (!at.step.challengeOf && at.step.kind === 'explore'))
         const step: Step = reusable && at.step ? at.step : open('challenge', `Challenge · ${e.intent}`)
@@ -448,6 +461,7 @@ export function deriveL3(events: Ev[]): RunView {
         view.K = e.K
         view.params = e.params ?? null
         view.quota = e.quota ?? undefined
+        view.maxAttempts = e.max_attempts ?? undefined
         view.startTs = e.ts
         view.status = 'running'
         break
@@ -459,7 +473,8 @@ export function deriveL3(events: Ev[]): RunView {
       case 'data_request': {
         const request: DataRequest = {
           intent: e.intent, source_name: e.source_name, gap: e.gap, features: e.features ?? '',
-          sql: e.sql, tables: e.tables ?? [], columns: e.columns ?? [], status: e.status,
+          sql: e.sql ?? '', tables: e.tables ?? [], columns: e.columns ?? [], status: e.status,
+          scope: e.scope ?? 'cas', data: e.data ?? '',
         }
         view.requests.push(request)
         const step = withWords(push('l3', e.source_name))
@@ -476,7 +491,7 @@ export function deriveL3(events: Ev[]): RunView {
       }
 
       case 'ideas_recorded': {
-        const step = withWords(push('ideas', `${e.ideas.length} ideas · ${new Set(e.ideas.map((i: any) => i.lens)).size} lenses`))
+        const step = withWords(push('ideas', `${e.round ? `round ${e.round} · ` : ''}${e.ideas.length} ideas · ${new Set(e.ideas.map((i: any) => i.lens)).size} lenses`))
         step.items.push({ kind: 'ideas', seq: e.seq, focus: e.focus ?? [], ideas: e.ideas })
         step.status = 'done'
         ideasStep = step

@@ -116,9 +116,10 @@ export function NewDirection({ workspace, busy, onStarted }: Props) {
             <span className={s.prefill}> · prefilled from the config file</span></div>
 
           <div className={s.row2}>
-            <Field label={l3Only ? 'K requests' : 'K intents'}
-                   hint={l3Only ? 'Most data requests the agent may propose' : 'Most features the agent may screen'}>
-              <input type="number" min={1} max={50} value={params.K}
+            <Field label={l3Only ? 'K kept requests' : 'K verified features'}
+                   hint={(l3Only ? 'Data requests the challenge keeps' : 'Verified features the agent aims for')
+                     + ' - failed attempts do not count; it may make up to 3 × K attempts'}>
+              <input type="number" min={1} max={500} value={params.K}
                      onChange={(e) => set('K', Math.max(1, Number(e.target.value) || 1))} />
             </Field>
             <Field label="Model">
@@ -126,6 +127,15 @@ export function NewDirection({ workspace, busy, onStarted }: Props) {
                 {workspace.choices.models.map((m) => <option key={m}>{m}</option>)}
               </select>
             </Field>
+          </div>
+
+          <div className={s.row2}>
+            <Field label="Ideas per round"
+                   hint="Ideas the agent gives at a time; when a round's ideas are used and the target is not reached, it gives the next round, knowing what worked">
+              <input type="number" min={3} max={50} value={params.ideas_per_round ?? 10}
+                     onChange={(e) => set('ideas_per_round', Math.max(3, Number(e.target.value) || 3))} />
+            </Field>
+            <div />
           </div>
 
           {!l3Only && (
@@ -201,7 +211,7 @@ export function NewDirection({ workspace, busy, onStarted }: Props) {
             const total = w.reduce((a, b) => a + b, 0)
             return order.length > 1 ? (
               <div className={s.note}>
-                The {params.K} intents are split across levels at random, each drawn with{' '}
+                The target of {params.K} results is split across levels at random, each drawn with{' '}
                 {order.map((lv, i) => `${lv} ${Math.round((w[i] / total) * 100)}%`).join(' · ')}
                 {params.levels.includes('L2') && !linked ? ' - L2 is left out: no linked source is ticked' : ''}.
               </div>
@@ -210,8 +220,9 @@ export function NewDirection({ workspace, busy, onStarted }: Props) {
           {l3Only && (
             <div className={s.note}>
               <b>Data-request run.</b> Nothing is built or screened. The agent reads the CAS scope and
-              your notes, then proposes up to {params.K} data pulls - each a rationale, the features it
-              would enable, and BigQuery SQL - for you to review and download when it ends.
+              your notes, then proposes data requests until {params.K} survive its challenge - within
+              the CAS scope as BigQuery SQL, beyond it as an idea and the data it needs - for you to
+              review and download when it ends.
             </div>
           )}
           {needsSource && <div className={s.warn}>L2 needs at least one source.</div>}

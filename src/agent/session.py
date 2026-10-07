@@ -21,6 +21,7 @@ linkage, and an L3 data pull. Everything else runs on its own.
 from __future__ import annotations
 
 import json
+import logging
 import random
 import time
 import uuid
@@ -90,6 +91,7 @@ class RunParams:
     min_capture_gain: float | None = None   # None here and in the config = not gated
     levels: list[str] | None = None        # subset of LEVELS
     sources: list[str] | None = None       # source names the agent may use
+    ideas_per_round: int | None = None     # ideas asked for at a time
 
     def resolve(self, ws: Workspace) -> "RunParams":
         agent = ws.cfg.agent
@@ -117,29 +119,29 @@ class RunParams:
                                 else self.min_gini_gain),
             min_capture_gain=None if capture is None else float(capture),
             levels=[lv for lv in LEVELS if lv in levels],
-            sources=[s for s in sources if s in known])
+            sources=[s for s in sources if s in known],
+            ideas_per_round=max(3, int(self.ideas_per_round or agent.ideas_per_round)))
 
 
 # A mixed run's levels in priority order: L2 builds on additional data, so it
 # leads when a linked source is allowed; then L1; then L3, the costliest.
 LEVEL_PRIORITY = ("L2", "L1", "L3")
 
+# A run may make this many attempts per result it aims for (K).
+ATTEMPTS_PER_RESULT = 3
+
 
 def level_quota(ws: Workspace, params: RunParams, seed: str) -> dict[str, int]:
-    """How a run's K intents split across its levels.
+    """How a run's target of K results splits across its levels.
 
-    Each of the K intents draws a level at random, with the config's
+    Each of the K results draws a level at random, with the config's
     probabilities p1 > p2 > p3 taken in priority order over the levels the
-    run allows - L2 only when a linked source is among its sources, L3 only
-    while an unused_raw CAS column is left that no run has asked for. Seeded by
-    the run id, so the split is fixed for the run and on record.
+    run allows - L2 only when a linked source is among its sources. L3 always has
+    room: when the CAS scope is spent, a request looks beyond it. Seeded by the
+    run id, so the split is fixed for the run and on record.
     """
-    from agent.memory import scope_left
-
     linked = any(ws.linkage_path(s).exists() for s in params.sources or [])
-    room = "L3" not in params.levels or bool(scope_left(ws))
-    order = [lv for lv in LEVEL_PRIORITY if lv in params.levels
-             and (lv != "L2" or linked) and (lv != "L3" or room)]
+    order = [lv for lv in LEVEL_PRIORITY if lv in params.levels and (lv != "L2" or linked)]
     order = order or list(params.levels)
     if len(order) == 1:
         return {order[0]: int(params.K)}
@@ -187,8 +189,7 @@ class Session:
         requests = folder / "data_requests.json"
         session.data_requests = json.loads(requests.read_text()) if requests.exists() else []
         session.quota = started.get("quota") or session.quota
-        session.intents_used = len(session.ledger) + sum(session.request_spent(r)
-                                                         for r in session.data_requests)
+        session.attempts = len(session.ledger) + len(session.data_requests)
         session.finished = any(e["event"] == "run_done" for e in log.events)
         return session
 
@@ -208,7 +209,7 @@ class Session:
         self.skills = {n: everything[n] for n in wanted if n in everything}
         self.ledger: list[dict[str, Any]] = []
         self.data_requests: list[dict[str, Any]] = []
-        self.intents_used = 0
+        self.attempts = 0                     # proposals made: screens and requests
         self.finished = False
         self.cancelled = False
         self.stopped_because = ""
@@ -222,57 +223,122 @@ class Session:
         self.ideas_required = False
         self.focus: list[str] = []
         self.report_refusals = 0              # early reports sent back (agent.tools.report)
+        self.gated = False                    # the runner's checks on reports (agent.tools.report)
+        # Ideas in rounds (agent.tools.ideas): this round's ideas, the attempts made
+        # on them, and whether the round is spent - the runner then asks for more.
+        self.round = 0
+        self.round_ideas: list[dict[str, Any]] = []
+        self.round_attempts = 0
+        self.round_spent = False
+        self.failed_streak = 0                # feature scripts failed in a row (agent.tools.screen)
 
     @property
     def local_engine(self) -> str:
-        """Where agent-written code runs: the run's engine, or for an sql run the
-        configured one - a challenge's construction runs on the local data."""
-        return self.ws.cfg.agent.engine if self.params.engine == "sql" else self.params.engine
+        """Where agent-written code runs: a linkage job's on the linkage engine; an sql
+        run's (a challenge's construction, on the screen rows) on pandas; a direction's
+        on the run's engine."""
+        if self.kind == "linkage":
+            return self.ws.cfg.agent.linkage_engine
+        return "pandas" if self.params.engine == "sql" else self.params.engine
 
     @property
     def l3_only(self) -> bool:
-        """A data-request run: no features screened; the agent proposes data pulls
-        - a rationale and BigQuery SQL each - and every proposal spends an intent."""
+        """A data-request run: no features screened; the agent proposes data requests -
+        within the CAS scope (SQL) or beyond it - and aims for K the challenge keeps."""
         return self.kind == "direction" and self.params.levels == ["L3"]
 
     # ----------------------------------------------------------------- events
     def emit(self, event: str, **payload: Any) -> dict[str, Any]:
         return self.log.emit(event, **payload)
 
-    # ---------------------------------------------------------------- levels
-    def request_spent(self, r: dict[str, Any]) -> bool:
-        """Whether a data request holds an intent - a dropped one is refunded."""
-        return bool(r.get("spent", self.l3_only and not r.get("refunded")))
+    # ------------------------------------------------------- target, attempts
+    # K is a target: the results a run aims for - verified features (L1/L2) and
+    # kept requests (L3). A failed attempt does not count against it; attempts
+    # are capped at ATTEMPTS_PER_RESULT x K, so a hard direction still ends.
+    @property
+    def max_attempts(self) -> int:
+        return ATTEMPTS_PER_RESULT * self.K
 
-    def used_at(self, level: str) -> int:
+    def results_at(self, level: str) -> int:
+        """Results so far at a level: verified features, or requests the challenge
+        kept (an approved one, from runs before requests were challenged everywhere)."""
         if level == "L3":
-            return sum(self.request_spent(r) for r in self.data_requests)
-        return sum(1 for e in self.ledger if e.get("level") == level)
+            return sum(1 for r in self.data_requests
+                       if r.get("status") == "kept" or r.get("approved") is True)
+        return sum(1 for e in self.ledger
+                   if e.get("level") == level and e.get("verified") and not e.get("deleted"))
 
-    def level_full(self, level: str) -> str | None:
-        """Why a level's share is spent, or None while it has room."""
-        if len(self.quota) < 2:
-            return None
-        left = self.quota.get(level, 0) - self.used_at(level)
-        if left > 0:
-            return None
-        return (f"this run's {level} share is used ({self.used_at(level)} of "
-                f"{self.quota.get(level, 0)}); what is left: {self.shares_left()}. "
-                "Nothing was spent.")
+    def pending_at(self, level: str) -> int:
+        """Proposals that may still become results: requests awaiting the challenge."""
+        if level != "L3":
+            return 0
+        return sum(1 for r in self.data_requests if r.get("status") == "proposed")
 
-    def shares_left(self) -> str:
-        return ", ".join(f"{lv} {max(n - self.used_at(lv), 0)}" for lv, n in self.quota.items())
+    def take_attempt(self) -> None:
+        self.attempts += 1
+        self.round_attempts += 1
+
+    def give_back_attempt(self) -> None:
+        self.attempts -= 1
+        self.round_attempts -= 1
+
+    def round_over(self) -> str | None:
+        """When this round's ideas are used - while results are still wanted and
+        attempts remain, and no request awaits its challenge - the round is spent and
+        the next one is asked for. Returns the word to the agent, or None."""
+        if (not self.round_ideas or self.round_attempts < len(self.round_ideas)
+                or self.wanted() == 0 or self.attempts >= self.max_attempts
+                or self.pending_at("L3")):
+            return None
+        self.round_spent = True
+        return (f"round {self.round}'s ideas are used ({self.budget()}). Stop here - the next "
+                "round of ideas comes next.")
+
+    def results(self) -> int:
+        return sum(self.results_at(lv) for lv in ("L1", "L2", "L3"))
+
+    def wanted(self, level: str | None = None) -> int:
+        """Results still wanted - at a level of a mixed run's target mix, or in all."""
+        if len(self.quota) > 1:
+            levels = [level] if level else list(self.quota)
+            return sum(max(self.quota.get(lv, 0) - self.results_at(lv) - self.pending_at(lv), 0)
+                       for lv in levels)
+        pending = sum(self.pending_at(lv) for lv in ("L1", "L2", "L3"))
+        return max(self.K - self.results() - pending, 0)
+
+    def target_met(self, level: str) -> str | None:
+        """Why no more proposals are taken at a level, or None while results are wanted."""
+        if self.attempts >= self.max_attempts:
+            return (f"all {self.max_attempts} attempts are used ({self.budget()}); "
+                    "call report_findings")
+        if self.wanted(level) > 0:
+            return None
+        if len(self.quota) > 1 and self.wanted() > 0:
+            return (f"this run's {level} target is met ({self.results_at(level)} of "
+                    f"{self.quota.get(level, 0)}); still wanted: {self.targets_left()}. "
+                    "Nothing was spent.")
+        waiting = sum(self.pending_at(lv) for lv in ("L1", "L2", "L3"))
+        return (f"the target of {self.K} is met ({self.budget()})"
+                + (f" once {waiting} proposal(s) are challenged - challenge them" if waiting
+                   else "; call report_findings") + ". Nothing was spent.")
+
+    def targets_left(self) -> str:
+        return ", ".join(f"{lv} {self.wanted(lv)}" for lv in self.quota)
 
     def budget(self) -> str:
-        text = f"{self.intents_used}/{self.K} intents used"
-        return f"{text}; left by level: {self.shares_left()}" if len(self.quota) > 1 else text
+        noun = "kept requests" if self.l3_only else "results"
+        text = (f"{self.results()}/{self.K} {noun}, {self.attempts}/{self.max_attempts} "
+                "attempts used")
+        return f"{text}; still wanted by level: {self.targets_left()}" if len(self.quota) > 1 else text
 
     def start(self) -> None:
         p = self.params
         self.emit("run_started", direction=self.direction, K=self.K, engine=p.engine,
+                  max_attempts=self.max_attempts,
                   quota=self.quota,
                   kind=self.kind, source=self.source, skills=list(self.skills),
                   params={"K": p.K, "model": p.model, "engine": p.engine,
+                          "ideas_per_round": p.ideas_per_round,
                           "min_gini_gain": p.min_gini_gain,
                           "min_capture_gain": p.min_capture_gain,
                           "levels": p.levels, "sources": p.sources},
@@ -300,11 +366,18 @@ class Session:
                 if s.usable and n in self.params.sources}
 
     def run(self, code: str, mode: str, *, intent: str, level: str | None = None,
-            title: str = "", base_path: Path | None = None, **kwargs: Any):
-        return run_logged(self.log, code, mode, engine=self.local_engine,
+            title: str = "", base_path: Path | None = None, engine: str | None = None,
+            **kwargs: Any):
+        """Run agent-written code - on the run's engine, or the one given (a linkage
+        runs on its own engine, whatever the run's)."""
+        agent = self.ws.cfg.agent
+        # A linkage reads a whole source; a feature or probe works on the screen rows.
+        timeout = agent.code_timeout_s if mode == "linkage" else agent.screen_timeout_s
+        return run_logged(self.log, code, mode, engine=engine or self.local_engine,
+                          spark_conf=agent.spark_conf,
                           id_col=self.ws.id_col, base_path=base_path or self.base_path,
-                          timeout_s=self.ws.cfg.agent.code_timeout_s, intent=intent,
-                          level=level, title=title, **kwargs)
+                          timeout_s=timeout, intent=intent, level=level, title=title,
+                          should_stop=lambda: self.cancelled, **kwargs)
 
     # ---------------------------------------------------------------- ledger
     def save_ledger(self) -> None:
@@ -329,11 +402,25 @@ class Session:
 
         save_requests(self)
 
+    def _write_process_log(self) -> None:
+        """process.md for the run, and its attempts in the cross-run log - a record
+        must never be able to break the run it records."""
+        from agent.process_log import write_process_log
+
+        try:
+            write_process_log(self.run_dir, self.events, self.ledger,
+                              Path(self.ws.cfg.agent.run_dir))
+        except Exception as error:  # noqa: BLE001
+            logging.getLogger(__name__).warning("process log not written for %s: %s",
+                                                self.run_id, error)
+
     def end(self, summary: str, stopped_because: str = "agent reported") -> dict[str, Any]:
         if not self.finished:
             self.finished = True
             self.stopped_because = stopped_because
             self.emit("run_done", summary=summary, stopped_because=stopped_because,
-                      intents_used=self.intents_used, K=self.K,
+                      results=self.results(), attempts=self.attempts, K=self.K,
                       verified=[e["name"] for e in self.ledger if e["verified"]])
+            if self.kind == "direction":
+                self._write_process_log()
         return {"ok": True}

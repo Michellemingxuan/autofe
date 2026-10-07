@@ -247,8 +247,10 @@ Sources are `<name>.parquet|csv` beside `<name>_data_sample.json`
 (`{column: [description, [samples]]}`); CAS scope files are the
 `*_flagged.csv` exports in the same folder. Scripts run in a subprocess with a
 guard against file access, on pandas or Spark (`agent.engine`). The LLM is
-`agent.llm`: `openai`, or `safechain` through AgenticSys_v2's client
-(`AGENTICSYS_V2_PATH`).
+`agent.llm`: `openai`, or `safechain` through the client in `src/agent/llm/`
+(copied from AgenticSys_v2: a call stalled at 40s is re-issued, capped at 180s -
+`SAFECHAIN_STALL_RETRY_S`, `SAFECHAIN_CALL_TIMEOUT_S`; events in
+`outputs/agent/llm_logs/`).
 
 ## The demo run
 

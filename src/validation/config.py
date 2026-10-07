@@ -425,8 +425,23 @@ class AgentConfig:
     linkage_dir: Optional[str] = None
     # How the model id encodes the join keys, in words the agent can act on.
     id_format: str = ""
+    # Where feature code runs, by default - each run may choose. pandas is faster on
+    # one machine; spark reads a source in pieces and spills to disk, for data that
+    # does not fit in memory.
     engine: str = "pandas"            # pandas | spark
-    max_intents: int = 10             # K: features screened per direction
+    # Where linkage code runs. pandas by default: on one machine it is faster -
+    # Spark pays a JVM start per script and a hop between Python and Java. spark
+    # when a source does not fit in memory (it spills to disk). A confirmed
+    # linkage records its engine and always reruns on it.
+    linkage_engine: str = "pandas"    # pandas | spark
+    # Settings for the local SparkSession each script starts (spark.driver.memory ...).
+    spark_conf: Dict[str, str] = field(default_factory=lambda: {
+        "spark.driver.memory": "8g", "spark.sql.shuffle.partitions": "64"})
+    max_intents: int = 10             # K: the results a direction aims for
+    # Ideas come in rounds of at most this many: a round's proposals stop when its
+    # ideas are used, and the next round is asked for, knowing what worked. A large
+    # K is reached in several rounds, not in one long list.
+    ideas_per_round: int = 10
     # A mixed run splits its K intents across levels by random sampling, each
     # level drawn with these probabilities by priority: L2 (when a linked source
     # is allowed) > L1 > L3. Must be decreasing.
@@ -436,7 +451,10 @@ class AgentConfig:
     # discovery.capture_percent) is above min_capture_gain.
     min_gini_gain: float = 0.0
     min_capture_gain: Optional[float] = None
-    code_timeout_s: float = 600.0
+    code_timeout_s: float = 600.0      # a script on full data: linkage, evaluation
+    # A feature or probe on the screen rows - a sample of the model data: vectorised
+    # code takes seconds, so a long run means a loop over rows, and it is stopped.
+    screen_timeout_s: float = 120.0
     max_turns: int = 200              # model calls per run, a backstop
     run_dir: str = "outputs/agent"
     llm: LLMConfig = field(default_factory=LLMConfig)
@@ -579,12 +597,15 @@ class Config:
                 raise ValueError(f"data.paths keys must be train/valid/test, got extra: {unknown}")
             if "train" not in self.data.paths:
                 raise ValueError("data.paths must include a 'train' entry")
-        if self.agent.engine not in ("pandas", "spark"):
-            raise ValueError(f"agent.engine must be pandas|spark, got {self.agent.engine!r}")
+        for key in ("engine", "linkage_engine"):
+            if getattr(self.agent, key) not in ("pandas", "spark"):
+                raise ValueError(f"agent.{key} must be pandas|spark, got {getattr(self.agent, key)!r}")
         w = self.agent.level_weights
         if len(w) != 3 or any(x <= 0 for x in w) or not (w[0] > w[1] > w[2]):
             raise ValueError("agent.level_weights must be three positive numbers, decreasing "
                              f"(p1 > p2 > p3), got {w}")
+        if self.agent.ideas_per_round < 3:
+            raise ValueError(f"agent.ideas_per_round must be >= 3, got {self.agent.ideas_per_round}")
         if self.agent.max_intents < 1:
             raise ValueError(f"agent.max_intents must be >= 1, got {self.agent.max_intents}")
         known_variants = {"base", "base_plus_new", "new_only", "leave_one_in", "leave_one_out"}

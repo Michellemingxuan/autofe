@@ -169,6 +169,7 @@ def test_a_source_registered_by_path_then_forgotten(env, tmp_path):
     sources = client.post("/api/sources", json={"name": "bureau", "schema": str(schema)}
                           ).get_json()["sources"]
     assert {s["name"]: s["state"] for s in sources}["bureau"] == "schema_only"
+    assert "sources" not in {s["name"] for s in sources}      # the registry is not a source
     assert client.delete("/api/sources/bureau").status_code == 200
     assert client.delete("/api/sources/spends").status_code == 404     # a folder file
 
@@ -204,6 +205,12 @@ def test_direction_then_evaluation_then_deletes(env):
     assert events[0]["params"]["levels"] == ["L1"]
     listed = {r["run_id"]: r for r in client.get("/api/runs").get_json()}
     assert listed[run]["verified"] == 2
+    # The process log, in the output folder: the run as an account, and its
+    # attempts in the cross-run log.
+    assert "## What worked" in (runs / run / "process.md").read_text()
+    attempts = [json.loads(line) for line in (runs / "attempts.jsonl").read_text().splitlines()]
+    mine = [a for a in attempts if a["run_id"] == run and a["kind"] == "feature"]
+    assert [a["outcome"] for a in mine].count("verified") == 2
 
     pool = {f["key"]: f for f in client.get("/api/features").get_json()}
     a, b = f"{run}:income_to_limit", f"{run}:n_payments"

@@ -35,7 +35,8 @@ workspace.py     what the agent can see: screen rows, sources, the CAS scope
 memory.py        earlier runs' features and requests; refuses repeats
 execution.py     runs agent-written code in a child process (_child.py), guarded
 evaluate.py      an evaluation: verified features through the validation pipeline
-server.py, cli.py, setup.py, events.py, llm.py, synthetic.py   - the app around it
+llm/             the model: openai, or safechain (client copied from AgenticSys_v2)
+server.py, cli.py, setup.py, events.py, synthetic.py   - the app around it
 ```
 
 The prompt is put together by `agent/composer/`; print one with

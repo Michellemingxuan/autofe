@@ -29,7 +29,7 @@ from typing import Any
 from agent.session import Session
 
 __all__ = ["LENSES", "FOCUS_SIZE", "MIN_FOCUS", "MIN_LENSES", "focus_lenses", "lenses_for_turn",
-           "next_turn", "record_ideas", "ideas_needed"]
+           "next_turn", "record_ideas", "ideas_needed", "ideas_in_round"]
 
 # Ways of looking at a customer's behaviour - each a different kind of signal.
 LENSES: dict[str, str] = {
@@ -81,8 +81,15 @@ def focus_lenses(session: Session) -> list[str]:
     return session.focus
 
 
-def _wanted(session: Session) -> int:
-    return session.K + 2
+def ideas_in_round(session: Session) -> int:
+    """How many ideas this round asks for: a few more than the results still wanted,
+    capped by the run's ideas per round - a large K is reached in several rounds."""
+    return max(3, min(session.params.ideas_per_round, session.wanted() + 2))
+
+
+def _floors(n: int) -> tuple[int, int]:
+    """The spread a round of n ideas must show: distinct lenses, ideas on the focus."""
+    return min(MIN_LENSES, n), min(MIN_FOCUS, n)
 
 
 def ideas_needed(session: Session) -> dict[str, Any] | None:
@@ -113,6 +120,8 @@ def record_ideas(session: Session, ideas: list[dict[str, Any]]) -> dict[str, Any
     levels = list(session.params.levels)
     mixed = len(session.quota) > 1
     cas = _cas_variables(session)
+    earlier = {i["name"] for i in session.ideas}            # earlier rounds' ideas
+    first = len(session.ideas)                              # numbered across rounds
     clean, names = [], set()
     for i, idea in enumerate(ideas or [], 1):
         name = str(idea.get("name", "")).strip()
@@ -122,6 +131,9 @@ def record_ideas(session: Session, ideas: list[dict[str, Any]]) -> dict[str, Any
         level = str(idea.get("level", "")).strip().upper() or (levels[0] if len(levels) == 1 else "")
         if not re.fullmatch(r"[a-z_][a-z0-9_]{0,63}", name) or name in names:
             return {"ok": False, "error": f"idea {i}: give it a new snake_case name, got {name!r}"}
+        if name in earlier:
+            return {"ok": False, "error": f"idea {i}: {name!r} was an idea of an earlier round - "
+                                          "give a new one"}
         if lens not in LENSES:
             return {"ok": False, "error": f"idea {i}: lens {lens!r} is not one of {list(LENSES)}"}
         if not description:
@@ -129,32 +141,47 @@ def record_ideas(session: Session, ideas: list[dict[str, Any]]) -> dict[str, Any
         if level not in levels:
             return {"ok": False, "error": f"idea {i}: its level must be one of {levels}"}
         named = _names_cas(f"{description} {data}", cas)
-        if level == "L3" and not named:
+        beyond = level == "L3" and bool(idea.get("beyond_cas"))
+        if beyond and len(data.split()) < 4:
             return {"ok": False, "error": (
-                f"idea {i} ({name}): names no CAS variable - built only from the model database "
-                "and the linked sources, this is an L1/L2 idea, not a data request. Rework it "
-                "around CAS variables, written in its data exactly as named - e.g. "
-                + ", ".join(f"`{v}`" for v in cas[:6]) + " (the brief lists them all) - or "
-                "replace it.")}
+                f"idea {i} ({name}): beyond the CAS scope, say in its data what data it needs "
+                "and where it would come from - the system or team, the grain.")}
+        if level == "L3" and not beyond and not named:
+            return {"ok": False, "error": (
+                f"idea {i} ({name}): names no CAS variable. Within the CAS scope, write the "
+                "variables it needs in its data exactly as named - e.g. "
+                + ", ".join(f"`{v}`" for v in cas[:6]) + " (the brief lists them). If the data "
+                "lies outside CAS - external, strategy (RLA), calling - mark it beyond_cas. If "
+                "the model database and the linked sources already carry it, it is an L1/L2 "
+                "idea, not a data request.")}
         names.add(name)
-        clean.append({"n": i, "name": name, "lens": lens, "level": level,
-                      "description": description, "data": data, **({"cas": named} if named else {})})
+        clean.append({"n": first + i, "name": name, "lens": lens, "level": level,
+                      "description": description, "data": data,
+                      **({"beyond_cas": True} if beyond else {}),
+                      **({"cas": named} if named and not beyond else {})})
     focus = focus_lenses(session)
     lenses = {c["lens"] for c in clean}
-    problems = []
-    if len(clean) < _wanted(session):
-        problems.append(f"{len(clean)} ideas - give at least {_wanted(session)}")
-    if len(lenses) < MIN_LENSES:
-        problems.append(f"{len(lenses)} lenses ({sorted(lenses)}) - use at least {MIN_LENSES}")
-    if sum(c["lens"] in focus for c in clean) < MIN_FOCUS:
-        problems.append(f"fewer than {MIN_FOCUS} ideas use this run's focus {focus}")
+    n = ideas_in_round(session)
+    min_lenses, min_focus = _floors(n)
+    on_focus = sum(c["lens"] in focus for c in clean)
+    # Every requirement, met or not: fixing only the one named breaks another.
+    most = session.params.ideas_per_round
+    checks = [(n <= len(clean) <= most, f"{n} to {most} ideas (you gave {len(clean)})"),
+              (len(lenses) >= min_lenses, f"at least {min_lenses} different lenses "
+                                          f"(you used {len(lenses)}: {sorted(lenses)})"),
+              (on_focus >= min_focus, f"at least {min_focus} on this run's focus {focus} "
+                                      f"(you have {on_focus})")]
     if mixed:
-        bare = [lv for lv, n in session.quota.items() if n and not any(c["level"] == lv for c in clean)]
-        if bare:
-            problems.append(f"no ideas for {bare} - this run's intents include them "
-                            f"({session.shares_left()})")
-    if problems:
-        return {"ok": False, "error": "not yet a spread: " + "; ".join(problems)}
-    session.ideas = clean
-    session.emit("ideas_recorded", ideas=clean, focus=focus)
-    return {"ok": True, "ideas": len(clean), "lenses": sorted(lenses)}
+        bare = [lv for lv in session.quota if session.wanted(lv) and
+                not any(c["level"] == lv for c in clean)]
+        checks.append((not bare, "an idea for every level still wanted "
+                                 f"({session.targets_left()})" + (f" - none for {bare}" if bare else "")))
+    if not all(ok for ok, _ in checks):
+        return {"ok": False, "error": "not yet a spread. An answer must meet ALL of these - keep "
+                "what already passes: " + "; ".join(f"[{'ok' if ok else 'MISSING'}] {text}"
+                                                    for ok, text in checks)}
+    session.ideas = session.ideas + clean
+    session.round += 1
+    session.round_ideas, session.round_attempts, session.round_spent = clean, 0, False
+    session.emit("ideas_recorded", ideas=clean, focus=focus, round=session.round)
+    return {"ok": True, "ideas": len(clean), "lenses": sorted(lenses), "round": session.round}

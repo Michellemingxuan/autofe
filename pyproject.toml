@@ -27,8 +27,10 @@ dev = ["pytest", "pyarrow", "matplotlib"]   # matplotlib: the usage notebook's c
 # so these stay out of the core install.
 discovery = ["openai", "python-dotenv", "nest_asyncio"]
 # The agent: openai-agents SDK, the Flask backend, parquet for its scripts'
-# inputs and outputs. pyspark when agent.engine is spark.
+# inputs and outputs.
 agent = ["openai", "openai-agents", "python-dotenv", "nest_asyncio", "flask", "pyarrow"]
+# The spark engine (agent.engine / agent.linkage_engine: spark) - needs Java 17.
+spark = ["pyspark>=3.5"]
 
 [project.scripts]
 autofe = "validation.cli:main"

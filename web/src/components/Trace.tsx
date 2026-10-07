@@ -163,6 +163,7 @@ function StepCard({ step, job, open, onToggle, onDeleteIntent, l3 = false, reque
           )}
           {step.request && step.kind === 'challenge' && <ChallengeCard request={step.request} />}
           {step.request && step.kind === 'l3' && <RequestCard request={step.request} />}
+          {step.request?.challenge && step.kind === 'l3' && <ChallengeCard request={step.request} />}
           {step.summary && <div className={s.summary}>{step.summary}</div>}
           {step.note && !step.row && step.kind !== 'summary' && <div className={s.stepNote}>{step.note}</div>}
         </div>
@@ -238,10 +239,17 @@ function RequestBody({ request: r }: { request: DataRequest }) {
         <div className={s.field}><span className={s.fieldLabel}>Enables</span>
           <div className={s.chips}>{features.map((f) => <code key={f}>{f}</code>)}</div></div>
       )}
-      <div className={s.field}><span className={s.fieldLabel}>Reads</span>
-        <div className={s.chips}>{r.tables.map((t) => <code key={t}>{t}</code>)}
-          {(r.columns ?? []).map((x) => <code key={x} className={s.colChip}>{x}</code>)}</div></div>
-      <SqlBlock title="SQL · validated" sql={r.sql} />
+      {r.sql ? (
+        <>
+          <div className={s.field}><span className={s.fieldLabel}>Reads</span>
+            <div className={s.chips}>{r.tables.map((t) => <code key={t}>{t}</code>)}
+              {(r.columns ?? []).map((x) => <code key={x} className={s.colChip}>{x}</code>)}</div></div>
+          <SqlBlock title="SQL · validated" sql={r.sql} />
+        </>
+      ) : (
+        <div className={s.field}><span className={s.fieldLabel}>Beyond CAS</span>
+          <div className={s.fieldText}>{r.data}</div></div>
+      )}
       {c && (
         <div className={s.field}><span className={s.fieldLabel}>Challenge</span>
           <div className={s.fieldText}>
@@ -270,18 +278,31 @@ function L3Summary({ step, requests }: { step: Step; requests: DataRequest[] }) 
   const kept = requests.filter((r) => r.status === 'kept')
   const dropped = requests.filter((r) => r.status === 'dropped')
   const open = requests.filter((r) => r.status === 'proposed')
-  const all = kept.map((r) => `-- ${r.intent} ${r.source_name}\n${r.sql.trim()}`).join('\n\n')
+  const inCas = kept.filter((r) => r.sql)
+  const beyond = kept.filter((r) => !r.sql)
+  const all = inCas.map((r) => `-- ${r.intent} ${r.source_name}\n${r.sql.trim()}`).join('\n\n')
   return (
     <>
       {prose && <div className={s.summary}>{prose}</div>}
-      {kept.length > 0 && (
+      {inCas.length > 0 && (
         <div className={s.keptHead}>
-          <span>Validated SQL · {kept.length} kept request{kept.length > 1 ? 's' : ''}</span>
+          <span>Validated SQL · {inCas.length} kept request{inCas.length > 1 ? 's' : ''} within CAS</span>
           <button className={s.copy} onClick={() => { navigator.clipboard?.writeText(all); setCopied(true) }}>
             {copied ? 'copied' : 'copy all'}</button>
         </div>
       )}
-      {kept.map((r) => <SqlBlock key={r.intent} title={`${r.intent} · ${r.source_name}`} sql={r.sql} />)}
+      {inCas.map((r) => <SqlBlock key={r.intent} title={`${r.intent} · ${r.source_name}`} sql={r.sql} />)}
+      {beyond.length > 0 && (
+        <>
+          <div className={s.keptHead}><span>Beyond CAS · {beyond.length} kept idea{beyond.length > 1 ? 's' : ''}, the data each needs</span></div>
+          {beyond.map((r) => (
+            <div key={r.intent} className={s.field}>
+              <span className={s.fieldLabel}>{r.intent} · {r.source_name}</span>
+              <div className={s.fieldText}>{r.data}</div>
+            </div>
+          ))}
+        </>
+      )}
       {dropped.length > 0 && (
         <div className={s.stepNote}>Dropped - constructible from current data:{' '}
           {dropped.map((r) => `${r.intent} ${r.source_name}`).join(', ')}</div>
@@ -339,6 +360,7 @@ function Item({ item, job }: { item: TraceItem; job: Job }) {
                   <div className={s.ideaHead}>
                     {i.name && <span className={s.ideaName}>{i.name}</span>}
                     {i.level && <span className={s.ideaLevel}>{i.level}</span>}
+                    {i.beyond_cas && <span className={s.ideaLevel}>beyond CAS</span>}
                     <code className={`${s.lens} ${item.focus.includes(i.lens) ? s.lensFocus : ''}`}>{i.lens}</code>
                     {proposed && <span className={s.ideaProposed}>→ {proposed}</span>}
                   </div>
@@ -423,15 +445,21 @@ function Approval({ card, job }: { card: ApprovalCard; job: Job }) {
       ) : (
         <>
           <div className={s.gap}>{p.gap}</div>
-          <div className={s.sqlHead}>
-            <span>BigQuery SQL</span>
-            <button className={s.copy} onClick={() => {
-              navigator.clipboard?.writeText(p.sql)
-              setCopied(true)
-            }}>{copied ? 'copied' : 'copy'}</button>
-          </div>
-          <pre className={s.src}>{p.sql}</pre>
-          {card.resolved?.approved && (
+          {p.sql ? (
+            <>
+              <div className={s.sqlHead}>
+                <span>BigQuery SQL</span>
+                <button className={s.copy} onClick={() => {
+                  navigator.clipboard?.writeText(p.sql)
+                  setCopied(true)
+                }}>{copied ? 'copied' : 'copy'}</button>
+              </div>
+              <pre className={s.src}>{p.sql}</pre>
+            </>
+          ) : (
+            <div className={s.gap}><b>Beyond the CAS scope - the data it needs:</b> {p.data}</div>
+          )}
+          {card.resolved?.approved && p.sql && (
             <div className={s.next}>
               Run it in BigQuery, then save the result as <code>{p.source_name}.parquet</code> with
               a <code>{p.source_name}_data_sample.json</code> in the additional data folder.
@@ -491,8 +519,10 @@ function RequestCard({ request: r }: { request: DataRequest }) {
         {r.status !== 'proposed' && (
           <span className={`${s.verdict} ${r.status === 'dropped' ? s.verdict_constructible : s.verdict_new}`}>{r.status}</span>
         )}
-        <span className={s.requestTables}>reads {r.tables.map((t) => <code key={t}>{t}</code>)}
-          {r.columns && r.columns.length > 0 && <> · columns {r.columns.map((c) => <code key={c}>{c}</code>)}</>}</span>
+        {r.sql
+          ? <span className={s.requestTables}>reads {r.tables.map((t) => <code key={t}>{t}</code>)}
+              {r.columns && r.columns.length > 0 && <> · columns {r.columns.map((c) => <code key={c}>{c}</code>)}</>}</span>
+          : <span className={s.requestTables}>beyond CAS</span>}
       </div>
       <div className={s.requestWhy}>{r.gap}</div>
       {features.length > 0 && (
@@ -501,12 +531,18 @@ function RequestCard({ request: r }: { request: DataRequest }) {
           {features.map((f) => <code key={f}>{f}</code>)}
         </div>
       )}
-      <div className={s.sqlHead}>
-        <span>BigQuery SQL</span>
-        <button className={s.copy} onClick={() => { navigator.clipboard?.writeText(r.sql); setCopied(true) }}>
-          {copied ? 'copied' : 'copy'}</button>
-      </div>
-      <pre className={s.src}>{r.sql}</pre>
+      {r.sql ? (
+        <>
+          <div className={s.sqlHead}>
+            <span>BigQuery SQL</span>
+            <button className={s.copy} onClick={() => { navigator.clipboard?.writeText(r.sql); setCopied(true) }}>
+              {copied ? 'copied' : 'copy'}</button>
+          </div>
+          <pre className={s.src}>{r.sql}</pre>
+        </>
+      ) : (
+        <div className={s.requestWhy}><b>The data it needs:</b> {r.data}</div>
+      )}
     </div>
   )
 }

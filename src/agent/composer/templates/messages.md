@@ -11,10 +11,16 @@ Write and propose the linkage for the source '{source}'.
 Stage 1 of 2 - ideas. Look at the data the direction needs (the tools are read-only here), then answer with your ideas - see Ideas first in your brief. Nothing is proposed in this stage.
 
 ## propose
-Stage 2 of 2 - proposals. Your ideas are recorded: {names}. Spend your intents on them - the most promising and most different first, each under its idea's name (screen_feature for an L1/L2 idea, screen_request for an L3 one). Call report_findings only once the intents are spent, or nothing left is worth one.
+Stage 2 of 2 - proposals. Your ideas are recorded: {names}. Work toward your target with them - the most promising and most different first, each under its idea's name (screen_feature for an L1/L2 idea; screen_request or propose_new_data for an L3 one). Call report_findings once the target is reached or the attempts are used - or when nothing left is worth an attempt.
 
 ## sent_back
 Sent back: {error}. Fix it and answer again.
 
 ## nudge
 You stopped without calling report_findings, so the run is not done. Carry on with the next step - call the tools you need - and finish by calling report_findings. Do not stop with a message alone.
+
+## next_round
+Round {round} of ideas. So far: {budget}.
+Worked: {worked}.
+Failed: {failed}.
+Give {n} to {most} new ideas - none of the earlier ones - see Ideas first in your brief. Build on what worked; leave what failed, unless the reason says what would fix it.

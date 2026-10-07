@@ -30,7 +30,7 @@ around it:
   what is new compared with the nearest earlier feature.
 * A ✗ (not verified) feature is a lead only with a real change: say what the
   change is and why it should now carry signal.
-* Spend each intent on a different idea. Two features of one idea compete for
+* Give each attempt to a different idea. Two features of one idea compete for
   the same signal.
 
 ## The contract
@@ -54,20 +54,35 @@ Rules:
   them yourself when "no events" has a meaning (a count of 0, say).
 * Read sources only through `sources["<name>"]`; mention each source you use by
   its quoted name, so the runner joins it in.
-* Windows count back from `as_of`: `event_dt >= as_of - 90 days`. Linkage has
+* Windows count back from `as_of`: `<event_date> >= as_of - 90 days`. Linkage has
   already removed events at or after as_of.
 * Guard divisions: `np.where(den > 0, num / den, np.nan)` (pandas) or
   `F.when(den > 0, num / den)` (spark). Infinite values are rejected.
 * No file reads, writes, or os/sys imports.
 
-pandas example (L1):
+pandas, the slips that cost attempts:
+* Dates: keep them as pandas Series - `(s["as_of"] - s["<event_date>"]).dt.days`.
+  `.values` turns them into numpy `datetime64`, which has no `.days`, and
+  `np.timedelta64(1, "M")` (months) is not supported - count days.
+* `base` has no `as_of`: every `sources[...]` row carries it.
+* Speed: filter rows first, then `groupby("<id>").agg(...)` - never `apply` over
+  rows, `iterrows`, or a Python loop over ids. On the screen rows (your brief
+  gives their number) vectorised code takes seconds; longer means it is looping.
+* A ratio's denominator can be 0 or missing: guard it (see above), and fill
+  "no events" with what it means (a count of 0), not with 0 for everything.
+
+The examples show the shape of the code only. Names in `<angle brackets>` stand
+for real ones from your brief: `<id>` the id column, `<source>` a source,
+`<event_date>` and `<amount>` its columns, `<feature>` your feature's name.
+
+pandas example (L1) - a sum of an amount over the last 90 days:
 
 ```python
 def build(spark, sources, base):
-    s = sources["spends"]
-    recent = s[s["event_dt"] >= s["as_of"] - pd.Timedelta(days=90)]
-    out = recent.groupby("id")["amount"].sum().rename("spend_90d").reset_index()
-    out = base[["id"]].merge(out, on="id", how="left").fillna({"spend_90d": 0.0})
+    s = sources["<source>"]
+    recent = s[s["<event_date>"] >= s["as_of"] - pd.Timedelta(days=90)]
+    out = recent.groupby("<id>")["<amount>"].sum().rename("<feature>").reset_index()
+    out = base[["<id>"]].merge(out, on="<id>", how="left").fillna({"<feature>": 0.0})
     return out
 ```
 
@@ -75,17 +90,18 @@ Spark example (same feature):
 
 ```python
 def build(spark, sources, base):
-    s = sources["spends"]
-    recent = s.where(F.col("event_dt") >= F.date_sub(F.col("as_of"), 90))
-    agg = recent.groupBy("id").agg(F.sum("amount").alias("spend_90d"))
-    return base.select("id").join(agg, "id", "left").fillna({"spend_90d": 0.0})
+    s = sources["<source>"]
+    recent = s.where(F.col("<event_date>") >= F.date_sub(F.col("as_of"), 90))
+    agg = recent.groupBy("<id>").agg(F.sum("<amount>").alias("<feature>"))
+    return base.select("<id>").join(agg, "<id>", "left").fillna({"<feature>": 0.0})
 ```
 
 ## Name and describe
 
-`name`: snake_case, new, says what it is (`pay_to_spend_90d`).
+`name`: snake_case, new, says what it is and over what window
+(`<measure>_<window>`, e.g. `<amount>_sum_90d`).
 `description`: one sentence a risk analyst would understand - what it measures
 and why it should carry default risk.
 
 Probe first when unsure of a column's type or range; a failed screen still
-spends an intent.
+uses an attempt.

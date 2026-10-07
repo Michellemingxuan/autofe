@@ -43,3 +43,4 @@
 .action { border: 1px solid var(--j-accent-line); background: var(--j-surface); color: var(--j-accent-deep); padding: 3px 10px; border-radius: var(--j-radius-ctl); font-weight: 600; font-size: var(--j-fs-meta); text-decoration: none; white-space: nowrap; }
 .action:hover { background: var(--j-accent-soft); }
 .gone { margin: 24px; padding: 14px 16px; border-radius: var(--j-radius-card); background: var(--j-surface); border: 1px solid var(--j-border); color: var(--j-ink-3); max-width: 560px; }
+.split { color: var(--j-ink-mute); }

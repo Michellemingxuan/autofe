@@ -96,6 +96,10 @@ class Workspace:
     task_context: str
     shots: pd.DataFrame | None
     _screener: Screener | None = field(default=None, repr=False)
+    # The CAS scope as last read, and each table's profile - kept until a scope
+    # file changes. A real scope is thousands of variables, asked about per column.
+    _scope_cache: tuple[Any, pd.DataFrame] | None = field(default=None, repr=False)
+    _profiles: dict[str, dict[str, Any]] = field(default_factory=dict, repr=False)
 
     # ------------------------------------------------------------------ build
     @classmethod
@@ -154,6 +158,8 @@ class Workspace:
             return {}
         found: dict[str, Source] = {}
         for path in sorted(self.extra_dir.glob("*.json")):
+            if path.name == "sources.json":            # the registry, not a source
+                continue
             name = path.name
             for suffix in _SAMPLE_SUFFIXES:
                 if name.endswith(suffix):
@@ -238,8 +244,17 @@ class Workspace:
                 for p in self.cfg.agent.scope_notes_paths if Path(p).is_file()]
 
     def scope(self) -> pd.DataFrame:
-        """The CAS variables, one row each, with where they stand against the model."""
-        frames = [pd.read_csv(p) for p in self.scope_files()]
+        """The CAS variables, one row each, with where they stand against the model.
+        Read once, and again only when a scope file is added, removed or changed."""
+        files = self.scope_files()
+        key = tuple((str(p), p.stat().st_mtime_ns) for p in files)
+        if self._scope_cache is None or self._scope_cache[0] != key:
+            self._scope_cache = (key, self._read_scope(files))
+            self._profiles = {}
+        return self._scope_cache[1]
+
+    def _read_scope(self, files: list[Path]) -> pd.DataFrame:
+        frames = [pd.read_csv(p) for p in files]
         if not frames:
             return pd.DataFrame()
         raw = pd.concat(frames, ignore_index=True)
@@ -269,6 +284,12 @@ class Workspace:
         """A CAS table's columns, its partition date, and the columns that identify
         a customer, account or card - what a pull must select to be linked later."""
         scope = self.scope()
+        if table.lower() in self._profiles:
+            return self._profiles[table.lower()]
+        self._profiles[table.lower()] = profile = self._profile(scope, table)
+        return profile
+
+    def _profile(self, scope: pd.DataFrame, table: str) -> dict[str, Any]:
         rows = scope[scope["table"].astype(str).str.lower() == table.lower()] if len(scope) else scope
         if not len(rows):
             return {"table": table, "columns": [], "partition": [], "identifiers": []}

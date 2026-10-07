@@ -1,4 +1,4 @@
-"""Build one feature on the screen rows and score it against base. One intent.
+"""Build one feature on the screen rows and score it against base. One attempt.
 
 The feature's script runs out of process (``agent.execution``); its column is
 then handed to the discovery screen (``discovery.screen.Screener``), whose
@@ -9,12 +9,13 @@ must clear ``min_capture_gain``.
 
 A feature identical in values to one already screened - in this run or an
 earlier direction (``agent.memory``) - is refused before it is scored, and the
-intent is given back.
+attempt is given back.
 """
 
 from __future__ import annotations
 
 import re
+from collections import Counter
 from typing import Any
 
 import pandas as pd
@@ -35,17 +36,27 @@ def screen_feature(session: Session, name: str, description: str, level: str,
         return {"ok": False, "error": "the run is finished"}
     if (missing := ideas_needed(session)):
         return missing
-    if session.intents_used >= session.K:
-        return {"ok": False, "error": f"all {session.K} intents are used; "
-                                      "call report_findings"}
+    if session.failed_streak >= FAILED_STREAK:
+        return {"ok": False, "error": (
+            f"{session.failed_streak} scripts in a row failed - look before the next attempt: "
+            "run_probe to print the columns, dtypes and a few rows of the frames you use, "
+            "then screen again. Nothing was spent.")}
     if not re.fullmatch(r"[A-Za-z_][A-Za-z0-9_]{0,63}", name):
         return {"ok": False, "error": f"{name!r} is not a valid column name"}
+    idea = idea_of(name, session.ideas)
+    failed = [e for e in session.ledger if not e.get("verified") and idea_of(e["name"], session.ideas) == idea]
+    if len(failed) >= IDEA_FAILURES:
+        return {"ok": False, "error": (
+            f"the idea {idea!r} has failed {len(failed)} times "
+            f"({'; '.join(str(e.get('reason') or '').splitlines()[0][:80] for e in failed)}). "
+            "Move to a different idea - more fixes to the same one tend to repeat the "
+            "mistake. Nothing was spent.")}
     if name in ws.base_features or any(e["name"] == name for e in session.ledger):
         return {"ok": False, "error": f"{name!r} is already taken; choose a new name"}
     allowed_levels = [lv for lv in FEATURE_LEVELS if lv in p.levels]
     if level not in allowed_levels:
         return {"ok": False, "error": f"level must be one of {allowed_levels} in this run"}
-    if (problem := session.level_full(level)):
+    if (problem := session.target_met(level)):
         return {"ok": False, "error": problem}
     named = set(re.findall(r"sources\[\s*['\"]([^'\"]+)['\"]\s*\]", code))
     if (unknown := sorted(named - set(ws.sources()))):
@@ -63,8 +74,8 @@ def screen_feature(session: Session, name: str, description: str, level: str,
     if (problem := check_code(code)):
         return {"ok": False, "error": f"{problem}. Nothing was spent."}
 
-    session.intents_used += 1
-    intent = f"I{session.intents_used}"
+    session.take_attempt()
+    intent = f"I{session.attempts}"
     code_id, run = session.run(code, "feature", intent=intent, level=level, title=name,
                                sources={s: session.linked[s] for s in used})
     # `delta` is the Gini gain - the name the trace and the evaluation read.
@@ -74,14 +85,14 @@ def screen_feature(session: Session, name: str, description: str, level: str,
              "capture_gain": None, "coverage": None, "verified": False, "reason": ""}
 
     if not run.ok:
-        entry["reason"] = f"script failed: {run.error}"
+        entry["reason"] = f"script failed: {run.short_error}"
     elif run.feature != name:
         entry["reason"] = f"build() returned column {run.feature!r}, expected {name!r}"
     else:
         built = pd.read_parquet(run.out_path).set_index(ws.id_col)[name]
         values = built.reindex(ws.screen[ws.id_col]).to_numpy()
         if (twin := same_feature(session, name, values)):
-            session.intents_used -= 1                     # nothing new was proposed
+            session.give_back_attempt()                   # nothing new was proposed
             return {"ok": False, "error": f"{name!r} is {twin}. Nothing was spent - "
                                           "propose something that measures a different thing "
                                           "(another window, ratio or source is fine).",
@@ -99,7 +110,7 @@ def screen_feature(session: Session, name: str, description: str, level: str,
     session.ledger.append(entry)
     session.save_ledger()
     session.emit("feature_screened", **{k: v for k, v in entry.items() if k != "code"},
-                 intents_used=session.intents_used, K=session.K)
+                 attempts=session.attempts, results=session.results(), K=session.K)
     if entry["verified"]:
         features = session.run_dir / "features"
         features.mkdir(exist_ok=True)
@@ -114,9 +125,82 @@ def screen_feature(session: Session, name: str, description: str, level: str,
              "budget": session.budget()}
     if run.ok is False:
         reply["stdout"] = run.stdout
-    if session.intents_used >= session.K:
-        reply["next"] = "that was the last intent; call report_findings with a summary"
+        # The usual cause is a column the frame does not have: show what it had.
+        reply["frames"] = _frames(session, used)
+    if run.elapsed_s and run.elapsed_s > SLOW_SCRIPT_S:
+        reply["slow"] = (f"the script took {run.elapsed_s:.0f}s on {len(ws.screen):,} screen rows - "
+                         "it loops over rows or ids. Vectorise: filter, then groupby().agg(); "
+                         "no apply, iterrows or Python loops.")
+    # One failure tends to breed the next - patching the same code on a wrong
+    # belief. Two in a row: the next screen waits for a look at the data.
+    session.failed_streak = 0 if run.ok else session.failed_streak + 1
+    if session.failed_streak >= FAILED_STREAK:
+        reply["next"] = (f"{session.failed_streak} scripts in a row failed. Stop patching: "
+                         "run_probe to print the columns and dtypes of the frames you use "
+                         "(see `frames`) - the next screen waits for it. Then fix the script, "
+                         "or move to a different idea.")
+    if (learned := lessons(session.ledger)):
+        reply["lessons"] = learned
+    if session.wanted() == 0:
+        reply["next"] = f"the target of {session.K} is reached; call report_findings with a summary"
+    elif session.attempts >= session.max_attempts:
+        reply["next"] = "that was the last attempt; call report_findings with a summary"
+    elif (over := session.round_over()):
+        reply["next"] = over
     return reply
+
+
+# Failed scripts in a row before the next screen waits for a probe.
+FAILED_STREAK = 2
+# Failed attempts one idea may have; the next is refused - move on.
+IDEA_FAILURES = 2
+# A script on the screen rows slower than this is told to vectorise.
+SLOW_SCRIPT_S = 30
+
+
+def idea_of(name: str, ideas: list[dict[str, Any]]) -> str:
+    """The idea a feature belongs to: the idea it is named after, else its name
+    without a variant's suffix - `x_v2`, `x_final`, `x_fixed` are all `x`."""
+    named = [i["name"] for i in ideas if name == i["name"] or name.startswith(i["name"] + "_")]
+    if named:
+        return max(named, key=len)
+    stem = name
+    while (shorter := re.sub(r"_(v\d+|final\d*|fix(ed)?\d*|retry\d*|alt\d*|new\d*|\d+)$", "", stem)) != stem:
+        stem = shorter
+    return stem
+
+
+def lessons(ledger: list[dict[str, Any]]) -> list[str]:
+    """What the run's failures have in common, in words - a pattern repeated
+    across attempts is easy to miss one reply at a time. Only patterns in what
+    was measured: a failed script is fixed once (the probe gate sees to it), and
+    repeating it as a lesson would keep a solved problem in view."""
+    redundant = Counter(m.group(1) for e in ledger
+                        if (m := re.search(r"against the existing column '([^']+)'", e.get("reason") or "")))
+    below = sum(1 for e in ledger if "is not above" in str(e.get("reason", "")))
+    sparse = sum(1 for e in ledger if e.get("coverage") is not None and e["coverage"] < 0.05)
+    out = [f"{n} features were redundant with `{col}` - a ratio, difference or rescaling of it "
+           "re-derives it; build on other columns" for col, n in redundant.items() if n >= 2]
+    if below >= 3:
+        out.append(f"{below} features did not beat base - change the signal, not the window")
+    if sparse >= 2:
+        out.append(f"{sparse} features were almost always missing - the event they need is rare; "
+                   "measure something most customers have")
+    return out
+
+
+def _frames(session: Session, used: list[str]) -> dict[str, list[str]]:
+    """The columns a feature script was given: `base`, and each source it read."""
+    import pyarrow.dataset as ds
+
+    ws = session.ws
+    out = {"base": [ws.id_col, *ws.base_features[:60]]
+                   + ([f"... {len(ws.base_features) - 60} more"] if len(ws.base_features) > 60 else [])}
+    for source in used:
+        path = session.linked.get(source)
+        if path:
+            out[f"sources[{source!r}]"] = ds.dataset(path).schema.names
+    return out
 
 
 def _below_gates(entry: dict[str, Any], p: Any) -> str:

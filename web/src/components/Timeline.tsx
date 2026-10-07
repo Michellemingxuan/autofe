@@ -18,11 +18,11 @@ const L3_STATUS: Partial<Record<Step['status'], string>> = {
   verified: 'kept', rejected: 'dropped', running: 'proposed', sent_back: 'sent back · no cost',
 }
 
-// Above this many intents the budget is one bar, not a cell per intent.
+// Above this many results the target is one bar, not a cell per result.
 const CELLS_UP_TO = 24
 
 // The proposing tools: a step's stage line already says what they did, retries included.
-const PROPOSING = new Set(['screen_feature', 'screen_request', 'challenge_request'])
+const PROPOSING = new Set(['screen_feature', 'screen_request', 'propose_new_data', 'challenge_request'])
 
 const clock = (seconds: number) => {
   const m = Math.floor(seconds / 60)
@@ -40,10 +40,14 @@ export function Timeline({ view, inView, onSelect }: {
   inView: number | null
   onSelect: (id: number) => void
 }) {
-  const verified = view.ledger.filter((r) => r.verified && !r.deleted).length
   const l3 = view.params?.levels?.length === 1 && view.params.levels[0] === 'L3'
-  const used = l3 ? view.requests.length : view.ledger.length
-  const good = l3 ? view.requests.filter((r) => r.status === 'kept').length : verified
+  // Results are verified features and kept requests - a mixed run has both kinds.
+  const used = view.ledger.length + view.requests.length
+  const verifiedNames = view.ledger.filter((r) => r.verified && !r.deleted).map((r) => `${r.intent} ${r.name}`)
+  const keptNames = view.requests.filter((r) => r.status === 'kept').map((r) => `${r.intent} ${r.source_name}`)
+  const goodNames = [...verifiedNames, ...keptNames]
+  const good = goodNames.length
+  const mixed = !l3 && !!view.params?.levels.includes('L3')
   const live = view.status === 'running' || view.status === 'waiting'
   return (
     <aside className={s.panel}>
@@ -53,29 +57,23 @@ export function Timeline({ view, inView, onSelect }: {
       </div>
 
       <div className={s.budget}>
+        {/* K is a target: the bar fills with results - verified features, kept requests. */}
         {(view.K || 0) > CELLS_UP_TO ? (
-          // Many intents: one bar - what passed, then what was spent and did not.
-          <div className={s.track} title={`${used} of ${view.K} used`}>
-            <span className={s.fillOk} style={{ width: `${(100 * good) / view.K}%` }} />
-            <span className={s.fillNo} style={{ width: `${(100 * (used - good)) / view.K}%` }} />
+          <div className={s.track} title={`${good} of ${view.K}`}>
+            <span className={s.fillOk} style={{ width: `${Math.min(100, (100 * good) / view.K)}%` }} />
           </div>
         ) : (
-        <div className={s.bar}>
-          {Array.from({ length: view.K || 0 }, (_, i) => {
-            if (l3) {
-              const r = view.requests[i]
-              return <span key={i} className={`${s.cell} ${r ? s.cellOk : ''}`}
-                           title={r ? `${r.intent} ${r.source_name}` : `request ${i + 1}`} />
-            }
-            const row = view.ledger[i]
-            return <span key={i} className={`${s.cell} ${row ? (row.verified ? s.cellOk : s.cellNo) : ''}`}
-                         title={row ? `${row.intent} ${row.name}` : `intent ${i + 1}`} />
-          })}
-        </div>
+          <div className={s.bar}>
+            {Array.from({ length: view.K || 0 }, (_, i) => (
+              <span key={i} className={`${s.cell} ${i < good ? s.cellOk : ''}`}
+                    title={i < good ? goodNames[i] : `result ${i + 1} of ${view.K}`} />
+            ))}
+          </div>
         )}
-        <span className={s.budgetText}>{l3
-          ? `${used}/${view.K} data requests · ${good} kept`
-          : `${used}/${view.K} intents · ${verified} verified`}</span>
+        <span className={s.budgetText}>
+          {good}/{view.K} {l3 ? 'kept' : mixed ? `results (${verifiedNames.length} L1/L2, ${keptNames.length} L3)` : 'verified'} · {used}
+          {view.maxAttempts ? `/${view.maxAttempts}` : ''} attempts
+        </span>
       </div>
 
       <ol className={s.list}>
@@ -113,7 +111,10 @@ export function Timeline({ view, inView, onSelect }: {
                     : step.row?.deleted ? 'removed from pool'
                     : step.kind === 'challenge' && step.request?.challenge
                       ? `${step.request.challenge.verdict} → ${step.request.status}`
-                    : step.kind === 'l3' && step.request ? `proposed · reads ${step.request.tables.join(', ')}`
+                    : step.kind === 'l3' && step.request?.challenge
+                      ? `${step.request.challenge.verdict} → ${step.request.status}`
+                    : step.kind === 'l3' && step.request ? (step.request.scope === 'beyond_cas'
+                      ? 'proposed · beyond CAS' : `proposed · reads ${step.request.tables.join(', ')}`)
                     : step.kind === 'stage' ? step.note : STATUS_LABEL[step.status]}
                   {step.row?.delta != null && (
                     <span className={s.delta}> · Δ {step.row.delta >= 0 ? '+' : ''}{step.row.delta.toFixed(4)}</span>
@@ -131,7 +132,7 @@ export function Timeline({ view, inView, onSelect }: {
 
 /**
  * A request's way through the run, on one line: proposed; screened - its SQL
- * validated (a try sent back is retried, shown as screening until one passes or
+ * validated (within the CAS scope only) (a try sent back is retried, shown as screening until one passes or
  * the run ends); challenged; kept or dropped.
  */
 function Progress({ request: r, live }: { request?: DataRequest; live: boolean }) {
@@ -140,7 +141,8 @@ function Progress({ request: r, live }: { request?: DataRequest; live: boolean }
   const end: Pip = challenged !== 'on' ? 'pending' : r!.status === 'dropped' ? 'drop' : 'keep'
   const stages: [string, Pip][] = [
     ['proposed', 'on'],
-    [screened === 'run' ? 'screening' : 'screened', screened],
+    // Beyond the CAS scope there is no SQL to screen: proposed, then challenged.
+    ...(r?.scope === 'beyond_cas' ? [] : [[screened === 'run' ? 'screening' : 'screened', screened] as [string, Pip]]),
     ['challenged', challenged],
     [end === 'drop' ? 'dropped' : end === 'keep' ? 'kept' : 'kept / dropped', end],
   ]

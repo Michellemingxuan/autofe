@@ -7,11 +7,20 @@ import type {
 // docstring (src/agent/server.py) lists the same contract, and
 // tests/test_agent_server.py fails if a path here has no route there.
 
+// The browser says only "Failed to fetch" when no answer came: say what it means.
+const NO_ANSWER = 'No answer from the server - it may have stopped, or the request took too '
+  + 'long. Check the terminal running agent.server, then try again.'
+
 async function call<T>(path: string, init?: RequestInit): Promise<T> {
-  const res = await fetch(path, {
-    ...init,
-    headers: { 'Content-Type': 'application/json', ...(init?.headers ?? {}) },
-  })
+  let res: Response
+  try {
+    res = await fetch(path, {
+      ...init,
+      headers: { 'Content-Type': 'application/json', ...(init?.headers ?? {}) },
+    })
+  } catch {
+    throw new Error(NO_ANSWER)
+  }
   const body = await res.json().catch(() => ({}))
   if (!res.ok) throw new Error(body.error ?? `${res.status} ${res.statusText}`)
   return body as T

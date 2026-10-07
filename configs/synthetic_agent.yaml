@@ -41,7 +41,8 @@ agent:
   additional_data_dir: data/synthetic_agent/additional_data
   linkage_dir: data/synthetic_agent/linkage
   id_format: "<customer_id>_<dt>_<marker>; dt is the as-of date as YYYYMMDD; customer_id joins to the sources' customer_id"
-  engine: pandas
+  engine: pandas              # the synthetic case is small: pandas, no Spark needed
+  linkage_engine: pandas
   max_intents: 5
   min_gini_gain: 0.0          # analyst gates on the screen; min_capture_gain: off unless set
   run_dir: outputs/agent

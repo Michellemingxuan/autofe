@@ -81,7 +81,7 @@ def prior_requests(ws: "Workspace", skip_run: str | None = None) -> list[dict[st
             continue
         for r in json.loads(path.read_text()):
             out.append({**{k: r.get(k) for k in ("source_name", "tables", "columns", "gap",
-                                                 "approved", "note")},
+                                                 "data", "approved", "note")},
                         "status": _status(r), "run_id": folder.name})
     return out
 
@@ -121,10 +121,14 @@ def _open(ws: "Workspace", requested: dict[tuple[str, str], list[str]]) -> list[
     scope = ws.scope()
     if not len(scope):
         return []
+    keys: dict[str, set[str]] = {}                  # per table, worked out once
     out = []
     for r in scope[scope["status"] == "unused_raw"].itertuples(index=False):
         table, column = str(r.table).lower(), str(r.variable).lower()
-        if _payload(ws, [str(r.table)], [column]) and (table, column) not in requested \
+        if table not in keys:
+            p = ws.table_profile(str(r.table))
+            keys[table] = {c.lower() for c in (*p["identifiers"], *p["partition"])}
+        if column not in keys[table] and (table, column) not in requested \
                 and not column.endswith("pkey"):
             out.append(f"{table}.{column}")
     return out

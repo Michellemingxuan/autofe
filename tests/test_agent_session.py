@@ -139,13 +139,13 @@ def test_leaky_linkage_is_refused_before_the_user_sees_it(workspace):
     assert asked == []
 
 
-def test_unlinked_source_costs_no_intent_and_budget_is_enforced(workspace, tmp_path):
+def test_unlinked_source_costs_nothing_and_target_and_attempts_are_enforced(workspace, tmp_path):
     workspace.cfg.agent.linkage_dir = str(tmp_path / "empty_linkage")
     session = _session(workspace, "x", params=RunParams(K=1))
     reply = screen_feature(session, "f1", "d", "L1",
                                    'def build(spark, sources, base):\n    return sources["spends"]')
     assert not reply["ok"] and "no confirmed linkage" in reply["error"]
-    assert session.intents_used == 0
+    assert session.attempts == 0
 
     ratio = '''
 def build(spark, sources, base):
@@ -154,9 +154,96 @@ def build(spark, sources, base):
     return out
 '''
     first = screen_feature(session, "util_x_delinq", "d", "L1", ratio)
-    assert first["intent"] == "I1" and "next" in first
-    second = screen_feature(session, "again", "d", "L1", ratio)
-    assert "intents are used" in second["error"]
+    assert first["intent"] == "I1" and session.max_attempts == 3
+    # K is a target of results: once one is verified, no more are taken.
+    session.ledger[0]["verified"] = True
+    met = screen_feature(session, "again", "d", "L1", ratio.replace("util_x_delinq", "again"))
+    assert not met["ok"] and "the target of 1 is met" in met["error"]
+    # Short of the target, the attempts still end the run.
+    session.ledger[0]["verified"] = False
+    session.attempts = session.max_attempts
+    capped = screen_feature(session, "again", "d", "L1", ratio.replace("util_x_delinq", "again"))
+    assert not capped["ok"] and "all 3 attempts are used" in capped["error"]
+
+
+def test_a_failed_script_comes_back_short_with_the_columns_it_had(workspace):
+    session = _session(workspace, "x", params=RunParams(K=3))
+    broken = """
+def build(spark, sources, base):
+    out = base[["id", "as_of"]].copy()
+    return out
+"""
+    first = screen_feature(session, "f1", "d", "L1", broken)
+    # Its own line and the error - not a page of pandas frames.
+    assert first["reason"] == ("script failed: line 3: out = base[[\"id\", \"as_of\"]].copy()\n"
+                               "KeyError: \"['as_of'] not in index\"")
+    assert first["frames"]["base"][0] == "id" and "as_of" not in first["frames"]["base"]
+    assert "next" not in first
+    # Two in a row: stop patching and look.
+    second = screen_feature(session, "f2", "d", "L1", broken.replace("f1", "f2"))
+    assert "2 scripts in a row failed" in second["next"] and "run_probe" in second["next"]
+    assert "lessons" not in second                              # the gate handles scripts
+    # ... and the next screen waits for a look at the data, at no cost.
+    waits = screen_feature(session, "f3", "d", "L1", broken.replace("f1", "f3"))
+    assert not waits["ok"] and "look before the next attempt" in waits["error"]
+    assert session.attempts == 2
+    from agent.tools import run_probe
+
+    run_probe(session, "print(base.columns.tolist())", "what base holds")
+    assert screen_feature(session, "f3", "d", "L1", broken.replace("f1", "f3"))["intent"] == "I3"
+
+
+def test_repeated_failures_become_a_lesson_and_old_results_are_cut():
+    from agents.run import CallModelData, ModelInputData
+
+    from agent.agent import KEEP_FULL, _trim_old_outputs
+    from agent.tools.screen import lessons
+
+    redundant = "is redundant: |rho|=0.99 against the existing column 'tenure_months', above"
+    ledger = [{"reason": redundant}, {"reason": redundant}, {"reason": "Gini gain -0.01 is not above"}]
+    assert lessons(ledger) == ["2 features were redundant with `tenure_months` - a ratio, "
+                               "difference or rescaling of it re-derives it; build on other columns"]
+
+    outputs = [{"type": "function_call_output", "call_id": str(i), "output": "x" * 2000}
+               for i in range(KEEP_FULL + 2)]
+    items = [{"role": "user", "content": "go"}, *outputs]
+    sent = _trim_old_outputs(CallModelData(model_data=ModelInputData(input=items, instructions="i"),
+                                           agent=None, context=None)).input
+    assert [len(i["output"]) < 2000 for i in sent[1:]] == [True, True] + [False] * KEEP_FULL
+    assert items[1]["output"] == "x" * 2000                       # the conversation keeps it whole
+
+
+def test_a_running_script_is_stopped_at_once_and_a_slow_one_times_out(tmp_path):
+    import time
+
+    import pandas as pd
+
+    from agent.execution import run_code
+
+    base = tmp_path / "base.parquet"
+    pd.DataFrame({"id": ["a"]}).to_parquet(base)
+    forever = "while True:\n    pass"
+    common = dict(workdir=tmp_path / "w", engine="pandas", id_col="id", base_path=base)
+    start = time.perf_counter()
+    stopped = run_code(forever, "probe", tag="s", timeout_s=60,
+                       should_stop=lambda: time.perf_counter() - start > 1, **common)
+    assert stopped.error == "stopped by the user" and time.perf_counter() - start < 5
+    slow = run_code(forever, "probe", tag="t", timeout_s=1, **common)
+    assert slow.error.startswith("timed out after 1s - vectorise")
+
+
+def test_an_idea_that_failed_twice_takes_no_third_attempt(workspace):
+    from agent.tools.screen import idea_of
+
+    assert idea_of("pay_gap_v3", []) == idea_of("pay_gap_final", []) == "pay_gap"
+    assert idea_of("pay_gap_60d_fixed", [{"name": "pay_gap_60d"}]) == "pay_gap_60d"
+    session = _session(workspace, "x", params=RunParams(K=3))
+    broken = "def build(spark, sources, base):\n    return base[['id', 'as_of']]"
+    for name in ("pay_gap", "pay_gap_v2"):
+        assert screen_feature(session, name, "d", "L1", broken)["intent"]
+        session.failed_streak = 0                              # it probed in between
+    third = screen_feature(session, "pay_gap_v3", "d", "L1", broken)
+    assert not third["ok"] and "has failed 2 times" in third["error"] and session.attempts == 2
 
 
 def test_bad_contract_is_reported_not_raised(workspace):
@@ -202,18 +289,21 @@ def build(spark, sources, base):
     assert evaluation.events[-1]["event"] == "eval_done"
 
 
-def test_data_pull_waits_for_the_user_and_keeps_the_sql(no_history):
-    workspace = no_history
+def test_a_request_in_a_mixed_run_is_challenged_not_put_to_the_analyst(no_history):
     sql = ("SELECT customer_id, trans_dt, auth_decline_cnt_30d FROM wwcas_synthetic "
            "WHERE trans_dt >= '2023-01-01'")
-    rejected = _session(workspace, "x", approver=AutoApprover(False, "too broad"))
-    reply = screen_request(rejected, "declines are missing", sql, "declines")
-    assert reply == {"approved": False, "user_note": "too broad"}
+    asked = []
 
-    approved = _session(workspace, "x", approver=AutoApprover())
-    reply = screen_request(approved, "declines are missing", sql, "declines")
-    assert reply["approved"] and "declines.parquet" in reply["next"]
-    assert sql in (approved.run_dir / "data_requests" / "R1_declines.sql").read_text()
+    class Recorder:
+        def ask(self, kind, payload):
+            asked.append(kind)
+
+    session = _session(no_history, "x", approver=Recorder(),
+                       params=RunParams(K=2, levels=["L1", "L3"]))
+    reply = screen_request(session, "declines are missing", sql, "declines")
+    assert reply["recorded"] and "challenge R1" in reply["next"] and asked == []
+    assert sql in (session.run_dir / "data_requests" / "R1_declines.sql").read_text()
+    assert session.pending_at("L3") == 1 and session.results_at("L3") == 0
 
 
 def test_a_dropped_source_is_seen_schema_first_then_usable(workspace):
@@ -301,6 +391,47 @@ def test_shot_categories_append_rotate_and_reach_the_agent(workspace, tmp_path):
         workspace.cfg.agent.shot_spec_paths = []
 
 
+def test_the_scope_is_read_once_until_a_file_changes(workspace):
+    import os
+
+    import pandas as pd
+
+    first = workspace.scope()
+    assert workspace.scope() is first                         # no second read
+    path = workspace.scope_files()[0]
+    original = path.read_bytes()                              # the fixture is shared
+    try:
+        frame = pd.read_csv(path)
+        pd.concat([frame, frame.tail(1).assign(NAME="new_var")]).to_csv(path, index=False)
+        os.utime(path, ns=(path.stat().st_atime_ns, path.stat().st_mtime_ns + 10**9))
+        assert len(workspace.scope()) == len(first) + 1       # the change is seen
+    finally:
+        path.write_bytes(original)
+        os.utime(path, ns=(path.stat().st_atime_ns, path.stat().st_mtime_ns + 2 * 10**9))
+
+
+def test_a_probe_reads_a_sample_of_a_raw_source_and_linkage_reads_it_all(tmp_path):
+    import pandas as pd
+
+    from agent.execution import run_code
+
+    csv = tmp_path / "events.csv"
+    # a mixed-type column: chunked parsing would read it as ints, then strings
+    pd.DataFrame({"key": list(range(500)) + ["x"] * 500, "v": range(1000)}).to_csv(csv, index=False)
+    base = tmp_path / "base.parquet"
+    pd.DataFrame({"id": ["a", "b"]}).to_parquet(base)
+    common = dict(workdir=tmp_path / "w", engine="pandas", id_col="id", base_path=base,
+                  raw={"events": str(csv)}, probe_rows=100)
+    probe = run_code("print(len(raw['events']))", "probe", tag="p", **common)
+    assert probe.ok and probe.stdout.strip() == "100"
+    link = run_code("""
+def link(base_ids, source):
+    print(len(source), source['key'].map(type).nunique())
+    return base_ids.assign(as_of=pd.Timestamp('2024-01-01'))
+""", "linkage", source="events", tag="l", **common)
+    assert link.ok and link.stdout.split() == ["1000", "1"]          # every row, one type
+
+
 def test_a_probe_joins_a_confirmed_source_it_names(workspace):
     from agent.tools import run_probe
 
@@ -345,12 +476,12 @@ def test_the_sql_must_use_the_provided_cas_columns(workspace):
         SELECT s.customer_id, DATE_TRUNC(s.trans_dt, MONTH) AS mth, SUM(s.cash_adv_amt_90d) amt
         FROM `proj.cas.wwcas_synthetic` s
         WHERE s.trans_dt BETWEEN @start AND @end GROUP BY s.customer_id, mth""", "d")
-    assert good["recorded"] and session.intents_used == 1      # refusals spent nothing
+    assert good["recorded"] and session.attempts == 1      # refusals spent nothing
 
 
 def test_a_data_request_run_is_an_sql_run(workspace):
     l3 = Session(workspace, "x", params=RunParams(K=1, levels=["L3"]))
-    assert l3.params.engine == "sql" and l3.local_engine == workspace.cfg.agent.engine
+    assert l3.params.engine == "sql" and l3.local_engine == "pandas"     # constructions: screen rows
     with pytest.raises(ValueError, match="data-request runs"):
         Session(workspace, "x", params=RunParams(K=1, levels=["L1", "L3"], engine="sql"))
 
@@ -411,12 +542,12 @@ def test_a_later_direction_remembers_what_was_proposed(no_history):
     twin = screen_feature(later, "total_spend_last_quarter", "d", "L1",
                           WINDOW.format(days=90, name="total_spend_last_quarter"))
     assert not twin["ok"] and "identical to `spend_90d`" in twin["error"]
-    assert later.intents_used == 0
+    assert later.attempts == 0
 
     # Another window measures something else, and is screened as usual.
     other = screen_feature(later, "spend_30d", "30-day spend", "L1",
                            WINDOW.format(days=30, name="spend_30d"))
-    assert "verified" in other and later.intents_used == 1
+    assert "verified" in other and later.attempts == 1
 
     # A deleted feature is forgotten.
     assert first.delete_intent("spend_90d")
@@ -430,14 +561,14 @@ def test_a_later_data_request_for_the_same_data_is_refused(no_history):
     sql = ("SELECT customer_id, trans_dt, auth_decline_cnt_30d FROM wwcas_synthetic "
            "WHERE trans_dt BETWEEN '2024-01-01' AND '2024-12-31'")
     first = _session(workspace, "declines", approver=AutoApprover())
-    assert screen_request(first, "declines are missing", sql, "declines")["approved"]
+    assert screen_request(first, "declines are missing", sql, "declines")["recorded"]
 
     later = _session(workspace, "declines again", approver=AutoApprover())
     narrower = sql.replace("'2024-01-01'", "'2024-06-01'")      # another range, same data
     refused = screen_request(later, "declines", narrower, "decline_counts")
     assert not refused.get("ok", True) and "the same data as `declines`" in refused["error"]
     other = sql.replace("auth_decline_cnt_30d", "cash_adv_amt_90d")
-    assert screen_request(later, "cash advances", other, "cash_advances")["approved"]
+    assert screen_request(later, "cash advances", other, "cash_advances")["recorded"]
 
 
 def test_a_later_run_is_told_which_cas_columns_are_already_requested(no_history):
@@ -447,7 +578,7 @@ def test_a_later_run_is_told_which_cas_columns_are_already_requested(no_history)
     sql = ("SELECT customer_id, trans_dt, auth_decline_cnt_30d FROM wwcas_synthetic "
            "WHERE trans_dt BETWEEN '2024-01-01' AND '2024-12-31'")
     first = _session(no_history, "declines", approver=AutoApprover())
-    assert screen_request(first, "declines are missing", sql, "declines")["approved"]
+    assert screen_request(first, "declines are missing", sql, "declines")["recorded"]
 
     # Up front, before any proposal: the brief names the column, scope() marks it.
     later = _session(no_history, "declines again", approver=AutoApprover())
@@ -457,16 +588,6 @@ def test_a_later_run_is_told_which_cas_columns_are_already_requested(no_history)
     assert not marked["cash_adv_amt_90d"]
     assert not marked["trans_dt"]                 # the partition date every request selects
     assert "used up" not in memory_brief(later)     # other raw columns are still open
-
-
-def test_a_rejected_request_does_not_block_a_revised_one(no_history):
-    sql = ("SELECT customer_id, trans_dt, cash_adv_amt_90d FROM wwcas_synthetic "
-           "WHERE trans_dt BETWEEN '2023-01-01' AND '2024-12-31'")
-    first = _session(no_history, "cash", approver=AutoApprover(False, "too broad"))
-    assert screen_request(first, "cash advances", sql, "cash_adv")["approved"] is False
-    later = _session(no_history, "cash, narrower", approver=AutoApprover())
-    revised = sql.replace("'2023-01-01'", "'2024-06-01'")
-    assert screen_request(later, "cash advances, last 6 months", revised, "cash_adv_6m")["approved"]
 
 
 def _ideas(lenses):
@@ -486,7 +607,7 @@ def test_proposals_wait_for_ideas_with_a_spread(no_history):
     sql = ("SELECT customer_id, trans_dt, auth_decline_cnt_30d FROM wwcas_synthetic "
            "WHERE trans_dt > '2024-01-01'")
     early = screen_request(session, "why", sql, "declines")
-    assert not early["ok"] and "the ideas come first" in early["error"] and session.intents_used == 0
+    assert not early["ok"] and "the ideas come first" in early["error"] and session.attempts == 0
 
     others = [k for k in LENSES if k not in session.focus]
     narrow = record_ideas(session, _ideas([others[0]] * 4))                    # one lens only
@@ -503,8 +624,40 @@ def test_proposals_wait_for_ideas_with_a_spread(no_history):
     # The ideas are the first stage's structured answer, not a tool.
     assert "brainstorm" not in [t.name for t in tools.for_agent(session)]
     stage = build_agent(session, "ideas")
-    assert stage.output_type is tools.Ideas
+    assert stage.output_type.output_type is tools.Ideas          # read leniently: FirstAnswer
     assert {t.name for t in stage.tools} == {"catalog", "scope", "sample_rows", "shots", "run_probe"}
+
+
+def test_ideas_come_in_rounds_and_a_round_ends_when_its_ideas_are_used(no_history):
+    from agent.tools.ideas import LENSES, focus_lenses, ideas_in_round, record_ideas
+
+    big = _session(no_history, "x", params=RunParams(K=100, levels=["L1"], ideas_per_round=10))
+    assert ideas_in_round(big) == 10                      # a large K: ten at a time
+    too_many = record_ideas(big, _ideas((list(LENSES) * 2)[:11]))
+    assert "[MISSING] 10 to 10 ideas (you gave 11)" in too_many["error"]
+    session = _session(no_history, "x", params=RunParams(K=2, levels=["L1"], ideas_per_round=10))
+    assert ideas_in_round(session) == 4                   # a few more than still wanted
+    lenses = list(dict.fromkeys([*focus_lenses(session), *LENSES]))[:4]
+    # Every requirement comes back, met or not - fixing one must not break another.
+    short = record_ideas(session, _ideas(lenses[:1] * 2))
+    assert "[MISSING] 4 to 10 ideas (you gave 2)" in short["error"]
+    assert "[MISSING] at least 4 different lenses" in short["error"]
+    assert record_ideas(session, _ideas(lenses))["round"] == 1
+    for _ in range(3):
+        session.take_attempt()
+    assert session.round_over() is None                   # one idea is still untried
+    session.take_attempt()
+    assert "round 1's ideas are used" in session.round_over() and session.round_spent
+    again = record_ideas(session, _ideas(lenses))       # the same names as round 1
+    assert not again["ok"] and "earlier round" in again["error"]
+
+
+def test_the_report_check_stays_on_when_the_ideas_never_pass(workspace):
+    from agent.tools import report_findings
+
+    session = _session(workspace, "x", params=RunParams(K=2, levels=["L1"]))
+    session.gated, session.ideas_required = True, False   # ideas failed: proposals ungated
+    assert not report_findings(session, "early")["ok"]
 
 
 def test_each_run_leans_on_different_lenses(no_history):
@@ -527,7 +680,7 @@ def test_an_l3_idea_must_name_cas_data(no_history):
     assert not from_sources["ok"] and "L1/L2 idea" in from_sources["error"]
 
 
-def test_a_mixed_run_splits_its_intents_by_level(workspace):
+def test_a_mixed_run_splits_its_target_by_level(workspace):
     from collections import Counter
 
     from agent.session import level_quota
@@ -551,38 +704,73 @@ def build(spark, sources, base):
     return out
 """
     assert screen_feature(session, "inc_lim", "d", "L1", ratio)["intent"] == "I1"
-    second = screen_feature(session, "inc_lim2", "d", "L1", ratio.replace("inc_lim", "inc_lim2"))
-    assert not second["ok"] and "L1 share is used" in second["error"]
-    assert session.intents_used == 1 and "L3 2" in session.budget()
+    # An L1 attempt that is not verified does not use up L1: its target is a result.
+    session.ledger[0]["verified"] = False
+    other = ratio.replace("inc_lim", "lim_x_inc").replace('base["income_est"] / base["credit_limit"]',
+                                                          'base["credit_limit"] * base["income_est"]')
+    assert screen_feature(session, "lim_x_inc", "d", "L1", other)["intent"] == "I2"
+    # Once L1 has its result, L1 takes no more - the rest of the target is L3.
+    session.ledger[0]["verified"] = True
+    third = screen_feature(session, "util_sq", "d", "L1", ratio.replace("inc_lim", "util_sq"))
+    assert not third["ok"] and "L1 target is met" in third["error"]
+    assert session.attempts == 2 and "L3 2" in session.budget()
 
 
-def test_l3_gets_no_share_once_the_scope_is_used_up(no_history):
+def test_once_the_cas_scope_is_used_up_l3_looks_beyond_it(no_history):
     from agent.composer import compose as brief
     from agent.session import level_quota
 
     params = RunParams(K=200, levels=["L1", "L3"]).resolve(no_history)
-    assert "L3" in level_quota(no_history, params, "seed")
     first = _session(no_history, "everything", approver=AutoApprover())
     for column in ("auth_decline_cnt_30d", "cash_adv_amt_90d", "merchant_country"):
         sql = (f"SELECT customer_id, trans_dt, {column} FROM wwcas_synthetic "
                "WHERE trans_dt BETWEEN '2024-01-01' AND '2024-12-31'")
-        assert screen_request(first, "why", sql, column)["approved"]
+        assert screen_request(first, "why", sql, column)["recorded"]
 
-    # Every unused_raw column is asked for: the K goes to the levels that can use it.
-    assert level_quota(no_history, params, "seed") == {"L1": 200}
-    later = Session(no_history, "more", params=RunParams(K=3, levels=["L1", "L3"]))
-    assert later.quota == {"L1": 3} and "L3 has no share" in brief(later)
-    # Asked for alone, L3 keeps the run - the agent reports the scope is used up.
-    assert level_quota(no_history, RunParams(K=2, levels=["L3"]).resolve(no_history), "s") == {"L3": 2}
+    # Every unused_raw column is asked for - L3 keeps its share: the room is beyond CAS.
+    assert "L3" in level_quota(no_history, params, "seed")
+    later = Session(no_history, "more", params=RunParams(K=3, levels=["L3"]))
+    text = brief(later)
+    assert "the room is beyond it" in text and "propose_new_data" in text
+
+
+def test_a_request_beyond_the_cas_scope_is_an_idea_with_no_sql_and_is_challenged(no_history):
+    from agent.tools import challenge_request, propose_new_data
+    from agent.tools.ideas import record_ideas
+    from agent.tools.report import validated_sql
+
+    session = _session(no_history, "x", params=RunParams(K=3, levels=["L3"]))
+    vague = propose_new_data(session, "why", "rla_treatments", "RLA data")
+    assert not vague["ok"] and session.attempts == 0          # say what, and from where
+    reply = propose_new_data(session, "Line actions tell us what the bank already saw.",
+                             "rla_treatments", "RLA strategy log: the treatment applied to "
+                             "each account per month, 24 months back", "rla_cut_last_6m")
+    assert reply["recorded"] and reply["intent"] == "R1" and session.attempts == 1
+    record = session.data_requests[0]
+    assert record["scope"] == "beyond_cas" and record["sql"] == "" and record["tables"] == []
+    assert not (session.run_dir / "data_requests" / "R1_rla_treatments.sql").exists()
+
+    verdict = challenge_request(session, "R1", "new", "no source carries treatments")
+    assert verdict["status"] == "kept"
+    summary = validated_sql(session)
+    assert "Beyond the CAS scope" in summary and "RLA strategy log" in summary
+    assert "Beyond the CAS scope - the data it needs" in \
+        (session.run_dir / "data_requests.md").read_text()
+
+    # An L3 idea names CAS variables, or is marked beyond CAS and says what it needs.
+    base = {"lens": "trend", "level": "L3", "description": "d"}
+    assert not record_ideas(session, [{**base, "name": "a", "data": "rla"}])["ok"]
+    beyond = record_ideas(session, [{**base, "name": "a", "beyond_cas": True, "data": "x"}])
+    assert not beyond["ok"] and "where it would come from" in beyond["error"]
 
 
 def test_an_l3_report_with_requests_left_is_sent_back_while_the_scope_has_room(no_history):
     from agent.tools import report_findings
 
     session = Session(no_history, "x", params=RunParams(K=2, levels=["L3"]))
-    session.ideas_required = True
+    session.gated = True
     early = report_findings(session, "nothing to ask")
-    assert not early["ok"] and "2 intent(s) left" in early["error"]
+    assert not early["ok"] and "2 more result(s) wanted" in early["error"]
 
 
 def test_a_feature_reading_a_source_that_does_not_exist_costs_nothing(workspace):
@@ -594,30 +782,30 @@ def build(spark, sources, base):
 """
     reply = screen_feature(session, "x", "d", "L1", code)
     assert not reply["ok"] and "A data request is not data" in reply["error"]
-    assert session.intents_used == 0
+    assert session.attempts == 0
 
 
 def test_a_report_with_feature_intents_left_is_sent_back(workspace):
     from agent.tools import report_findings
 
     session = _session(workspace, "x", params=RunParams(K=3, levels=["L1"]))
-    session.ideas_required = True                         # as the runner sets it
+    session.gated = True                         # as the runner sets it
     first = report_findings(session, "done early")
-    assert not first["ok"] and "3 intent(s) left" in first["error"]
+    assert not first["ok"] and "3 more result(s) wanted" in first["error"]
     assert not session.finished
     assert not report_findings(session, "still early")["ok"]
     assert report_findings(session, "exhausted, because ...")["ok"]       # it may insist
     assert session.finished
 
 
-def test_a_dropped_request_is_refunded_and_must_be_replaced(no_history):
+def test_a_dropped_request_is_not_a_result_and_another_is_proposed(no_history):
     from agent.tools import challenge_request
 
     session = _session(no_history, "x", params=RunParams(K=1, levels=["L3"]))
     sql = ("SELECT customer_id, trans_dt, utilization FROM wwcas_synthetic "
            "WHERE trans_dt > '2024-01-01'")
     assert screen_request(session, "why", sql, "util")["recorded"]
-    assert session.intents_used == 1
+    assert session.attempts == 1
     construction = """
 def build(spark, sources, base):
     out = base[["id"]].copy()
@@ -626,11 +814,11 @@ def build(spark, sources, base):
 """
     dropped = challenge_request(session, "R1", "constructible", "a base column", ["utilization"],
                                 construction)
-    assert dropped["status"] == "dropped" and "re-propose" in dropped["next"]
-    assert session.intents_used == 0                                 # the intent came back
+    assert dropped["status"] == "dropped" and "not a result" in dropped["next"]
+    assert session.results() == 0 and session.wanted() == 1         # still one to find
     again = screen_request(session, "why", sql.replace("utilization", "auth_decline_cnt_30d"),
                               "declines")
-    assert again["recorded"] and again["intent"] == "R2"             # numbered by proposal
+    assert again["recorded"] and again["intent"] == "R2" and session.attempts == 2
 
 
 def test_a_feature_brief_lists_the_columns_it_can_read(workspace):
@@ -674,5 +862,5 @@ def test_a_script_the_guard_refuses_spends_nothing(workspace):
     session = _session(workspace, "x", params=RunParams(K=1))
     reply = screen_feature(session, "peek", "d", "L1",
                            "def build(spark, sources, base):\n    return pd.read_csv('data/test.csv')")
-    assert not reply["ok"] and "Nothing was spent" in reply["error"] and session.intents_used == 0
+    assert not reply["ok"] and "Nothing was spent" in reply["error"] and session.attempts == 0
     assert not any(e["event"] == "code_status" for e in session.events)       # never ran

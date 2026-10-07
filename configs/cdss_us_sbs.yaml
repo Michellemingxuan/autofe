@@ -72,6 +72,33 @@ discovery:
     model: gpt-5
     reasoning_effort: null
 
+# ---------------------------------------------------------------------------
+# The model agent (python -m agent.server -c configs/cdss_us_sbs.yaml): one
+# direction at a time, up to max_intents features or data requests. It reads the
+# screen rows, column descriptions, few-shot rows and task context above.
+# ---------------------------------------------------------------------------
+agent:
+  # Each source: <name>.parquet (or .csv, or a parquet folder) beside
+  # <name>_data_sample.json, the {column: [description, [sample values]]} file.
+  # A sample JSON alone is listed as schema only. The CAS scope is the
+  # *_flagged.csv exports in the same folder.
+  additional_data_dir: data/cdss_us_sbs/additional_data
+  linkage_dir: data/cdss_us_sbs/linkage     # one confirmed join per source, written on approval
+  # TODO: how cust_id_new is built - the agent writes every point-in-time join from it.
+  id_format: "TODO: e.g. <customer_id>_<dt>; dt is the as-of date as YYYYMMDD; customer_id joins to the sources' customer_id"
+  engine: pandas                            # features, by default - each run may choose spark
+  linkage_engine: pandas                    # spark if an extract does not fit in memory (slower otherwise)
+  spark_conf:                               # the local SparkSession each script starts
+    spark.driver.memory: 16g                # TODO: about half the machine's RAM
+    spark.sql.shuffle.partitions: "64"
+  max_intents: 5
+  min_gini_gain: 0.0                        # a feature is verified above this gain on the screen
+  run_dir: outputs/agent
+  llm:
+    backend: safechain                      # agent/llm/safechain.py: stall retry at 40s, cap 180s
+    model: gpt-5
+  models: [gpt-5, gpt-4.1]                  # offered per run in the UI
+
 data_quality:
   enabled: true
   drop_failed: false    # report only while gates are open
