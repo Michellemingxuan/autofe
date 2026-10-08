@@ -9,6 +9,7 @@ feature through its confirmed point-in-time linkage.
 
 from __future__ import annotations
 
+import importlib.util
 import json
 import re
 import subprocess
@@ -18,7 +19,18 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, Callable
 
-__all__ = ["CodeResult", "check_code", "run_code"]
+__all__ = ["CodeResult", "check_code", "run_code", "spark_available"]
+
+_SPARK: bool | None = None
+
+
+def spark_available() -> bool:
+    """Whether pyspark is installed here. Without it, pandas is the only engine:
+    Spark is not offered, and no message suggests it."""
+    global _SPARK
+    if _SPARK is None:
+        _SPARK = importlib.util.find_spec("pyspark") is not None
+    return _SPARK
 
 _FORBIDDEN = [
     (r"\bread_(csv|parquet|json|excel|table|pickle|feather|sql)\b", "reads a file directly"),
@@ -69,6 +81,8 @@ class CodeResult:
     result: dict[str, Any] | None = None
     feature: str | None = None
     elapsed_s: float = 0.0
+    peak_mb: float | None = None              # the script's data, above the interpreter
+    setup_s: float = 0.0                      # starting the engine, before the script
     out_path: str | None = None
     extras: dict[str, Any] = field(default_factory=dict)
 
@@ -97,6 +111,10 @@ def run_code(code: str, mode: str, *, workdir: Path, engine: str, id_col: str,
     problem = check_code(code)
     if problem:
         return CodeResult(ok=False, mode=mode, error=problem)
+    if engine == "spark" and not spark_available():
+        return CodeResult(ok=False, mode=mode, error=(
+            "this script is for the spark engine, and pyspark is not installed here - "
+            "it must be written for pandas (a linkage file: its `# engine: spark` line)"))
 
     workdir.mkdir(parents=True, exist_ok=True)
     code_path = workdir / f"{tag}.py"
@@ -128,8 +146,12 @@ def run_code(code: str, mode: str, *, workdir: Path, engine: str, id_col: str,
             if should_stop and should_stop():
                 stopped = "stopped by the user"
             elif time.perf_counter() - started > timeout_s:
-                stopped = (f"timed out after {timeout_s:.0f}s - vectorise: no loops or apply "
-                           "over rows; aggregate with groupby, filter before joining")
+                stopped = (f"timed out after {timeout_s:.0f}s - " + (
+                    "the join is too large: keep only the columns and events needed "
+                    "before joining" + (", or use the spark engine" if spark_available() else "")
+                    if mode == "linkage" else
+                    "vectorise: no loops or apply over rows; aggregate with groupby, "
+                    "filter before joining"))
             if stopped:
                 proc.kill()
                 proc.wait()
@@ -146,7 +168,9 @@ def run_code(code: str, mode: str, *, workdir: Path, engine: str, id_col: str,
                 "the runner was killed by the operating system (exit -9) - almost always "
                 "out of memory: the frames it loaded did not fit. Read less: in a probe, raw "
                 "sources are already a sample; otherwise use only the columns you need, "
-                "filter rows before joining, aggregate early - or run on the spark engine."))
+                "filter rows before joining, aggregate early, and never join two frames "
+                "whose keys both repeat (many-to-many: the rows multiply)"
+                + (" - or run on the spark engine." if spark_available() else ".")))
         return CodeResult(ok=False, mode=mode, elapsed_s=elapsed,
                           error=f"the runner died (exit {proc.returncode}): "
                                 f"{(stderr or stdout)[-3000:]}")
@@ -154,6 +178,7 @@ def run_code(code: str, mode: str, *, workdir: Path, engine: str, id_col: str,
     return CodeResult(ok=payload["ok"], mode=mode, stdout=payload.get("stdout", ""),
                       error=payload.get("error"), result=payload.get("result"),
                       feature=payload.get("feature"), elapsed_s=payload.get("elapsed_s", 0.0),
+                      peak_mb=payload.get("peak_mb"), setup_s=payload.get("setup_s", 0.0),
                       out_path=str(out_path) if out_path.exists() else None)
 
 

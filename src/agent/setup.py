@@ -19,6 +19,7 @@ extracted, since the agent reads text.
 
 from __future__ import annotations
 
+import dataclasses
 import json
 import re
 import time
@@ -30,9 +31,9 @@ import yaml
 
 from agent.tools.shots import parse_spec
 from agent.workspace import Workspace
-from validation.config import Config
+from validation.config import AdditionalDataConfig, Config
 
-__all__ = ["BLOCKS", "FIELDS", "Setup", "UPLOAD_LIMIT"]
+__all__ = ["BLOCKS", "Setup", "UPLOAD_LIMIT", "blocks", "fields"]
 
 UPLOAD_LIMIT = 10 * 1024 * 1024
 UPLOAD_KINDS = {
@@ -64,7 +65,7 @@ BLOCKS: list[dict[str, Any]] = [
                          "help": "What the model predicts"},
          "data.id_cols": {"label": "Id column", "kind": "text",
                           "help": "One row key, used to join features back"},
-         "agent.id_format": {"label": "Id format", "kind": "text",
+         "data.id_format": {"label": "Id format", "kind": "text",
                              "help": "How the id encodes the join keys and the as-of date"},
      }},
     {"key": "context", "title": "Context for the agent", "folder": False,
@@ -88,7 +89,7 @@ BLOCKS: list[dict[str, Any]] = [
                                      "upload": "context",
                                      "help": "Rows picked per class by KMeans, with a batch "
                                              "column (.csv)"},
-         "agent.shot_spec_paths": {"label": "Your shot categories", "kind": "files",
+         "discovery.shot_spec_paths": {"label": "Your shot categories", "kind": "files",
                                    "upload": "shot_spec",
                                    "help": "One markdown spec per category, appended in order"},
      }},
@@ -132,33 +133,66 @@ BLOCKS: list[dict[str, Any]] = [
     {"key": "additional", "title": "Additional data", "folder": False,
      "help": "Sources: data + sample JSON in this folder, or registered by path.",
      "fields": {
-         "agent.additional_data_dir": {"label": "Additional data folder", "kind": "path",
-                                       "help": "Holds the sources and, by default, the CAS scope"},
+         "discovery.additional_data.dir": {"label": "Additional data folder", "kind": "path",
+                                       "help": "Holds the sources and, by default, the scopes' variable lists"},
      }},
     {"key": "scope", "title": "Scope", "folder": False,
-     "help": "The CAS variables the agent may draw on - flagged by whether the model uses "
-             "them - and your notes on how to use them.",
-     "fields": {
-         "agent.scope_glob": {"label": "Default CAS files", "kind": "text",
-                              "help": "Pattern matched in the additional data folder"},
-         "agent.scope_paths": {"label": "More CAS scope files", "kind": "files",
-                               "upload": "scope_file",
-                               "help": "Flagged CAS exports kept elsewhere (.csv)"},
-         "agent.scope_notes_paths": {"label": "Scope notes", "kind": "files",
-                                     "upload": "scope_note",
-                                     "help": "Your guidance, appended to the scope the agent "
-                                             "reads (.md, .txt, .docx, .pdf)"},
-     }},
+     "help": "The tables the agent may request data from, by scope - CAS, say - each "
+             "flagged by whether the model uses its variables, with your notes on how to "
+             "use them. A request outside every scope is 'beyond scope'.",
+     "fields": {}},                      # one section per configured scope: _scope_fields
 ]
-FIELDS: dict[str, dict[str, Any]] = {k: {**meta, "block": b["key"]}
-                                     for b in BLOCKS for k, meta in b["fields"].items()}
-_LISTS = {k for k, meta in FIELDS.items() if meta["kind"] == "files"}
-_FILES = {k for k, meta in FIELDS.items() if meta["kind"] in ("path", "file", "files")}
+# Keys that moved out of the agent section: overrides saved before still load.
+MOVED = {"agent.id_format": "data.id_format",
+         "agent.shot_spec_paths": "discovery.shot_spec_paths",
+         "agent.additional_data_dir": "discovery.additional_data.dir",
+         "agent.linkage_dir": "discovery.additional_data.linkage_dir",
+         "agent.scope_glob": "discovery.additional_data.scopes.CAS.glob",
+         "agent.scope_paths": "discovery.additional_data.scopes.CAS.paths",
+         "agent.scope_notes_paths": "discovery.additional_data.scopes.CAS.notes_paths",
+         "discovery.additional_data.scope_glob": "discovery.additional_data.scopes.CAS.glob",
+         "discovery.additional_data.scope_paths": "discovery.additional_data.scopes.CAS.paths",
+         "discovery.additional_data.scope_notes_paths":
+             "discovery.additional_data.scopes.CAS.notes_paths"}
 
 
-def _coerce(dotted: str, value: Any) -> Any:
+def _scope_fields(names: list[str]) -> dict[str, dict[str, Any]]:
+    """The Scope block's fields: the same three for each scope, under its keyword."""
+    out: dict[str, dict[str, Any]] = {}
+    for name in names:
+        key = f"discovery.additional_data.scopes.{name}"
+        out[f"{key}.glob"] = {"label": "Files in the folder", "kind": "text", "section": name,
+                              "help": "Pattern of its variable lists in the additional data folder"}
+        out[f"{key}.paths"] = {"label": "More variable lists", "kind": "files",
+                               "upload": "scope_file", "section": name,
+                               "help": "Flagged exports kept elsewhere (.csv)"}
+        out[f"{key}.notes_paths"] = {"label": "Notes", "kind": "files", "upload": "scope_note",
+                                     "section": name,
+                                     "help": "Your guidance on this scope, for the agent "
+                                             "(.md, .txt, .docx, .pdf)"}
+    return out
+
+
+def blocks(cfg: Config) -> list[dict[str, Any]]:
+    """The Setup page's blocks for this config - the Scope block has its scopes."""
+    names = list(cfg.discovery.additional_data.scopes)
+    return [{**b, "fields": _scope_fields(names)} if b["key"] == "scope" else b for b in BLOCKS]
+
+
+def fields(cfg: Config) -> dict[str, dict[str, Any]]:
+    return {k: {**meta, "block": b["key"]} for b in blocks(cfg) for k, meta in b["fields"].items()}
+
+
+def _lists(fields: dict[str, dict[str, Any]]) -> set[str]:
+    return {k for k, meta in fields.items() if meta["kind"] == "files"}
+
+
+def _files(fields: dict[str, dict[str, Any]]) -> set[str]:
+    return {k for k, meta in fields.items() if meta["kind"] in ("path", "file", "files")}
+
+
+def _coerce(meta: dict[str, Any], value: Any) -> Any:
     """A form value as the config wants it: numbers, flags, lists of numbers."""
-    meta = FIELDS[dotted]
     kind = meta["kind"]
     if kind == "number":
         if value in ("", None):
@@ -183,8 +217,8 @@ def _get(cfg: Config, dotted: str) -> Any:
         node = node.get(key) if isinstance(node, dict) else getattr(node, key)
     if dotted == "data.id_cols":
         return node[0] if node else ""
-    if dotted in _LISTS:
-        return list(node or [])
+    if isinstance(node, (list, tuple)):
+        return list(node)
     return node if node is not None else ""
 
 
@@ -221,7 +255,8 @@ class Setup:
         self.error: str | None = None
 
     def overrides(self) -> dict[str, Any]:
-        return json.loads(self.path.read_text()) if self.path.exists() else {}
+        saved = json.loads(self.path.read_text()) if self.path.exists() else {}
+        return {MOVED.get(k, k): v for k, v in saved.items()}
 
     def load(self) -> tuple[Config, Workspace]:
         """The workspace with the saved overrides - or the YAML's, if they no
@@ -237,6 +272,13 @@ class Setup:
 
     def _config(self, overrides: dict[str, Any]) -> Config:
         payload = yaml.safe_load(open(self.config_path)) or {}
+        if any(k.startswith("discovery.additional_data.scopes.") for k in overrides):
+            # A scope edited on the page, in a config that names none: start from
+            # the default one, so the edit adds to it rather than replacing it.
+            extra = payload.setdefault("discovery", {}).setdefault("additional_data", {})
+            if "scopes" not in extra:
+                extra["scopes"] = {name: dataclasses.asdict(scope) for name, scope
+                                   in AdditionalDataConfig().scopes.items()}
         for dotted, value in overrides.items():
             _set(payload, dotted, [value] if dotted == "data.id_cols" else value)
         cfg = Config.from_dict(payload)
@@ -253,31 +295,35 @@ class Setup:
                                     "value": _get(cfg, k), "default": _get(self.base, k),
                                     "changed": k in overrides}
                                    for k, meta in b["fields"].items()]}
-                       for b in BLOCKS],
+                       for b in blocks(cfg)],
             "upload_limit": UPLOAD_LIMIT,
             "error": self.error,
         }
 
     def apply(self, values: dict[str, Any]) -> tuple[Config, Workspace]:
         """Validate the new settings by loading them; save them only if they load."""
-        unknown = sorted(set(values) - set(FIELDS))
+        try:
+            known = fields(self._config(self.overrides()))
+        except Exception:  # noqa: BLE001 - saved overrides that no longer load
+            known = fields(self.base)
+        unknown = sorted(set(values) - set(known))
         if unknown:
             raise ValueError(f"not setup fields: {unknown}")
-        for key in _LISTS & set(values):
+        for key in _lists(known) & set(values):
             if not isinstance(values[key], list):
                 raise ValueError(f"{key} takes a list of paths")
-        values = {k: _coerce(k, v) for k, v in values.items()}
+        values = {k: _coerce(known[k], v) for k, v in values.items()}
         merged = {**self.overrides(), **values}
         overrides = {k: v for k, v in merged.items() if v != _get(self.base, k)}
         cfg = self._config(overrides)
         missing = []
-        for key in _FILES & set(values):
-            for path in (_get(cfg, key) if key in _LISTS else [_get(cfg, key)]):
+        for key in _files(known) & set(values):
+            for path in (_get(cfg, key) if key in _lists(known) else [_get(cfg, key)]):
                 if path and not Path(str(path)).exists():
-                    missing.append(f"{FIELDS[key]['label']}: {path}")
+                    missing.append(f"{known[key]['label']}: {path}")
         if missing:
             raise ValueError("not found - " + "; ".join(missing))
-        for path in cfg.agent.shot_spec_paths:
+        for path in cfg.discovery.shot_spec_paths:
             parse_spec(Path(path).read_text(errors="replace"), Path(path).stem)
         ws = Workspace.from_config(cfg)
         if cfg.data.target not in ws.screen.columns:

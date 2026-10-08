@@ -73,6 +73,9 @@ class DataConfig:
     target: str = "y"
     weight_col: Optional[str] = None
     id_cols: List[str] = field(default_factory=list)
+    # How the id encodes its parts - the join keys and the as-of date - in words
+    # a reader (the model agent, say) can act on.
+    id_format: str = ""
     missing_values: List[float] = field(default_factory=lambda: [-9999])
     missing_indicators: MissingIndicatorConfig = field(default_factory=MissingIndicatorConfig)
 
@@ -275,16 +278,47 @@ class LLMConfig:
 
 
 @dataclass
-class AdditionalDataConfig:
-    """Optional external schema/resource for feature discovery.
+class ScopeConfig:
+    """One scope: the variable lists of the tables data may be pulled from."""
+    # Variable lists in additional_data.dir matching this pattern, and any listed
+    # in paths, wherever they are: CSV exports with NAME, TABLE NAME, DESCRIPTION,
+    # TYPE and the model-use flags.
+    glob: Optional[str] = None
+    paths: List[str] = field(default_factory=list)
+    # The user's own guidance on the scope - which tables to prefer, what a
+    # flag means, what is off limits.
+    notes_paths: List[str] = field(default_factory=list)
+    description: str = ""             # what the scope is, for the agent
+    sql_dialect: str = "BigQuery"     # what its SQL is written in
 
-    This is loaded from YAML and provided to the prompt builder as a structured
-    summary of the extra resource. The LLM may use it to propose features that
-    combine current model columns with source fields from the external table(s)."""
+
+@dataclass
+class AdditionalDataConfig:
+    """Data beyond the model database: the extra sources, how each joins to the
+    model ids, and the CAS scope data may be requested from.
+
+    The discovery pipeline lists ``schema_paths`` in its prompt when ``enabled``.
+    The model agent works from ``dir``: a source is <name>.parquet|csv (or a
+    parquet folder) beside <name>_data_sample.json (or <name>.json), the format
+    {column: [description, [sample values]]}; a sample JSON alone is listed as
+    schema only."""
     enabled: bool = False
     name: str = "additional data resource"
     description: str = ""
     schema_paths: List[str] = field(default_factory=list)
+    dir: Optional[str] = None
+    # Confirmed linkage, one <source>.py per source, reused across runs.
+    linkage_dir: Optional[str] = None
+    # The scopes data may be requested from, by keyword - "CAS", say. A
+    # request within a scope is SQL over its tables,
+    # checked against its variable lists; one beyond every scope describes the
+    # data it needs instead.
+    scopes: Dict[str, "ScopeConfig"] = field(
+        default_factory=lambda: {"CAS": ScopeConfig(glob="*_flagged.csv")})
+
+    def __post_init__(self):
+        self.scopes = {str(name): _subset(ScopeConfig, v) if isinstance(v, dict) else v
+                       for name, v in (self.scopes or {}).items()}
 
 
 @dataclass
@@ -371,6 +405,11 @@ class DiscoveryConfig:
     # appears (see preprocessing/shots.py).
     # Round r shows batch r, so successive rounds see different rows.
     few_shot_path: Optional[str] = None
+    # Shot categories the user adds after the clustering shots, in order: one
+    # markdown file each, with sections for the context, the ids, and whether
+    # every run sees the same examples or rotates through them by batch. See
+    # agent/tools/shots.py.
+    shot_spec_paths: List[str] = field(default_factory=list)
     # A running record of every proposal across discovery runs: its code, the
     # screen's score, and the final verdict with the reason - accepted as a
     # candidate, or rejected at which gate and why. Each run reads it into the
@@ -397,34 +436,31 @@ class DiscoveryConfig:
 
 
 @dataclass
-class AgentConfig:
-    """The agent-driven discovery run: one direction, up to K intents.
+class TimeoutsConfig:
+    """The time limits on the model agent's scripts, in seconds. Its model calls
+    are limited by agent.llm.timeout_s and stall_retry_s (LLMConfig)."""
+    # A feature or probe on the screen rows - a sample of the model data:
+    # vectorised code takes seconds, so a long run means a loop over rows.
+    screen_s: float = 120.0
+    # Slower than this on the screen rows, a script is told to vectorise (a hint,
+    # not a limit).
+    slow_script_s: float = 30.0
+    # A linkage inside a run: the screen ids against the whole source.
+    linkage_s: float = 600.0
+    # Evaluate: each linkage and feature on all three full splits - every id
+    # against the whole extract.
+    eval_s: float = 3600.0
 
-    The agent reads the model database through the discovery section's screen
-    files, descriptions and few-shot rows; this section adds what it needs on
-    top - where the extra sources and the CAS scope live, where confirmed
-    linkage is kept, and how its code is run.
+
+@dataclass
+class AgentConfig:
+    """The model agent: what only it uses - how its code runs, what a direction
+    aims for, its screen gates, its model and its time limits.
+
+    The data it works on is described where the discovery pipeline reads it too:
+    the id format under data, the screen files, descriptions, shots and the
+    additional data (sources, linkage, CAS scope) under discovery.
     """
-    # Cached sources: <name>.parquet|csv beside <name>_data_sample.json (or
-    # <name>.json), the format {column: [description, [sample values]]}. The
-    # CAS scope files sit here too, matched by scope_glob.
-    additional_data_dir: Optional[str] = None
-    # The CAS scope: by default the *_flagged.csv exports in additional_data_dir,
-    # plus any scope files listed here, wherever they are.
-    scope_glob: str = "*_flagged.csv"
-    scope_paths: List[str] = field(default_factory=list)
-    # The user's own guidance on the scope - which tables to prefer, what a
-    # flag means, what is off limits. Read by the agent with the scope.
-    scope_notes_paths: List[str] = field(default_factory=list)
-    # Shot categories the user adds after the clustering shots
-    # (discovery.few_shot_path), in order: one markdown file each, with
-    # sections for the context, the ids, and whether every run sees the same
-    # examples or rotates through them by batch. See agent/tools/shots.py.
-    shot_spec_paths: List[str] = field(default_factory=list)
-    # Confirmed linkage, one <source>.py per source, reused across runs.
-    linkage_dir: Optional[str] = None
-    # How the model id encodes the join keys, in words the agent can act on.
-    id_format: str = ""
     # Where feature code runs, by default - each run may choose. pandas is faster on
     # one machine; spark reads a source in pieces and spills to disk, for data that
     # does not fit in memory.
@@ -451,10 +487,8 @@ class AgentConfig:
     # discovery.capture_percent) is above min_capture_gain.
     min_gini_gain: float = 0.0
     min_capture_gain: Optional[float] = None
-    code_timeout_s: float = 600.0      # a script on full data: linkage, evaluation
-    # A feature or probe on the screen rows - a sample of the model data: vectorised
-    # code takes seconds, so a long run means a loop over rows, and it is stopped.
-    screen_timeout_s: float = 120.0
+    # The time limits on its scripts; the model calls' are in llm.
+    timeouts: "TimeoutsConfig" = field(default_factory=lambda: TimeoutsConfig())
     max_turns: int = 200              # model calls per run, a backstop
     run_dir: str = "outputs/agent"
     llm: LLMConfig = field(default_factory=LLMConfig)
@@ -464,6 +498,8 @@ class AgentConfig:
     def __post_init__(self):
         if isinstance(self.llm, dict):
             self.llm = _subset(LLMConfig, self.llm)
+        if isinstance(self.timeouts, dict):
+            self.timeouts = _subset(TimeoutsConfig, self.timeouts)
 
 
 @dataclass

@@ -21,10 +21,11 @@ ones are whole sections, built in `sections.py`:
 |---|---|---|
 | `{skills}` | the run's skills, in full | `agent/skills/*.md` |
 | `{memory}` | what earlier directions proposed - not to be repeated | `agent/memory.py`: the run folder |
-| `{ideas}` | the ideas stage: the lenses, this run's focus, the L3 rule and the CAS list | `agent/tools/ideas.py` |
+| `{ideas}` | the ideas stage: the lenses, this run's focus, the L3 rule and the scope variables | `agent/tools/ideas.py` |
+| `{scopes}` | the scopes data may be requested from, by keyword, with their SQL dialect | `discovery.additional_data.scopes` |
 | `{current_data}` | the model columns and linked sources a challenge checks against | the workspace |
 | `{columns}` | the columns a feature script can read - base and the run's sources, with descriptions and examples | the workspace: column descriptions, sources' sample JSON |
-| `{scope_notes}` | the analyst's notes on the CAS scope, verbatim | Setup → Scope notes |
+| `{scope_notes}` | the analyst's notes on each scope, verbatim | Setup → Scope → Notes |
 | `{gates}` | the analyst's minimum gains, in words | the run's parameters |
 | `{quota}` | a mixed run's target, split across levels | the run's parameters |
 | `{shot_list}` | the shot categories | Setup → Shots |

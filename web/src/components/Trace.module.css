@@ -120,6 +120,7 @@
 .checkLabel { font-size: 9.5px; text-transform: uppercase; letter-spacing: 0.4px; color: var(--j-sys-dim); }
 .checkValue { font-family: var(--j-font-mono); color: var(--j-sys-head); }
 .checkBad .checkValue { color: #fca5a5; }
+.scaleNote { margin: 0 11px 10px; padding: 7px 10px; border-radius: 8px; background: #2a1618; color: #fca5a5; line-height: 1.45; }
 
 .gap { padding: 0 11px 10px; color: var(--j-sys-text-strong); line-height: 1.5; white-space: pre-wrap; }
 .sqlHead { display: flex; justify-content: space-between; align-items: center; padding: 6px 11px; font-size: var(--j-fs-meta); color: var(--j-sys-dim); border-top: 1px solid var(--j-sys-rule); }

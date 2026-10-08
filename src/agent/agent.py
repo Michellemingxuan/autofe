@@ -22,6 +22,7 @@ from agents.exceptions import ModelBehaviorError
 
 from agent import tools
 from agent.llm import build_model
+from agent.tools.linkage import ensure_linked
 from agent.composer import compose, message
 from agent.session import Session
 from agent.tools.ideas import record_ideas
@@ -173,8 +174,9 @@ async def _direction(session: Session) -> None:
     """A direction, in rounds within one conversation: ideas, then proposals on them
     until the round's ideas are used - then the next round's ideas, knowing what
     worked - until the report."""
-    items = await _ideas_stage(session, message("direction", direction=session.direction)
-                               + "\n\n" + message("ideas"))
+    start = (message("explore") if session.explore
+             else message("direction", direction=session.direction))
+    items = await _ideas_stage(session, start + "\n\n" + message("ideas"))
     while not session.cancelled:
         names = ", ".join(i["name"] for i in session.round_ideas) or "none passed the checks"
         items = await _run_stage(session, items + [{"role": "user",
@@ -196,10 +198,13 @@ def _next_round(session: Session) -> str:
                for e in session.ledger if not e.get("verified")]
               + [f"{r['source_name']} - dropped: the current data covers it"
                  for r in session.data_requests if r.get("status") == "dropped"])
-    return message("next_round", round=session.round + 1, budget=session.budget(),
+    text = message("next_round", round=session.round + 1, budget=session.budget(),
                    worked=", ".join(worked) or "nothing yet",
                    failed="; ".join(failed[-8:]) or "nothing", n=ideas_in_round(session),
                    most=session.params.ideas_per_round)
+    if session.explore:
+        text += "\nThis round's theme first: call draw_theme, then give ideas about it."
+    return text
 
 
 # Tool results the model sees in full: the latest ones. Older results are cut to
@@ -284,6 +289,11 @@ def run_direction(session: Session) -> Session:
     session.ideas_required = session.kind == "direction"
     session.gated = session.kind == "direction"
     session.start()
+    if session.kind == "direction":
+        # Linked first, so the brief lists the columns the linkage really returns.
+        for source in session.params.sources:
+            if session.ws.linkage_path(source).exists():
+                ensure_linked(session, source)
     # The run keeps the brief it was given - the prompt, as the model read it.
     (session.run_dir / "brief.md").write_text(compose(session))
     try:

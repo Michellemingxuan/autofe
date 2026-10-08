@@ -1,3 +1,4 @@
+import { scopeOf } from './types'
 import type {
   ApprovalCard, CodeCard, DataRequest, EvalView, Ev, LedgerRow, RefusedTry, RunView, Step, StepKind,
   ToolUse, TraceItem,
@@ -24,7 +25,7 @@ export function deriveRun(events: Ev[]): RunView {
   if (isL3(events)) return deriveL3(events)
   const view: RunView = {
     direction: '', K: 0, params: null, startTs: 0, steps: [], ledger: [], requests: [], skills: [],
-    pending: [], status: 'idle', stoppedBecause: null, codeCount: 0,
+    pending: [], status: 'idle', stoppedBecause: null, codeCount: 0, explore: false, themes: [],
   }
   const codes = new Map<string, CodeCard>()
   const approvals = new Map<string, ApprovalCard>()
@@ -68,6 +69,11 @@ export function deriveRun(events: Ev[]): RunView {
         view.maxAttempts = e.max_attempts ?? undefined
         view.startTs = e.ts
         view.status = 'running'
+        view.explore = !!e.explore
+        break
+
+      case 'theme_drawn':                    // an open exploration's theme for a round
+        view.themes.push({ round: e.round, theme: e.theme, exploredBefore: e.explored_before ?? 0 })
         break
 
       case 'agent_message': {
@@ -164,7 +170,7 @@ export function deriveRun(events: Ev[]): RunView {
       }
 
       case 'ideas_recorded': {
-        const step = open('ideas', `${e.round ? `round ${e.round} · ` : ''}${e.ideas.length} ideas · ${new Set(e.ideas.map((i: any) => i.lens)).size} lenses`)
+        const step = open('ideas', `${e.round ? `round ${e.round} · ` : ''}${e.theme ? `${e.theme} · ` : ''}${e.ideas.length} ideas · ${new Set(e.ideas.map((i: any) => i.lens)).size} lenses`)
         step.items.push({ kind: 'ideas', seq: e.seq, focus: e.focus ?? [], ideas: e.ideas })
         close('done')
         break
@@ -240,7 +246,7 @@ export function deriveRun(events: Ev[]): RunView {
         const request: DataRequest = {
           intent: e.intent, source_name: e.source_name, gap: e.gap, features: e.features ?? '',
           sql: e.sql ?? '', tables: e.tables ?? [], columns: e.columns ?? [], status: e.status,
-          scope: e.scope ?? 'cas', data: e.data ?? '',
+          scope: scopeOf(e), data: e.data ?? '',
         }
         view.requests.push(request)
         const step = at.step && !at.step.request && at.step.kind !== 'summary' && at.step.kind !== 'stage'
@@ -248,6 +254,12 @@ export function deriveRun(events: Ev[]): RunView {
         step.kind = 'l3'
         step.title = e.source_name
         step.request = request
+        break
+      }
+
+      case 'request_deleted': {
+        const request = view.requests.find((r) => r.intent === e.intent)
+        if (request) request.deleted = true
         break
       }
 
@@ -288,7 +300,7 @@ export function deriveRun(events: Ev[]): RunView {
         if (l3 && !view.requests.length) {
           step.items.push({ kind: 'note', seq: e.seq, tone: 'error',
             text: 'No data requests were proposed. The agent explains why below - if it did not '
-                + 'consider the unused CAS variables, try a more specific direction.' })
+                + 'consider the unused scope variables, try a more specific direction.' })
         }
         break
       }
@@ -318,7 +330,7 @@ export function deriveRun(events: Ev[]): RunView {
         if (l3 && !view.requests.length) {
           step.items.push({ kind: 'note', seq: e.seq, tone: 'error',
             text: 'No data requests were proposed. The agent explains why below - if it did not '
-                + 'consider the unused CAS variables, try a more specific direction.' })
+                + 'consider the unused scope variables, try a more specific direction.' })
         }
         step.note = `${e.stopped_because} · ${e.verified.length} verified of ${e.intents_used}/${e.K}`
         close('done')
@@ -396,6 +408,9 @@ export function deriveEval(events: Ev[]): EvalView {
         view.status = 'error'
         view.error = e.error
         break
+      case 'eval_stopped':
+        view.status = 'stopped'
+        break
       case 'variant_removed':                 // taken off the results by the user
         view.rows = view.rows.filter((r) => r.variant !== e.variant)
         break
@@ -423,7 +438,7 @@ const isL3 = (events: Ev[]) => {
 export function deriveL3(events: Ev[]): RunView {
   const view: RunView = {
     direction: '', K: 0, params: null, startTs: 0, steps: [], ledger: [], requests: [], skills: [],
-    pending: [], status: 'idle', stoppedBecause: null, codeCount: 0,
+    pending: [], status: 'idle', stoppedBecause: null, codeCount: 0, explore: false, themes: [],
   }
   const byIntent = new Map<string, Step>()
   const calls = new Map<string, { use: ToolUse; step: Step | null; args: any }>()
@@ -464,6 +479,11 @@ export function deriveL3(events: Ev[]): RunView {
         view.maxAttempts = e.max_attempts ?? undefined
         view.startTs = e.ts
         view.status = 'running'
+        view.explore = !!e.explore
+        break
+
+      case 'theme_drawn':                    // an open exploration's theme for a round
+        view.themes.push({ round: e.round, theme: e.theme, exploredBefore: e.explored_before ?? 0 })
         break
 
       case 'agent_message':
@@ -474,7 +494,7 @@ export function deriveL3(events: Ev[]): RunView {
         const request: DataRequest = {
           intent: e.intent, source_name: e.source_name, gap: e.gap, features: e.features ?? '',
           sql: e.sql ?? '', tables: e.tables ?? [], columns: e.columns ?? [], status: e.status,
-          scope: e.scope ?? 'cas', data: e.data ?? '',
+          scope: scopeOf(e), data: e.data ?? '',
         }
         view.requests.push(request)
         const step = withWords(push('l3', e.source_name))
@@ -491,11 +511,17 @@ export function deriveL3(events: Ev[]): RunView {
       }
 
       case 'ideas_recorded': {
-        const step = withWords(push('ideas', `${e.round ? `round ${e.round} · ` : ''}${e.ideas.length} ideas · ${new Set(e.ideas.map((i: any) => i.lens)).size} lenses`))
+        const step = withWords(push('ideas', `${e.round ? `round ${e.round} · ` : ''}${e.theme ? `${e.theme} · ` : ''}${e.ideas.length} ideas · ${new Set(e.ideas.map((i: any) => i.lens)).size} lenses`))
         step.items.push({ kind: 'ideas', seq: e.seq, focus: e.focus ?? [], ideas: e.ideas })
         step.status = 'done'
         ideasStep = step
         explore = null
+        break
+      }
+
+      case 'request_deleted': {
+        const request = view.requests.find((r) => r.intent === e.intent)
+        if (request) request.deleted = true
         break
       }
 

@@ -241,13 +241,13 @@ function RequestBody({ request: r }: { request: DataRequest }) {
       )}
       {r.sql ? (
         <>
-          <div className={s.field}><span className={s.fieldLabel}>Reads</span>
+          <div className={s.field}><span className={s.fieldLabel}>Reads · {r.scope}</span>
             <div className={s.chips}>{r.tables.map((t) => <code key={t}>{t}</code>)}
               {(r.columns ?? []).map((x) => <code key={x} className={s.colChip}>{x}</code>)}</div></div>
           <SqlBlock title="SQL · validated" sql={r.sql} />
         </>
       ) : (
-        <div className={s.field}><span className={s.fieldLabel}>Beyond CAS</span>
+        <div className={s.field}><span className={s.fieldLabel}>Beyond scope</span>
           <div className={s.fieldText}>{r.data}</div></div>
       )}
       {c && (
@@ -275,7 +275,7 @@ function RequestBody({ request: r }: { request: DataRequest }) {
 function L3Summary({ step, requests }: { step: Step; requests: DataRequest[] }) {
   const [copied, setCopied] = useState(false)
   const prose = (step.summary ?? '').split('\n\nChallenge:')[0].trim()
-  const kept = requests.filter((r) => r.status === 'kept')
+  const kept = requests.filter((r) => r.status === 'kept' && !r.deleted)
   const dropped = requests.filter((r) => r.status === 'dropped')
   const open = requests.filter((r) => r.status === 'proposed')
   const inCas = kept.filter((r) => r.sql)
@@ -286,7 +286,7 @@ function L3Summary({ step, requests }: { step: Step; requests: DataRequest[] }) 
       {prose && <div className={s.summary}>{prose}</div>}
       {inCas.length > 0 && (
         <div className={s.keptHead}>
-          <span>Validated SQL · {inCas.length} kept request{inCas.length > 1 ? 's' : ''} within CAS</span>
+          <span>Validated SQL · {inCas.length} kept request{inCas.length > 1 ? 's' : ''} within a scope</span>
           <button className={s.copy} onClick={() => { navigator.clipboard?.writeText(all); setCopied(true) }}>
             {copied ? 'copied' : 'copy all'}</button>
         </div>
@@ -294,7 +294,7 @@ function L3Summary({ step, requests }: { step: Step; requests: DataRequest[] }) 
       {inCas.map((r) => <SqlBlock key={r.intent} title={`${r.intent} · ${r.source_name}`} sql={r.sql} />)}
       {beyond.length > 0 && (
         <>
-          <div className={s.keptHead}><span>Beyond CAS · {beyond.length} kept idea{beyond.length > 1 ? 's' : ''}, the data each needs</span></div>
+          <div className={s.keptHead}><span>Beyond scope · {beyond.length} kept idea{beyond.length > 1 ? 's' : ''}, the data each needs</span></div>
           {beyond.map((r) => (
             <div key={r.intent} className={s.field}>
               <span className={s.fieldLabel}>{r.intent} · {r.source_name}</span>
@@ -360,7 +360,7 @@ function Item({ item, job }: { item: TraceItem; job: Job }) {
                   <div className={s.ideaHead}>
                     {i.name && <span className={s.ideaName}>{i.name}</span>}
                     {i.level && <span className={s.ideaLevel}>{i.level}</span>}
-                    {i.beyond_cas && <span className={s.ideaLevel}>beyond CAS</span>}
+                    {(i.beyond_scope || i.beyond_cas) && <span className={s.ideaLevel}>beyond scope</span>}
                     <code className={`${s.lens} ${item.focus.includes(i.lens) ? s.lensFocus : ''}`}>{i.lens}</code>
                     {proposed && <span className={s.ideaProposed}>→ {proposed}</span>}
                   </div>
@@ -438,7 +438,12 @@ function Approval({ card, job }: { card: ApprovalCard; job: Job }) {
             <Check label="point-in-time violations" value={p.point_in_time_violations}
                    bad={p.point_in_time_violations > 0} />
             <Check label="rule" value={`${p.time_column} ${p.rule === 'strict' ? '<' : '≤'} as_of`} />
+            {p.events_per_id != null && <Check label="events per id" value={p.events_per_id} />}
+            {p.rows_at_full_size != null &&
+              <Check label="at full size" bad={!!p.scale}
+                     value={`${p.rows_at_full_size.toLocaleString()} rows, ${p.gb_at_full_size} GB`} />}
           </div>
+          {p.scale && <div className={s.scaleNote}>{p.scale}</div>}
           <pre className={s.src}>{p.code}</pre>
           <pre className={s.out}>{p.head}</pre>
         </>
@@ -448,7 +453,7 @@ function Approval({ card, job }: { card: ApprovalCard; job: Job }) {
           {p.sql ? (
             <>
               <div className={s.sqlHead}>
-                <span>BigQuery SQL</span>
+                <span>SQL</span>
                 <button className={s.copy} onClick={() => {
                   navigator.clipboard?.writeText(p.sql)
                   setCopied(true)
@@ -457,7 +462,7 @@ function Approval({ card, job }: { card: ApprovalCard; job: Job }) {
               <pre className={s.src}>{p.sql}</pre>
             </>
           ) : (
-            <div className={s.gap}><b>Beyond the CAS scope - the data it needs:</b> {p.data}</div>
+            <div className={s.gap}><b>Beyond scope - the data it needs:</b> {p.data}</div>
           )}
           {card.resolved?.approved && p.sql && (
             <div className={s.next}>
@@ -513,16 +518,17 @@ function RequestCard({ request: r }: { request: DataRequest }) {
   const [copied, setCopied] = useState(false)
   const features = r.features.split('\n').map((x) => x.replace(/^[-*\s]+/, '').trim()).filter(Boolean)
   return (
-    <div className={`${s.request} ${r.status === 'dropped' ? s.requestDropped : ''}`}>
+    <div className={`${s.request} ${r.status === 'dropped' || r.deleted ? s.requestDropped : ''}`}>
       <div className={s.requestHead}>
         <span className={s.requestName}>{r.source_name}</span>
         {r.status !== 'proposed' && (
           <span className={`${s.verdict} ${r.status === 'dropped' ? s.verdict_constructible : s.verdict_new}`}>{r.status}</span>
         )}
+        {r.deleted && <span className={`${s.verdict} ${s.verdict_dropped}`}>removed from the request set</span>}
         {r.sql
-          ? <span className={s.requestTables}>reads {r.tables.map((t) => <code key={t}>{t}</code>)}
+          ? <span className={s.requestTables}>{r.scope} · reads {r.tables.map((t) => <code key={t}>{t}</code>)}
               {r.columns && r.columns.length > 0 && <> · columns {r.columns.map((c) => <code key={c}>{c}</code>)}</>}</span>
-          : <span className={s.requestTables}>beyond CAS</span>}
+          : <span className={s.requestTables}>beyond scope</span>}
       </div>
       <div className={s.requestWhy}>{r.gap}</div>
       {features.length > 0 && (
@@ -534,7 +540,7 @@ function RequestCard({ request: r }: { request: DataRequest }) {
       {r.sql ? (
         <>
           <div className={s.sqlHead}>
-            <span>BigQuery SQL</span>
+            <span>SQL · {r.scope}</span>
             <button className={s.copy} onClick={() => { navigator.clipboard?.writeText(r.sql); setCopied(true) }}>
               {copied ? 'copied' : 'copy'}</button>
           </div>

@@ -54,6 +54,17 @@ export function RunPage({ runId, onChange, onDeleted, onRerun }: {
           </div>
           {/* The direction can be a paragraph: up to two lines, the rest on hover. */}
           <div className={s.direction} title={view.direction}>{view.direction || 'Loading…'}</div>
+          {view.explore && (
+            <div className={s.themes} title="An open exploration: the agent draws a theme per round, the least explored first">
+              {view.themes.length
+                ? view.themes.map((t) => (
+                    <span key={t.round} className={s.theme}>
+                      <i>round {t.round}</i>{t.theme}
+                      {t.exploredBefore > 0 && <i> · explored {t.exploredBefore}× before</i>}
+                    </span>))
+                : <span className={s.themeWait}>drawing the first theme…</span>}
+            </div>
+          )}
           {p && (
             <div className={s.params}>
               <span>{p.model}</span><span>{p.engine}</span>
@@ -87,7 +98,7 @@ export function RunPage({ runId, onChange, onDeleted, onRerun }: {
             {!live && view.status !== 'idle' && view.params && (
               <button className={s.action} title="Open the direction form, filled in - the new run replaces this one"
                       onClick={() => {
-                        rerunDraft.set({ direction: view.direction, params: view.params!, replaces: runId })
+                        rerunDraft.set({ direction: view.explore ? '' : view.direction, params: view.params!, replaces: runId })
                         onRerun()
                       }}>Re-run</button>
             )}

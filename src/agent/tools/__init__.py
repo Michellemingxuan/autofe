@@ -4,7 +4,7 @@
     shots      shots                                    labelled examples by category, rotated
     linkage    propose_linkage                          join a source, point in time
     screen     screen_feature                           build + score one feature
-    data_pull  screen_request · propose_new_data        L3: data within the CAS scope (SQL) or beyond it
+    data_pull  screen_request · propose_new_data        L3: data within a scope (SQL) or beyond scope
     challenge  challenge_request                        L3: record a verdict, run its construction
     report     report_findings                          end the run with a summary
 
@@ -47,7 +47,7 @@ TOOLSETS = {
     "l3": ("catalog", "scope", "sample_rows", "shots", "run_probe", "screen_request",
            "propose_new_data", "challenge_request", "report_findings"),
     # Before any of them: the ideas stage, which looks and answers with ideas.
-    "ideas": ("catalog", "scope", "sample_rows", "shots", "run_probe"),
+    "ideas": ("draw_theme", "catalog", "scope", "sample_rows", "shots", "run_probe"),
 }
 END_TOOL = "report_findings"
 
@@ -58,13 +58,14 @@ class Idea(BaseModel):
     level: str = Field(description="L1, L2 or L3 - one of the levels this run allows")
     lens: str = Field(description="one of the brief's lenses")
     description: str = Field(description="what it measures, and why it should carry default risk")
-    data: str = Field(description="the columns and sources it uses. For L3 within the CAS "
-                                  "scope: the CAS variables it needs, spelled exactly as "
-                                  "scope() lists them. Beyond it: the data and where it would "
+    data: str = Field(description="the columns and sources it uses. For L3 within a scope: "
+                                  "the scope variables it needs, spelled exactly as scope() "
+                                  "lists them. Beyond scope: the data and where it would "
                                   "come from")
-    beyond_cas: bool = Field(description="L3 only: true when the data lies outside the CAS "
-                                         "scope - external information, strategies applied "
-                                         "(RLA), calling or contact history, ...; false otherwise")
+    beyond_scope: bool = Field(description="L3 only: true when the data lies outside every "
+                                           "scope - external information, strategies applied "
+                                           "(RLA), calling or contact history, ...; false "
+                                           "otherwise")
 
 
 class Ideas(BaseModel):
@@ -83,7 +84,7 @@ def for_agent(session: Session, toolset: str | None = None) -> list[Any]:
 
     @function_tool(name_override="catalog")
     def _catalog(query: str = "") -> str:
-        """Search model columns, extra sources and the CAS scope; empty query = overview.
+        """Search model columns, extra sources and the scopes; empty query = overview.
 
         Args:
             query: keywords, e.g. "payment returned".
@@ -91,15 +92,17 @@ def for_agent(session: Session, toolset: str | None = None) -> list[Any]:
         return _dump(catalog(session, query))
 
     @function_tool(name_override="scope")
-    def _scope(query: str = "", status: str = "", table: str = "") -> str:
-        """The CAS variables: name, table, description, and whether the model uses them.
+    def _scope(query: str = "", status: str = "", table: str = "", scope_name: str = "") -> str:
+        """The scopes' variables: scope, name, table, description, and whether the model
+        uses them.
 
         Args:
             query: keywords in a variable's name or description, e.g. "decline".
             status: in_model, in_model_unused, or unused_raw (not used by the model).
-            table: one CAS table.
+            table: one table.
+            scope_name: one scope, by its keyword - CAS, say. Empty = every scope.
         """
-        return _dump(scope(session, query, status, table))
+        return _dump(scope(session, query, status, table, scope_name))
 
     @function_tool(name_override="sample_rows")
     def _sample_rows(source: str = "model_database", n: int = 5,
@@ -160,11 +163,13 @@ def for_agent(session: Session, toolset: str | None = None) -> list[Any]:
 
     @function_tool(name_override="screen_request")
     def _screen_request(gap: str, sql: str, source_name: str, features: str = "") -> str:
-        """L3: propose a data pull from the CAS scope - the rationale and the BigQuery SQL.
+        """L3: propose a data pull from a scope - the rationale and the SQL over its tables,
+        in the scope's SQL dialect (the brief names it). The scope is the one its tables
+        belong to.
 
         Args:
             gap: the rationale - what is missing, and why the direction needs it.
-            sql: the BigQuery SQL; select only the key, the event date and the needed columns.
+            sql: the SQL; select only the key, the event date and the needed columns.
             source_name: snake_case name for the new source.
             features: the features this data would enable, one per line.
         """
@@ -172,7 +177,7 @@ def for_agent(session: Session, toolset: str | None = None) -> list[Any]:
 
     @function_tool(name_override="propose_new_data")
     def _propose_new_data(gap: str, source_name: str, data: str, features: str = "") -> str:
-        """L3 beyond the CAS scope: propose data the bank or the market may hold outside CAS -
+        """L3 beyond scope: propose data the bank or the market may hold outside every scope -
         external information, strategies applied (RLA), calling or contact history ... No SQL:
         the idea is the deliverable. It is challenged like any request.
 
@@ -213,10 +218,19 @@ def for_agent(session: Session, toolset: str | None = None) -> list[Any]:
         """
         return _dump(report_findings(session, summary))
 
-    tools = {"catalog": _catalog, "scope": _scope, "sample_rows": _sample_rows, "shots": _shots,
+    @function_tool(name_override="draw_theme")
+    def _draw_theme() -> str:
+        """An open exploration - no direction from the user: draw this round's theme from
+        the pool, the one earlier runs explored least. Give the round's ideas about it."""
+        from agent.themes import draw_theme
+
+        return _dump(draw_theme(session))
+
+    tools = {"draw_theme": _draw_theme, "catalog": _catalog, "scope": _scope, "sample_rows": _sample_rows, "shots": _shots,
              "run_probe": _run_probe,
              "propose_linkage": _propose_linkage, "screen_feature": _screen_feature,
              "screen_request": _screen_request, "propose_new_data": _propose_new_data,
              "challenge_request": _challenge_request,
              "report_findings": _report_findings}
-    return [tools[name] for name in TOOLSETS[toolset or ("l3" if session.l3_only else session.kind)]]
+    names = TOOLSETS[toolset or ("l3" if session.l3_only else session.kind)]
+    return [tools[name] for name in names if name != "draw_theme" or session.explore]

@@ -1,28 +1,30 @@
-"""L3: ask for data nobody has - within the CAS scope as SQL, beyond it as an idea.
+"""L3: ask for data nobody has - within a scope as SQL, beyond scope as an idea.
 
-Two kinds of request, both challenged (``agent.tools.challenge``):
+A scope is a set of tables data may be pulled from, named by a keyword - CAS,
+say - and described by variable lists the analyst provides (``discovery.additional_data.scopes``). Two kinds of request, both
+challenged (``agent.tools.challenge``):
 
-* **Within the CAS scope** (``screen_request``) - a rationale plus BigQuery SQL,
-  screened against the CAS column lists before it costs anything (below).
-* **Beyond the CAS scope** (``propose_new_data``) - external information, the
-  strategies applied to an account (RLA), calling and contact history, and any
-  other data the bank holds outside CAS: a rationale, the data and where it would
-  come from, the features it enables. No SQL - nobody here knows those tables, so
-  the creative idea is the deliverable, and there is nothing to screen.
+* **Within a scope** (``screen_request``) - a rationale plus SQL over the scope's
+  tables, screened against its column lists before it costs anything (below).
+* **Beyond scope** (``propose_new_data``) - external information, the strategies
+  applied to an account (RLA), calling and contact history, and any other data
+  held outside every scope: a rationale, the data and where it would come from,
+  the features it enables. No SQL - nobody here knows those tables, so the
+  creative idea is the deliverable, and there is nothing to screen.
 
 Two ways a run uses it:
 
 * **Alongside features** (L3 with L1/L2) and **in a data-request run** (L3 only)
   alike - nothing waits for the analyst. Each proposal is recorded - rationale, the features it would enable, the SQL,
-  the CAS tables it reads - as one attempt. The agent then challenges it
+  the scope and tables it reads - as one attempt. The agent then challenges it
   itself: can it be built from the current data? (``agent.tools.challenge``)
   It is kept or dropped; the run's summary carries the kept requests' SQL, and
   the analyst reviews kept and dropped in ``data_requests.md``.
 
-Either way the SQL is read first, against the CAS column lists the analyst
+Either way the SQL is read first, against the column lists the analyst
 provided, and sent back to the agent to fix - before it costs anything - if:
 
-* it reads a table that is not in the CAS scope;
+* it reads a table that is in no scope, or tables of two scopes;
 * it uses a column that table does not have (an invented ``customer_id`` or
   ``as_of_date`` is the usual slip);
 * it selects none of the table's customer / account / card identifiers, so the
@@ -94,8 +96,20 @@ def sql_columns(sql: str) -> set[str]:
     return found
 
 
+BEYOND = "beyond_scope"
+
+
+def request_scope(r: dict[str, Any]) -> str:
+    """The scope a request reads, by keyword - or beyond_scope. A record from before
+    scopes had keywords says cas or beyond_cas."""
+    scope = r.get("scope")
+    if scope in (BEYOND, "beyond_cas") or (not scope and not r.get("sql")):
+        return BEYOND
+    return "CAS" if scope in (None, "", "cas") else str(scope)
+
+
 def _check_columns(session: Session, sql: str, tables: list[str]) -> str | None:
-    """Columns, identifier and partition filter, against the provided CAS columns."""
+    """Columns, identifier and partition filter, against the scope's columns."""
     profiles = [session.ws.table_profile(t.split(".")[-1]) for t in tables]
     known = {c.lower() for p in profiles for c in p["columns"]}
     if not known:
@@ -107,7 +121,7 @@ def _check_columns(session: Session, sql: str, tables: list[str]) -> str | None:
         keys = "; ".join(f"{p['table']}: identifiers {p['identifiers'][:6]}, partition date "
                          f"{p['partition']}" for p in profiles)
         return (f"columns not in {[p['table'] for p in profiles]}: {unknown}. Use only the "
-                f"provided CAS columns. To link and filter, use {keys}; scope(table=...) "
+                f"provided scope columns. To link and filter, use {keys}; scope(table=...) "
                 "lists every column.")
     used = sql_columns(sql)
     identifiers = {c.lower() for p in profiles for c in p["identifiers"]}
@@ -120,7 +134,7 @@ def _check_columns(session: Session, sql: str, tables: list[str]) -> str | None:
     for p in profiles:
         if p["partition"] and not any(re.search(rf"\b{re.escape(c)}\b", where, re.I) for c in p["partition"]):
             return (f"filter {p['table']} on its partition date {p['partition']} in WHERE - "
-                    "the CAS tables are very large; limit it to the model sample's date range")
+                    "these tables are very large; limit it to the model sample's date range")
     return None
 
 
@@ -149,7 +163,7 @@ def _can_propose(session: Session, source_name: str) -> dict[str, Any] | None:
 
 def propose_new_data(session: Session, gap: str, source_name: str, data: str,
                      features: str = "") -> dict[str, Any]:
-    """Propose data beyond the CAS scope: why, what data and from where, what it
+    """Propose data beyond scope: why, what data and from where, what it
     enables. No SQL and nothing to screen - it goes straight to the challenge."""
     if (problem := _can_propose(session, source_name)):
         return problem
@@ -157,14 +171,14 @@ def propose_new_data(session: Session, gap: str, source_name: str, data: str,
         return {"ok": False, "error": "say what data it needs and where it would come from - "
                                       "the system or team that holds it, the grain, the history. "
                                       "Nothing was spent."}
-    payload = {"scope": "beyond_cas", "gap": gap, "data": data.strip(), "sql": "",
+    payload = {"scope": BEYOND, "gap": gap, "data": data.strip(), "sql": "",
                "source_name": source_name, "features": features, "tables": [], "columns": []}
     return _propose(session, payload)
 
 
 def screen_request(session: Session, gap: str, sql: str, source_name: str,
                       features: str = "") -> dict[str, Any]:
-    """Propose a data pull within the CAS scope: why, what it enables, and the SQL."""
+    """Propose a data pull within a scope: why, what it enables, and the SQL."""
     if (problem := _can_propose(session, source_name)):
         return problem
     tables = sql_tables(sql)
@@ -173,8 +187,12 @@ def screen_request(session: Session, gap: str, sql: str, source_name: str,
     unknown = _unknown(session, tables)
     if unknown:
         known = sorted(session.ws.scope()["table"].dropna().unique().tolist())
-        return {"ok": False, "error": f"not in the CAS scope: {unknown}; the scope's tables "
+        return {"ok": False, "error": f"in no scope: {unknown}; the scopes' tables "
                                       f"are {known[:20]}. Fix the SQL - nothing was spent."}
+    scopes = sorted({session.ws.scope_of(t.split(".")[-1]) or "" for t in tables} - {""})
+    if len(scopes) > 1:
+        return {"ok": False, "error": f"the SQL reads tables of {scopes}: a request reads one "
+                                      "scope - split it in two. Nothing was spent."}
 
     if (problem := _check_columns(session, sql, tables)):
         return {"ok": False, "error": problem + " Nothing was spent."}
@@ -183,7 +201,9 @@ def screen_request(session: Session, gap: str, sql: str, source_name: str,
         return {"ok": False, "error": f"this asks for {twin}. Nothing was spent - ask for "
                                       "different data, or build on what is already requested."}
 
-    payload = {"scope": "cas", "gap": gap, "data": "", "sql": sql.strip(),
+    # No variable lists to place the tables: the first scope configured.
+    scope = scopes[0] if scopes else next(iter(session.ws.scopes), "")
+    payload = {"scope": scope, "gap": gap, "data": "", "sql": sql.strip(),
                "source_name": source_name, "features": features, "tables": tables,
                "columns": sorted(sql_columns(sql))}
     return _propose(session, payload)
@@ -212,56 +232,59 @@ def save_requests(session: Session) -> None:
     folder.mkdir(exist_ok=True)
     for r in session.data_requests:
         name = (f"{r['intent']}_" if r.get("intent") else "") + f"{r['source_name']}.sql"
-        if not r.get("sql"):                                  # beyond CAS: an idea, no SQL
+        if not r.get("sql"):                                  # beyond scope: an idea, no SQL
             continue
-        if r.get("status") == "dropped":
+        if r.get("status") == "dropped" or r.get("deleted"):
             (folder / name).unlink(missing_ok=True)          # only kept requests get a file
             continue
         (folder / name).write_text(f"-- {r['gap'].strip()}\n{r['sql'].strip()}\n")
     write_requests_report(session)
 
 
+def request_lines(r: dict[str, Any], heading: str = "##") -> list[str]:
+    """One request in markdown: why, what it enables, what it reads or needs, the
+    challenge, and its SQL."""
+    lines = [f"{heading} {r.get('intent', '')} `{r['source_name']}`", "",
+             "**Why it is needed**", "", r["gap"].strip(), ""]
+    if r.get("features"):
+        lines += ["**Features it would enable**", "", str(r["features"]).strip(), ""]
+    if r.get("sql"):
+        lines += [f"**Reads** ({request_scope(r)}) {', '.join(f'`{t}`' for t in r.get('tables', []))}"
+                  + (f" - columns {', '.join(f'`{c}`' for c in r['columns'])}"
+                     if r.get("columns") else ""), ""]
+    else:
+        lines += ["**Beyond scope - the data it needs**", "",
+                  str(r.get("data", "")).strip(), ""]
+    c = r.get("challenge")
+    if c:
+        lines += [f"**Challenge - can it be built from current data?** {c['verdict']}", "",
+                  c.get("reasoning", ""), ""]
+        if c.get("note"):
+            lines += [f"_{c['note']}_", ""]
+        if c.get("code"):
+            state = "ran on the screen rows" if c.get("code_ok") else "did not run"
+            lines += [f"Construction from current data ({state}):", "", "```python",
+                      c["code"], "```", ""]
+    if r.get("sql"):
+        lines += ["```sql", r["sql"].strip(), "```", ""]
+    return lines
+
+
 def write_requests_report(session: Session) -> str:
     """Every request as one markdown document - kept first, then dropped and why."""
-    kept = [r for r in session.data_requests if r.get("status") != "dropped"]
-    dropped = [r for r in session.data_requests if r.get("status") == "dropped"]
+    requests = [r for r in session.data_requests if not r.get("deleted")]
+    kept = [r for r in requests if r.get("status") != "dropped"]
+    dropped = [r for r in requests if r.get("status") == "dropped"]
     lines = [f"# Data requests - {session.direction}", "",
              f"Run `{session.run_id}` · {len(kept)} kept, {len(dropped)} dropped by the "
              "challenge (can be built from current data)", ""]
-
-    def challenge_lines(r: dict[str, Any]) -> list[str]:
-        c = r.get("challenge")
-        if not c:
-            return []
-        out = [f"**Challenge - can it be built from current data?** {c['verdict']}", "",
-               c.get("reasoning", ""), ""]
-        if c.get("note"):
-            out += [f"_{c['note']}_", ""]
-        if c.get("code"):
-            state = "ran on the screen rows" if c.get("code_ok") else "did not run"
-            out += [f"Construction from current data ({state}):", "", "```python",
-                    c["code"], "```", ""]
-        return out
 
     for title, group in (("Kept", kept), ("Dropped", dropped)):
         if not group:
             continue
         lines += [f"# {title}", ""]
         for r in group:
-            lines += [f"## {r.get('intent', '')} `{r['source_name']}`", "",
-                      "**Why it is needed**", "", r["gap"].strip(), ""]
-            if r.get("features"):
-                lines += ["**Features it would enable**", "", str(r["features"]).strip(), ""]
-            if r.get("sql"):
-                lines += [f"**Reads** {', '.join(f'`{t}`' for t in r.get('tables', []))}"
-                          + (f" - columns {', '.join(f'`{c}`' for c in r['columns'])}"
-                             if r.get("columns") else ""), ""]
-            else:
-                lines += ["**Beyond the CAS scope - the data it needs**", "",
-                          str(r.get("data", "")).strip(), ""]
-            lines += challenge_lines(r)
-            if r.get("sql"):
-                lines += ["```sql", r["sql"].strip(), "```", ""]
+            lines += request_lines(r)
     text = "\n".join(lines)
     (session.run_dir / "data_requests.md").write_text(text)
     return text

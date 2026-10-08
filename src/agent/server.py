@@ -16,6 +16,8 @@ The contract, page by page (``web/src/api.ts`` calls exactly these;
    POST   /api/setup              {values}    apply - only if the workspace loads
    POST   /api/setup/reset                    back to the config file
    POST   /api/setup/check        {paths}     which paths exist
+   GET    /api/themes                         the theme pool, each theme's runs, stale?
+   POST   /api/themes                         make it again (from the task description)
    POST   /api/uploads            file, kind  keep a small file; returns its path
    POST   /api/shots/clustering   {shots, batches}   generate the clustering shots
    POST   /api/shots/categories   {name, context, ids | table, rotate, batch_size}
@@ -31,16 +33,21 @@ The contract, page by page (``web/src/api.ts`` calls exactly these;
 2. Discover
    GET    /api/runs
    POST   /api/runs               {direction, params, replaces?}   start - or re-run, replacing
-                                               an earlier run: its features leave the pool
+                                               an earlier run: its features leave the pool.
+                                               No direction: an open exploration, the
+                                               agent drawing a theme from the pool per round
    DELETE /api/runs/<id>
    GET    /api/runs/<id>/stream               SSE
    POST   /api/runs/<id>/approvals/<req>      {approved, note}
    POST   /api/runs/<id>/cancel
    DELETE /api/runs/<id>/intents/<name>       drop one feature from the pool
+   DELETE /api/runs/<id>/requests/<intent>    drop one data request from the request set
    GET    /api/runs/<id>/requests.md          a data-request run's requests, to download
 
 3. Evaluate
    GET    /api/features                       every verified feature of every run
+   GET    /api/requests                       every kept data request of every run
+   GET    /api/requests.md                    all of them as one document, to download
    GET    /api/evaluations
    POST   /api/evaluations        {features: [run_id:name], combinations}
    DELETE /api/evaluations/<id>
@@ -48,6 +55,7 @@ The contract, page by page (``web/src/api.ts`` calls exactly these;
    GET    /api/results                       every evaluated variant, every evaluation
    DELETE /api/results                       clear them all: every finished evaluation
    GET    /api/evaluations/<id>/stream        SSE
+   POST   /api/evaluations/<id>/cancel        stop it: its process, scripts and workers
 """
 
 from __future__ import annotations
@@ -65,9 +73,13 @@ from typing import Any, Callable
 
 from flask import Flask, Response, jsonify, request, send_from_directory
 
-from agent.evaluate import (Evaluation, evaluation_results, feature_pool, list_evaluations,
+from agent.evaluate import (Evaluation, EvaluationProcess, evaluation_results, feature_pool, list_evaluations,
                             removed_variants)
 from agent.events import EventLog, read_events
+from agent.memory import request_set
+from agent.tools.data_pull import request_lines
+from agent.execution import spark_available
+from agent import themes
 from agent.session import LEVELS, Decision, RunParams, Session
 from agent.setup import UPLOAD_LIMIT, Setup
 from agent.tools.shots import categories as shot_categories, generate_clustering, write_spec
@@ -131,7 +143,9 @@ class Hub:
 
     @property
     def busy(self) -> bool:
-        return self.thread is not None and self.thread.is_alive()
+        # An evaluation is done once its log ends, though its process may still exit.
+        return self.thread is not None and self.thread.is_alive() \
+            and not getattr(self.job, "done", False)
 
     def stream(self) -> Response:
         q: queue.Queue = queue.Queue()
@@ -186,9 +200,11 @@ def _run_summary(folder: Path) -> dict[str, Any] | None:
     ledger = folder / "ledger.json"
     entries = json.loads(ledger.read_text()) if ledger.exists() else []
     requests = folder / "data_requests.json"
-    n_requests = len(json.loads(requests.read_text())) if requests.exists() else 0
+    n_requests = sum(1 for r in json.loads(requests.read_text()) if not r.get("deleted")) \
+        if requests.exists() else 0
     levels = (started.get("params") or {}).get("levels") or []
     return {"run_id": folder.name, "direction": started["direction"], "K": started["K"],
+            "explore": bool(started.get("explore")),
             "mode": "l3" if levels == ["L3"] else "features", "requests": n_requests,
             "started": started["ts"], "params": started.get("params"),
             "verified": sum(1 for e in entries if e.get("verified") and not e.get("deleted")),
@@ -197,9 +213,11 @@ def _run_summary(folder: Path) -> dict[str, Any] | None:
 
 
 def create_app(config_path: str, static_dir: str | None = None,
-               run_session: Callable[[Session], Any] | None = None) -> Flask:
-    """``run_session`` runs an agent job; the default drives the LLM. Tests pass
-    their own, so the whole API can be exercised without a model."""
+               run_session: Callable[[Session], Any] | None = None,
+               make_themes: Callable[[Any], list[str]] | None = None) -> Flask:
+    """``run_session`` runs an agent job and ``make_themes`` the theme pool; the
+    defaults drive the LLM. Tests pass their own, so the whole API can be
+    exercised without a model."""
     setup = Setup(config_path)
     cfg, ws = setup.load()
     ctx: dict[str, Any] = {"cfg": cfg, "ws": ws, "active": None}
@@ -214,6 +232,29 @@ def create_app(config_path: str, static_dir: str | None = None,
         return run_direction(session)
 
     runner = run_session or _default_runner
+    theme_maker = make_themes or themes.generate
+    ctx["themes"] = {"generating": False, "error": None}
+
+    def refresh_themes(force: bool = False) -> None:
+        """Make the theme pool in the background - when the task is described and
+        the pool is missing or made for another task, or when asked."""
+        state, ws = ctx["themes"], ctx["ws"]
+        if state["generating"]:
+            return
+        now = themes.pool(ws)
+        if not now["ready"] or not (force or now["stale"] or not now["themes"]):
+            return
+        state.update(generating=True, error=None)
+
+        def work() -> None:
+            try:
+                theme_maker(ws)
+            except Exception as exc:  # noqa: BLE001 - shown where the pool is
+                state["error"] = f"{type(exc).__name__}: {exc}"
+            finally:
+                state["generating"] = False
+
+        threading.Thread(target=work, daemon=True).start()
 
     # ------------------------------------------------------------ helpers
     def busy_job() -> str | None:
@@ -267,6 +308,7 @@ def create_app(config_path: str, static_dir: str | None = None,
             seen = {n: s.usable for n, s in now.items()}
 
     threading.Thread(target=watch_sources, daemon=True).start()
+    refresh_themes()                           # missing, or made for another task
 
     def error(message: str, status: int = 400):
         return jsonify(error=message), status
@@ -279,12 +321,14 @@ def create_app(config_path: str, static_dir: str | None = None,
         scope = w.scope()
         return jsonify({
             "name": c.run.name, "base_features": len(w.base_features),
-            "id_column": w.id_col, "id_format": agent.id_format, "target": w.target,
+            "id_column": w.id_col, "id_format": c.data.id_format, "target": w.target,
             "screen_rows": {"fit": w.n_screen_train, "scored": len(w.screen) - w.n_screen_train},
-            "additional_data_dir": agent.additional_data_dir,
+            "additional_data_dir": c.discovery.additional_data.dir,
             "sources": source_states(),
             "scope": scope["status"].value_counts().to_dict() if len(scope) else {},
-            "scope_files": [{"name": p.name, "path": str(p)} for p in w.scope_files()],
+            "scopes": {name: (scope[scope["scope"] == name]["status"].value_counts().to_dict()
+                              if len(scope) else {}) for name in w.scopes},
+            "scope_files": [{"scope": n, "name": p.name, "path": str(p)} for n, p in w.scope_files()],
             "scope_notes": [{"name": n, "chars": len(t)} for n, t in w.scope_notes()],
             "shots": shot_summaries(w),
             "defaults": {"K": agent.max_intents, "model": agent.llm.model,
@@ -294,7 +338,7 @@ def create_app(config_path: str, static_dir: str | None = None,
                          "capture_percent": c.discovery.capture_percent,
                          "levels": list(LEVELS), "level_weights": list(agent.level_weights)},
             "choices": {"models": list(dict.fromkeys([agent.llm.model, *agent.models])),
-                        "engines": ["pandas", "spark", "sql"], "levels": list(LEVELS)},
+                        "engines": ["pandas", *(["spark"] if spark_available() else []), "sql"], "levels": list(LEVELS)},
             "active_run": busy_job() if busy_job() in hubs["direction"] else None,
             "active_linkage": busy_job() if busy_job() in hubs["linkage"] else None,
         })
@@ -311,7 +355,21 @@ def create_app(config_path: str, static_dir: str | None = None,
             ctx["cfg"], ctx["ws"] = setup.apply(request.get_json(force=True).get("values") or {})
         except Exception as exc:  # noqa: BLE001 - every reason goes back to the form
             return error(f"{type(exc).__name__}: {exc}")
+        refresh_themes()                       # a new task description, a new pool
         return jsonify(setup.view(ctx["cfg"]))
+
+    @app.get("/api/themes")
+    def get_themes():
+        return jsonify({**themes.pool(ctx["ws"]), **ctx["themes"]})
+
+    @app.post("/api/themes")
+    def make_themes_now():
+        if ctx["themes"]["generating"]:
+            return error("the themes are being made", 409)
+        if not themes.pool(ctx["ws"])["ready"]:
+            return error("describe the task in Setup first: the themes are drawn from it")
+        refresh_themes(force=True)
+        return jsonify({**themes.pool(ctx["ws"]), **ctx["themes"]}), 202
 
     @app.post("/api/shots/clustering")
     def make_clustering_shots():
@@ -342,9 +400,9 @@ def create_app(config_path: str, static_dir: str | None = None,
                               table=str(body.get("table") or "").strip() or None,
                               rotate=bool(body.get("rotate")),
                               batch_size=int(body.get("batch_size") or 0) or None)
-            current = list(ctx["cfg"].agent.shot_spec_paths)
+            current = list(ctx["cfg"].discovery.shot_spec_paths)
             ctx["cfg"], ctx["ws"] = setup.apply(
-                {"agent.shot_spec_paths": [*[p for p in current if p != str(path)], str(path)]})
+                {"discovery.shot_spec_paths": [*[p for p in current if p != str(path)], str(path)]})
         except Exception as exc:  # noqa: BLE001 - every reason goes back to the form
             return error(f"{type(exc).__name__}: {exc}")
         return jsonify(path=str(path), shots=shot_summaries(ctx["ws"]))
@@ -458,8 +516,13 @@ def create_app(config_path: str, static_dir: str | None = None,
     def start_run():
         body = request.get_json(force=True)
         direction = (body.get("direction") or "").strip()
-        if not direction:
-            return error("a direction is required")
+        explore = not direction
+        if explore:
+            # No direction: an open exploration - the agent draws its themes.
+            if not themes.pool(ctx["ws"])["themes"]:
+                return error("no direction given and no themes to explore yet - write one, or "
+                             "make the theme pool in Setup (it is drawn from the task description)")
+            direction = themes.OPEN
         if busy_job():
             return error(f"{busy_job()} is still running", 409)
         raw = body.get("params") or {}
@@ -473,7 +536,8 @@ def create_app(config_path: str, static_dir: str | None = None,
         try:
             params = RunParams(**{k: raw.get(k) for k in RunParams.__dataclass_fields__})
             approver = ServerApprover()
-            session = Session(ctx["ws"], direction, approver=approver, params=params)
+            session = Session(ctx["ws"], direction, approver=approver, params=params,
+                              explore=explore)
         except (TypeError, ValueError) as exc:
             return error(str(exc))
         if old is not None:
@@ -515,10 +579,36 @@ def create_app(config_path: str, static_dir: str | None = None,
             return error(f"no intent {name} in {run_id}", 404)
         return jsonify(ok=True)
 
+    @app.delete("/api/runs/<run_id>/requests/<intent>")
+    def delete_request(run_id: str, intent: str):
+        hub = job_hub("direction", run_id)
+        if hub.busy:
+            return error("the run is still going; remove requests when it is done", 409)
+        if not hub.job.delete_request(intent):
+            return error(f"no request {intent} in {run_id}", 404)
+        return jsonify(ok=True)
+
     # ---------------------------------------------------------- 3. evaluate
     @app.get("/api/features")
     def features():
         return jsonify(feature_pool(ctx["ws"]))
+
+    @app.get("/api/requests")
+    def requests_set():
+        return jsonify(request_set(ctx["ws"]))
+
+    @app.get("/api/requests.md")
+    def requests_set_report():
+        items = request_set(ctx["ws"])
+        lines = ["# Data requests", "",
+                 f"{len(items)} kept across {len({r['run_id'] for r in items})} runs", ""]
+        for run_id in dict.fromkeys(r["run_id"] for r in items):
+            group = [r for r in items if r["run_id"] == run_id]
+            lines += [f"# {group[0]['direction']}", "", f"Run `{run_id}`", ""]
+            for r in group:
+                lines += request_lines(r)
+        return Response("\n".join(lines), mimetype="text/markdown", headers={
+            "Content-Disposition": 'attachment; filename="data_requests.md"'})
 
     @app.get("/api/evaluations")
     def evaluations():
@@ -553,10 +643,19 @@ def create_app(config_path: str, static_dir: str | None = None,
                              dict(body.get("combinations") or {}))
         except (KeyError, ValueError) as exc:
             return error(str(exc))
-        hub = Hub(job)
+        process = EvaluationProcess(job)
+        hub = Hub(process)
         hubs["evaluation"][job.eval_id] = hub
-        hub.start(job.run)
+        hub.start(process.run)
         return jsonify(eval_id=job.eval_id), 202
+
+    @app.post("/api/evaluations/<eval_id>/cancel")
+    def cancel_evaluation(eval_id: str):
+        hub = hubs["evaluation"].get(eval_id)
+        if hub is None or not hub.busy or not isinstance(hub.job, EvaluationProcess):
+            return error(f"{eval_id} is not running", 409)
+        hub.job.stop()
+        return jsonify(ok=True)
 
     @app.delete("/api/evaluations/<eval_id>")
     def delete_evaluation(eval_id: str):

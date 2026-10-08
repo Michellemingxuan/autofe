@@ -100,8 +100,8 @@ def ideas_needed(session: Session) -> dict[str, Any] | None:
             "Nothing was spent."}
 
 
-def _cas_variables(session: Session) -> list[str]:
-    """The CAS variables an L3 idea may name - not the keys or the partition date."""
+def _scope_variables(session: Session) -> list[str]:
+    """The scope variables an L3 idea may name - not the keys or the partition date."""
     scope = session.ws.scope()
     if not len(scope):
         return []
@@ -110,16 +110,20 @@ def _cas_variables(session: Session) -> list[str]:
     return [v for v in scope["variable"].astype(str) if v not in keys and not v.endswith("pkey")]
 
 
-def _names_cas(text: str, variables: list[str]) -> list[str]:
+def _names_in(text: str, variables: list[str]) -> list[str]:
     return [v for v in variables if re.search(rf"\b{re.escape(v)}\b", text, flags=re.I)]
 
 
 def record_ideas(session: Session, ideas: list[dict[str, Any]]) -> dict[str, Any]:
     """Check the ideas - many, varied, each fitting its level - and record
     them. The error, when there is one, goes back to the model to fix."""
+    if getattr(session, "explore", False) and session.round + 1 not in session.themes_drawn:
+        return {"ok": False, "error": "this run explores without a direction: call draw_theme "
+                                      "for this round's theme first, then give ideas about it"}
     levels = list(session.params.levels)
     mixed = len(session.quota) > 1
-    cas = _cas_variables(session)
+    in_scope = _scope_variables(session)
+    scopes = ", ".join(session.ws.scopes) or "the scope"
     earlier = {i["name"] for i in session.ideas}            # earlier rounds' ideas
     first = len(session.ideas)                              # numbered across rounds
     clean, names = [], set()
@@ -140,25 +144,26 @@ def record_ideas(session: Session, ideas: list[dict[str, Any]]) -> dict[str, Any
             return {"ok": False, "error": f"idea {i}: say what it measures and why it should carry risk"}
         if level not in levels:
             return {"ok": False, "error": f"idea {i}: its level must be one of {levels}"}
-        named = _names_cas(f"{description} {data}", cas)
-        beyond = level == "L3" and bool(idea.get("beyond_cas"))
+        named = _names_in(f"{description} {data}", in_scope)
+        # beyond_cas: the field's name before scopes had keywords.
+        beyond = level == "L3" and bool(idea.get("beyond_scope") or idea.get("beyond_cas"))
         if beyond and len(data.split()) < 4:
             return {"ok": False, "error": (
-                f"idea {i} ({name}): beyond the CAS scope, say in its data what data it needs "
+                f"idea {i} ({name}): beyond scope, say in its data what data it needs "
                 "and where it would come from - the system or team, the grain.")}
         if level == "L3" and not beyond and not named:
             return {"ok": False, "error": (
-                f"idea {i} ({name}): names no CAS variable. Within the CAS scope, write the "
-                "variables it needs in its data exactly as named - e.g. "
-                + ", ".join(f"`{v}`" for v in cas[:6]) + " (the brief lists them). If the data "
-                "lies outside CAS - external, strategy (RLA), calling - mark it beyond_cas. If "
-                "the model database and the linked sources already carry it, it is an L1/L2 "
-                "idea, not a data request.")}
+                f"idea {i} ({name}): names no scope variable. Within a scope ({scopes}), write "
+                "the variables it needs in its data exactly as named - e.g. "
+                + ", ".join(f"`{v}`" for v in in_scope[:6]) + " (the brief lists them). If the "
+                "data lies outside every scope - external, strategy (RLA), calling - mark it "
+                "beyond_scope. If the model database and the linked sources already carry it, "
+                "it is an L1/L2 idea, not a data request.")}
         names.add(name)
         clean.append({"n": first + i, "name": name, "lens": lens, "level": level,
                       "description": description, "data": data,
-                      **({"beyond_cas": True} if beyond else {}),
-                      **({"cas": named} if named and not beyond else {})})
+                      **({"beyond_scope": True} if beyond else {}),
+                      **({"variables": named} if named and not beyond else {})})
     focus = focus_lenses(session)
     lenses = {c["lens"] for c in clean}
     n = ideas_in_round(session)
@@ -183,5 +188,7 @@ def record_ideas(session: Session, ideas: list[dict[str, Any]]) -> dict[str, Any
     session.ideas = session.ideas + clean
     session.round += 1
     session.round_ideas, session.round_attempts, session.round_spent = clean, 0, False
-    session.emit("ideas_recorded", ideas=clean, focus=focus, round=session.round)
+    session.emit("ideas_recorded", ideas=clean, focus=focus, round=session.round,
+                 **({"theme": session.themes_drawn[session.round]}
+                    if session.round in getattr(session, "themes_drawn", {}) else {}))
     return {"ok": True, "ideas": len(clean), "lenses": sorted(lenses), "round": session.round}

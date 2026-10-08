@@ -49,6 +49,16 @@ def build(spark, sources, base):
 '''
 
 
+THEMES = ["income relative to the line", "payment counts", "spend volatility"]
+
+
+def fake_themes(ws):
+    """The theme pool, without a model."""
+    from agent import themes
+
+    return themes.save(ws, THEMES)
+
+
 def scripted(session):
     """What the agent would do, without a model."""
     from agent.tools import propose_linkage, report_findings, screen_feature
@@ -99,7 +109,7 @@ def env(tmp_path_factory):
     payload["analysis"] = {"shap": {"enabled": True, "sample_size": 500}}
     path = root.parent / "cfg.yaml"
     path.write_text(yaml.safe_dump(payload))
-    app = create_app(str(path), run_session=scripted)
+    app = create_app(str(path), run_session=scripted, make_themes=fake_themes)
     return app.test_client(), root, Path(payload["agent"]["run_dir"])
 
 
@@ -313,11 +323,16 @@ def test_small_files_upload_and_scope_notes_reach_the_agent(env):
 
     applied = client.post("/api/setup", json={"values": {
         "discovery.task_context_path": context_path,
-        "agent.scope_notes_paths": [note["path"]]}})
+        "discovery.additional_data.scopes.CAS.notes_paths": [note["path"]]}})
     assert applied.status_code == 200, applied.get_json()
     workspace = client.get("/api/workspace").get_json()
-    assert [n["name"] for n in workspace["scope_notes"]] == ["cas_guide.docx.txt"]
-    assert workspace["scope_files"]                       # the default CAS file is found
+    assert [n["name"] for n in workspace["scope_notes"]] == ["CAS: cas_guide.docx.txt"]
+    assert [f["scope"] for f in workspace["scope_files"]] == ["CAS"]   # the default file is found
+    assert workspace["scopes"]["CAS"]["unused_raw"] == 6
+    # Saved before scopes had keywords: the old key still reaches the CAS scope.
+    from agent.setup import MOVED
+    assert MOVED["discovery.additional_data.scope_notes_paths"] == \
+        "discovery.additional_data.scopes.CAS.notes_paths"
 
     from agent.setup import Setup
 
@@ -347,14 +362,14 @@ def test_shot_specs_upload_append_show_and_delete(env):
         paths.append(reply.get_json()["path"])
 
     assert client.post("/api/setup", json={"values": {
-        "agent.shot_spec_paths": paths}}).status_code == 200
+        "discovery.shot_spec_paths": paths}}).status_code == 200
     shots = client.get("/api/workspace").get_json()["shots"]
     assert [c["key"] for c in shots] == ["clustering", "cures", "stress"]
     assert shots[1]["found"] == 3 and shots[1]["context"] == "about cures.md"
 
     # Delete one category, then the clustering shots.
     assert client.post("/api/setup", json={"values": {
-        "agent.shot_spec_paths": paths[1:], "discovery.few_shot_path": ""}}).status_code == 200
+        "discovery.shot_spec_paths": paths[1:], "discovery.few_shot_path": ""}}).status_code == 200
     assert [c["key"] for c in client.get("/api/workspace").get_json()["shots"]] == ["stress"]
 
     # Generate the clustering shots again, from the screen's fit rows.
@@ -426,7 +441,7 @@ def test_a_table_path_relative_to_the_project_root_resolves(env, monkeypatch):
     spec = write_spec(runs / "specs", "Relative", "x", table="tables/rows.csv")
     broken = write_spec(runs / "specs", "Broken", "x", table="tables/none.csv")
     cfg = load_config(root.parent / "cfg.yaml")
-    cfg.agent.shot_spec_paths = [str(spec), str(broken)]
+    cfg.discovery.shot_spec_paths = [str(spec), str(broken)]
     cats = {c.key: c for c in categories(Workspace.from_config(cfg))}
     assert cats["relative"].kind == "table" and len(cats["relative"].rows) == 2
     assert cats["broken"].kind == "error"               # reported, and the rest still load
@@ -466,6 +481,21 @@ def test_an_l3_only_run_challenges_each_proposal_as_it_goes(env):
     assert doc.index("util_sq") > doc.index("# Dropped")
     folder = runs / run / "data_requests"
     assert (folder / "R1_declines.sql").exists() and not (folder / "R2_util_sq.sql").exists()
+
+    # The request set: the kept requests of every run - not the dropped one.
+    mine = [r for r in client.get("/api/requests").get_json() if r["run_id"] == run]
+    assert [(r["intent"], r["kind"], r["scope"]) for r in mine] == \
+        [("R1", "in_scope", "CAS"), ("R3", "in_scope", "CAS")]
+    assert mine[0]["direction"] == "authorization behaviour" and mine[0]["challenge"]["verdict"] == "new"
+    everything = client.get("/api/requests.md").get_data(as_text=True)
+    assert "`declines`" in everything and "util_sq" not in everything
+    # Taken off the set: gone from it, its SQL file, the run's count and the report.
+    assert client.delete(f"/api/runs/{run}/requests/R1").status_code == 200
+    assert client.delete(f"/api/runs/{run}/requests/R1").status_code == 404
+    assert [r["intent"] for r in client.get("/api/requests").get_json() if r["run_id"] == run] == ["R3"]
+    assert not (folder / "R1_declines.sql").exists()
+    assert {r["run_id"]: r for r in client.get("/api/runs").get_json()}[run]["requests"] == 2
+    assert "`declines`" not in client.get(f"/api/runs/{run}/requests.md").get_data(as_text=True)
     assert client.delete(f"/api/runs/{run}").status_code == 200
 
 
@@ -512,3 +542,38 @@ def test_a_rerun_replaces_the_earlier_run_and_its_features(env):
     missing = client.post("/api/runs", json={"direction": "x", "replaces": "no_such_run"})
     assert missing.status_code == 404
     assert client.delete(f"/api/runs/{second}").status_code == 200
+
+
+def test_an_evaluation_can_be_stopped(env):
+    client, _, runs = env
+    run = client.post("/api/runs", json={"direction": "to evaluate",
+                                         "params": {"K": 2, "levels": ["L1"]}}).get_json()["run_id"]
+    wait_for(runs / run, "run_done")
+    pool = [f for f in client.get("/api/features").get_json() if f["run_id"] == run]
+    reply = client.post("/api/evaluations", json={"features": [pool[0]["key"]]})
+    ev = reply.get_json()["eval_id"]
+    wait_for(runs / "evaluations" / ev, "eval_started", timeout=60)
+    assert client.post(f"/api/evaluations/{ev}/cancel").status_code == 200
+    events = wait_for(runs / "evaluations" / ev, "eval_stopped", timeout=30)
+    assert "eval_done" not in {e["event"] for e in events}
+    assert {e["eval_id"]: e["status"] for e in client.get("/api/evaluations").get_json()}[ev] == "stopped"
+    assert client.post(f"/api/evaluations/{ev}/cancel").status_code == 409
+    assert client.delete(f"/api/evaluations/{ev}").status_code == 200
+
+
+def test_an_empty_direction_starts_an_open_exploration(env):
+    client, _, runs = env
+    deadline = time.time() + 30
+    while not client.get("/api/themes").get_json()["themes"] and time.time() < deadline:
+        time.sleep(0.1)                                 # made in the background at start
+    pool = client.get("/api/themes").get_json()
+    assert [t["theme"] for t in pool["themes"]] == THEMES and not pool["stale"]
+
+    reply = client.post("/api/runs", json={"direction": "  ", "params": {"K": 1, "levels": ["L1"]}})
+    assert reply.status_code == 202
+    run = reply.get_json()["run_id"]
+    events = wait_for(runs / run, "run_done")
+    assert events[0]["explore"] is True and events[0]["direction"] == "Open exploration"
+    summary = {r["run_id"]: r for r in client.get("/api/runs").get_json()}[run]
+    assert summary["explore"] is True
+    assert client.post("/api/themes").status_code == 202        # made again on request

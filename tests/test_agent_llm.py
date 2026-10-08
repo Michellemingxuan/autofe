@@ -38,9 +38,9 @@ class _Chain:
 
 
 class _Model:
-    def __init__(self, delays=(), chunks=()):
+    def __init__(self, delays=(), reply=None):
         self.delays = list(delays)
-        self.chunks = list(chunks)
+        self.reply = reply
         self.calls = 0
 
     def bind(self, **_):
@@ -49,11 +49,11 @@ class _Model:
     async def answer(self):
         self.calls += 1
         await asyncio.sleep(self.delays.pop(0) if self.delays else 0)
-        return _Msg(content="ok")
+        return self.reply or _Msg(content="ok")
 
     async def stream(self):
-        for text in self.chunks:
-            yield _Msg(content=text)
+        raise AssertionError("a streamed call is made as a plain call")
+        yield
 
 
 @pytest.fixture
@@ -79,8 +79,8 @@ def fake_safechain(monkeypatch, tmp_path):
     return fw.LlmLog(tmp_path)
 
 
-def _client(model, log):
-    client = sc.SafeChainAsyncOpenAI(model_name="m", firewall=fw.Firewall(log))
+def _client(model, log, stall_s=40.0):
+    client = sc.SafeChainAsyncOpenAI(model_name="m", firewall=fw.Firewall(log), stall_s=stall_s)
     client._llm = model                        # skip amodel(): already built
     return client
 
@@ -91,26 +91,36 @@ def _events(log):
 
 
 def test_a_stalled_call_is_reissued_and_answers(fake_safechain, monkeypatch):
-    monkeypatch.setattr(sc, "_SAFECHAIN_STALL_RETRY_S", 0.05)
     model = _Model(delays=[5.0, 0.0])          # the first attempt wedges, the second does not
-    client = _client(model, fake_safechain)
+    client = _client(model, fake_safechain, stall_s=0.05)
     reply = asyncio.run(client.chat.completions.create(
         model="m", messages=[{"role": "user", "content": "hi"}]))
     assert reply.choices[0].message.content == "ok" and model.calls == 2
     assert "safechain_call_stalled" in _events(fake_safechain)
 
 
-def test_a_stream_that_resends_the_whole_answer_yields_it_once(fake_safechain):
-    answer = json.dumps({"ideas": [{"name": "pay_to_spend_90d", "level": "L2"}]})
-    model = _Model(chunks=[answer[:30], answer[30:], answer])     # then all of it, again
+async def _read(client):
+    stream = await client.chat.completions.create(
+        model="m", messages=[{"role": "user", "content": "hi"}], stream=True)
+    return [c async for c in stream]
 
-    async def read():
-        stream = await _client(model, fake_safechain).chat.completions.create(
-            model="m", messages=[{"role": "user", "content": "hi"}], stream=True)
-        return "".join([c.choices[0].delta.content or "" async for c in stream])
 
-    assert asyncio.run(read()) == answer
-    assert "safechain_stream_resend" in _events(fake_safechain)
+def test_a_stalled_stream_is_reissued_and_answers(fake_safechain, monkeypatch):
+    model = _Model(delays=[5.0, 0.0])
+    chunks = asyncio.run(_read(_client(model, fake_safechain, stall_s=0.05)))
+    assert "".join(c.choices[0].delta.content or "" for c in chunks) == "ok"
+    assert chunks[0].choices[0].delta.role == "assistant"
+    assert chunks[-1].choices[0].finish_reason == "stop" and model.calls == 2
+    assert "safechain_call_stalled" in _events(fake_safechain)
+
+
+def test_a_streamed_tool_call_arrives_whole(fake_safechain):
+    call = {"name": "screen_feature", "args": {"name": "pay_to_spend_90d"}, "id": "call_1"}
+    chunks = asyncio.run(_read(_client(_Model(reply=_Msg(tool_calls=[call])), fake_safechain)))
+    [delta] = [c.choices[0].delta.tool_calls for c in chunks if c.choices[0].delta.tool_calls]
+    assert delta[0].function.name == "screen_feature" and delta[0].id == "call_1"
+    assert json.loads(delta[0].function.arguments) == {"name": "pay_to_spend_90d"}
+    assert chunks[-1].choices[0].finish_reason == "tool_calls"
 
 
 def test_a_firewall_rejection_is_retried_with_guidance(fake_safechain):
@@ -141,7 +151,7 @@ def test_a_structured_answer_sent_twice_is_read_once():
 
     schema = FirstAnswer(Ideas)
     one = json.dumps({"ideas": [{"name": "a", "level": "L1", "lens": "trend",
-                                 "description": "d", "data": "x", "beyond_cas": False}]})
+                                 "description": "d", "data": "x", "beyond_scope": False}]})
     assert len(schema.validate_json(one + one).ideas) == 1
     assert len(schema.validate_json(one + "\n" + one).ideas) == 1
     for bad in (one + " and some words", '{"ideas": [}'):

@@ -56,8 +56,8 @@ def compose(session: Any) -> str:
     ws, cfg, p = session.ws, session.ws.cfg, session.params
     name = template_for(session)
     fields: dict[str, Any] = {
-        "id_col": ws.id_col, "id_format": cfg.agent.id_format or "(not specified)",
-        "skills": sections.skills(session),
+        "id_col": ws.id_col, "id_format": cfg.data.id_format or "(not specified)",
+        "skills": sections.skills(session), "data_size": sections.data_size(session),
     }
     if name == "linkage_writer":
         src = ws.sources()[session.source]
@@ -73,6 +73,7 @@ def compose(session: Any) -> str:
         task_description=cfg.discovery.task_description.strip(),
         task_context=ws.task_context.strip(), target=ws.target, n_base=len(ws.base_features),
         shot_list=sections.shot_list(ws), scope_notes=sections.scope_notes(ws),
+        scopes=sections.scopes(ws),
         memory=sections.memory(session), ideas=sections.ideas(session),
         columns=sections.columns(session))
     if name == "data_scout":

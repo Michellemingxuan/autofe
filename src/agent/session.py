@@ -30,6 +30,7 @@ from pathlib import Path
 from typing import Any, Callable, Protocol
 
 from agent.events import EventLog, run_logged
+from agent.execution import spark_available
 from agent.workspace import Workspace
 
 __all__ = ["Decision", "Approver", "AutoApprover", "Session", "RunParams", "SKILLS_DIR",
@@ -103,6 +104,8 @@ class RunParams:
         l3_only = [lv for lv in LEVELS if lv in levels] == ["L3"]
         if self.engine not in (None, "pandas", "spark", "sql"):
             raise ValueError(f"engine must be pandas, spark or sql, got {self.engine!r}")
+        if (self.engine or agent.engine) == "spark" and not spark_available():
+            raise ValueError("pyspark is not installed here: use the pandas engine")
         if self.engine == "sql" and not l3_only:
             raise ValueError("the sql engine is for data-request runs (L3 only): features are "
                              "built in pandas or spark")
@@ -137,7 +140,7 @@ def level_quota(ws: Workspace, params: RunParams, seed: str) -> dict[str, int]:
     Each of the K results draws a level at random, with the config's
     probabilities p1 > p2 > p3 taken in priority order over the levels the
     run allows - L2 only when a linked source is among its sources. L3 always has
-    room: when the CAS scope is spent, a request looks beyond it. Seeded by the
+    room: when the scopes are spent, a request looks beyond scope. Seeded by the
     run id, so the split is fixed for the run and on record.
     """
     linked = any(ws.linkage_path(s).exists() for s in params.sources or [])
@@ -163,6 +166,9 @@ class Session:
     # agent writes one source's linkage for the analyst to confirm.
     kind: str = "direction"
     source: str | None = None
+    # No direction from the user: an open exploration. The agent draws a theme
+    # from the pool each round (agent.themes.draw_theme).
+    explore: bool = False
 
     @staticmethod
     def folder_for(ws: Workspace, run_id: str, kind: str = "direction") -> Path:
@@ -183,6 +189,7 @@ class Session:
         params.K = params.K or started.get("K")
         params.sources = [s for s in (params.sources or []) if s in ws.sources()] or None
         session = cls(ws, started.get("direction", ""), run_id=run_id, params=params,
+                      explore=bool(started.get("explore")),
                       kind=kind, source=started.get("source"), **kwargs)
         ledger = folder / "ledger.json"
         session.ledger = json.loads(ledger.read_text()) if ledger.exists() else []
@@ -227,6 +234,7 @@ class Session:
         # Ideas in rounds (agent.tools.ideas): this round's ideas, the attempts made
         # on them, and whether the round is spent - the runner then asks for more.
         self.round = 0
+        self.themes_drawn: dict[int, str] = {}   # an exploration's theme, per round
         self.round_ideas: list[dict[str, Any]] = []
         self.round_attempts = 0
         self.round_spent = False
@@ -244,7 +252,7 @@ class Session:
     @property
     def l3_only(self) -> bool:
         """A data-request run: no features screened; the agent proposes data requests -
-        within the CAS scope (SQL) or beyond it - and aims for K the challenge keeps."""
+        within a scope (SQL) or beyond scope - and aims for K the challenge keeps."""
         return self.kind == "direction" and self.params.levels == ["L3"]
 
     # ----------------------------------------------------------------- events
@@ -333,7 +341,8 @@ class Session:
 
     def start(self) -> None:
         p = self.params
-        self.emit("run_started", direction=self.direction, K=self.K, engine=p.engine,
+        self.emit("run_started", direction=self.direction, explore=self.explore, K=self.K,
+                  engine=p.engine,
                   max_attempts=self.max_attempts,
                   quota=self.quota,
                   kind=self.kind, source=self.source, skills=list(self.skills),
@@ -372,7 +381,7 @@ class Session:
         runs on its own engine, whatever the run's)."""
         agent = self.ws.cfg.agent
         # A linkage reads a whole source; a feature or probe works on the screen rows.
-        timeout = agent.code_timeout_s if mode == "linkage" else agent.screen_timeout_s
+        timeout = agent.timeouts.linkage_s if mode == "linkage" else agent.timeouts.screen_s
         return run_logged(self.log, code, mode, engine=engine or self.local_engine,
                           spark_conf=agent.spark_conf,
                           id_col=self.ws.id_col, base_path=base_path or self.base_path,
@@ -394,6 +403,18 @@ class Session:
         entry["deleted"] = True
         self.save_ledger()
         self.emit("intent_deleted", name=name, intent=entry["intent"])
+        return True
+
+    def delete_request(self, intent: str) -> bool:
+        """Take one data request off the request set. The trace keeps it, marked
+        deleted; later runs no longer count its data as asked for."""
+        entry = next((r for r in self.data_requests
+                      if r.get("intent") == intent and not r.get("deleted")), None)
+        if entry is None:
+            return False
+        entry["deleted"] = True
+        self.save_requests()
+        self.emit("request_deleted", intent=intent, source_name=entry.get("source_name"))
         return True
 
     # ------------------------------------------------------------------- end

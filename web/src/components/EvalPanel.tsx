@@ -69,6 +69,10 @@ export function EvalPanel({ evalId, variant, onSelect, onClose, onDeleted }: {
         <span className={`${s.state} ${s[view.status]}`}>
           {view.status}{view.startTs > 0 && ` · ${clock(Math.max(0, elapsed))}`}
         </span>
+        {view.status === 'running' && (
+          <ConfirmButton label="Stop" confirm="Stop this evaluation?"
+                         onConfirm={async () => { await api.stopEvaluation(evalId) }} />
+        )}
         <button className={s.close} onClick={onClose} title="Close">×</button>
       </div>
 

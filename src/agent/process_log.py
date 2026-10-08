@@ -25,6 +25,7 @@ from pathlib import Path
 from typing import Any
 
 from agent.execution import brief_error
+from agent.tools.data_pull import request_scope
 
 __all__ = ["outcome_of_feature", "outcome_of_refusal", "attempts_of", "process_report",
            "write_process_log", "rebuild"]
@@ -45,7 +46,7 @@ CATEGORIES = {
     "rejected": "rejected by the analyst",
     # sent back by a check, nothing spent
     "duplicate": "the same as an earlier feature or request",
-    "sql": "SQL that does not fit the CAS columns",
+    "sql": "SQL that does not fit the scope's columns",
     "unknown_source": "a source that does not exist (a requested pull is not data)",
     "no_linkage": "a source with no confirmed linkage",
     "name": "a name already taken, or not a valid name",
@@ -84,7 +85,7 @@ def outcome_of_refusal(error: str) -> str:
             (r"no source \[|A data request is not data", "unknown_source"),
             (r"no confirmed linkage", "no_linkage"),
             (r"already taken|already proposed|not a valid column name|snake_case", "name"),
-            (r"CAS scope|columns not in|partition date|identifier|selects from no table", "sql"),
+            (r"in no scope|reads tables of|columns not in|partition date|identifier|selects from no table", "sql"),
             (r"more result\(s\) wanted|intent\(s\) left", "early_report")):
         if re.search(pattern, error):
             return category
@@ -118,7 +119,7 @@ def attempts_of(events: list[dict[str, Any]]) -> list[dict[str, Any]]:
         elif k == "data_request":
             requests[e["intent"]] = {**common, "ts": e["ts"], "kind": "request", "id": e["intent"],
                                      "name": e.get("source_name"), "level": "L3",
-                                     "scope": e.get("scope", "cas"), "outcome": "proposed",
+                                     "scope": request_scope(e), "outcome": "proposed",
                                      "detail": ""}
         elif k == "request_challenged" and e.get("intent") in requests:
             r = requests[e["intent"]]
@@ -141,7 +142,7 @@ def attempts_of(events: list[dict[str, Any]]) -> list[dict[str, Any]]:
                 args = _args(calls.get(e.get("call_id", ""), ""))
                 out.append({**common, "ts": e["ts"], "kind": "request", "id": None,
                             "name": args.get("source_name"), "level": "L3",
-                            "scope": "beyond_cas" if e["tool"] == "propose_new_data" else "cas",
+                            "scope": "beyond_scope" if e["tool"] == "propose_new_data" else "in_scope",
                             "outcome": "approved" if reply["approved"] else "rejected",
                             "detail": _short(reply.get("user_note"))})
         elif k == "ideas_sent_back":

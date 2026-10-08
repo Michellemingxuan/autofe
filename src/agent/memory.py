@@ -2,7 +2,7 @@
 
 Every run under ``agent.run_dir`` leaves its features (``ledger.json``) and its
 data requests (``data_requests.json``). A new run is briefed with them up front
-- what was tried, what verified, which CAS columns are already asked for - and
+- what was tried, what verified, which scope columns are already asked for - and
 scope() marks each requested column, so the agent plans around them before it
 proposes. Two checks remain as a backstop, refusing before anything is spent:
 
@@ -11,7 +11,7 @@ proposes. Two checks remain as a backstop, refusing before anything is spent:
   every screened feature are kept for this (``values/<name>.parquet``). A
   variation is not identical - a 30-day and a 90-day sum of the same events
   correlate well below that - so it is screened as usual.
-* **A data request for the same data**: the same CAS table and the same columns,
+* **A data request for the same data**: the same scope table and the same columns,
   leaving aside the identifiers and the partition date every request selects.
   A request the analyst rejected does not block: their note may ask for a
   narrower or a revised pull of the same data.
@@ -80,9 +80,36 @@ def prior_requests(ws: "Workspace", skip_run: str | None = None) -> list[dict[st
         if folder.name == skip_run or not path.exists():
             continue
         for r in json.loads(path.read_text()):
+            if r.get("deleted"):
+                continue
             out.append({**{k: r.get(k) for k in ("source_name", "tables", "columns", "gap",
                                                  "data", "approved", "note")},
                         "status": _status(r), "run_id": folder.name})
+    return out
+
+
+def request_set(ws: "Workspace") -> list[dict[str, Any]]:
+    from agent.tools.data_pull import BEYOND, request_scope
+
+    """Every kept data request of every run, newest run first - what the user takes
+    to the data owners. Dropped requests (the challenge found the data already
+    there) and removed ones are not in it."""
+    from agent.tools.data_pull import BEYOND, request_scope
+
+    out = []
+    for folder in reversed(_runs(ws)):
+        path = folder / "data_requests.json"
+        if not path.exists():
+            continue
+        direction = _direction(folder)
+        for r in json.loads(path.read_text()):
+            # Kept by the challenge - or, from before it, approved by the analyst.
+            if r.get("deleted") or _status(r) not in ("kept", "approved"):
+                continue
+            out.append({**r, "key": f"{folder.name}:{r.get('intent')}",
+                        "run_id": folder.name, "direction": direction,
+                        "scope": request_scope(r),
+                        "kind": "beyond_scope" if request_scope(r) == BEYOND else "in_scope"})
     return out
 
 
@@ -110,7 +137,7 @@ def _requested(ws: "Workspace", records: list[dict[str, Any]],
 
 
 def requested_columns(session: "Session") -> dict[tuple[str, str], list[str]]:
-    """The CAS columns already asked for - (table, column) -> the requests that ask for
+    """The scope columns already asked for - (table, column) -> the requests that ask for
     them - in earlier runs and this one; keys, and pulls the analyst rejected, aside."""
     earlier = prior_requests(session.ws, session.run_id) + [
         {**r, "status": _status(r), "run_id": session.run_id} for r in session.data_requests]
@@ -136,12 +163,12 @@ def _open(ws: "Workspace", requested: dict[tuple[str, str], list[str]]) -> list[
 
 def open_raw_columns(session: "Session",
                      requested: dict[tuple[str, str], list[str]] | None = None) -> list[str]:
-    """The unused_raw CAS columns no request asks for yet - keys aside."""
+    """The unused_raw scope columns no request asks for yet - keys aside."""
     return _open(session.ws, requested_columns(session) if requested is None else requested)
 
 
 def scope_left(ws: "Workspace") -> list[str]:
-    """The unused_raw CAS columns no run has asked for yet - before a run starts."""
+    """The unused_raw scope columns no run has asked for yet - before a run starts."""
     return _open(ws, _requested(ws, prior_requests(ws)))
 
 

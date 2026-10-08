@@ -4,7 +4,7 @@ The first category is the **clustering** shots - representative rows picked
 per class with KMeans (``preprocessing/shots.py``), split into batches. They
 are the prepare step's file (``discovery.few_shot_path``), or generated here
 from the screen's fit rows (:func:`generate_clustering`). After them come the
-user's own categories, one markdown file each (``agent.shot_spec_paths``),
+user's own categories, one markdown file each (``discovery.shot_spec_paths``),
 appended in order. A category gives its examples one of two ways - as ids
 looked up in the model rows, or as a table of example rows of its own:
 
@@ -305,7 +305,7 @@ def write_spec(folder: Path, name: str, context: str, *, ids: list[str] | None =
 def categories(ws: Workspace) -> list[ShotCategory]:
     """The clustering shots first, then each spec file in order."""
     out = [c for c in [_clustering(ws)] if c is not None]
-    for p in ws.cfg.agent.shot_spec_paths:
+    for p in ws.cfg.discovery.shot_spec_paths:
         if not Path(p).is_file():
             continue
         try:

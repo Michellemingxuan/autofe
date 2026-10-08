@@ -6,10 +6,12 @@ description: Source the data a feature needs - explore the model rows and the ex
 
 ## What you can read
 
-* `catalog(query)` - search model columns, sources, and the CAS scope; each
+* `catalog(query)` - search model columns, sources, and the scopes; each
   model or source column comes with example values, so one search shows what a
   column holds. Several keywords in one query are searched together. Empty
-  query = overview. Each CAS variable has a status:
+  query = overview. A scope is a set of tables data may be requested from,
+  named by a keyword (CAS, say - your brief lists them). Each scope variable
+  has a status:
   * `in_model` - already used by the incumbent model (via a matched variable)
   * `in_model_unused` - in the model's inputs but carries no importance
   * `unused_raw` - a raw variable the model does not use: the scope for L3
@@ -60,24 +62,55 @@ Steps:
    You may drop rows far older than any feature could want (e.g. > 2 years).
 
 Write `link()` for the linkage engine your brief names - pandas, unless it says
-PySpark. A link reads the whole source, so keep only the columns you need before
-the join, and join on the key alone. On PySpark, `source` is a Spark DataFrame
-and `F` is `pyspark.sql.functions`. The example shows the shape only: `<id>` is
-the id column, `<key>` the source's join key, `<event_date>` its event date,
-`<column>` a column to keep - take the real names, and how the id splits, from
-your brief:
+PySpark. A link reads the whole source, and at evaluation it runs on the full
+model data (see "Data size" in your brief): every id against every event. The
+result has a row per (id, event before its as-of date) - a customer with several
+as-of dates gets their events once per date. This join is many-to-many by
+design: a key repeats on the id side (one customer, several as-of dates) and on
+the event side. Its rows are, per key, (ids with that key) x (events with that
+key) before the date filter - a customer with 12 as-of dates and 5,000 events is
+60,000 rows before it. The cuts below shrink both factors before the merge;
+check the count first in a probe:
+`(ids.groupby("<key>").size() * events.groupby("<key>").size()).sum()`.
+The proposal reports `events_per_id` and the rows and GB at full size. Keep it
+small:
+* Select the columns features will use - the key, the event date, and the
+  measures - before anything else. Features see only the columns link()
+  returns.
+* Cut the source to the ids' keys first (`source[source["<key>"].isin(keys)]`)
+  and to the date range: after the oldest as-of date minus the longest window a
+  feature could want (two years at most), and before the latest as-of date.
+* Join on the key alone, then filter on the dates; cast key types once, on the
+  smaller side where you can.
+* Never join the source to itself or to another source here - one source, one
+  join to the ids.
+* If it still does not fit, say so in your report: the user can cut the extract
+  itself (fewer columns, a shorter date range).
+
+The example shows the shape only: `<id>` is the id column, `<key>` the source's
+join key, `<event_date>` its event date, `<column>` a column to keep - take the
+real names, and how the id splits, from your brief:
 
 ```python
 def link(base_ids, source):
-    ids = (base_ids
-           .withColumn("<key>", F.split("<id>", "_").getItem(0))
-           .withColumn("as_of", F.to_date(F.split("<id>", "_").getItem(1), "yyyyMMdd")))
-    events = (source.select("<key>", "<event_date>", "<column>")
-              .withColumn("<key>", F.col("<key>").cast("string"))
-              .withColumn("<event_date>", F.to_date("<event_date>")))
-    joined = ids.join(events, "<key>")
-    return joined.where(F.col("<event_date>") < F.col("as_of"))     # strict
+    ids = base_ids.copy()
+    parts = ids["<id>"].str.split("_")
+    ids["<key>"] = parts.str[0]
+    ids["as_of"] = pd.to_datetime(parts.str[1], format="%Y%m%d")
+    events = source[["<key>", "<event_date>", "<column>"]]
+    events = events[events["<key>"].astype(str).isin(set(ids["<key>"]))]
+    events = events.assign(**{"<key>": events["<key>"].astype(str),
+                              "<event_date>": pd.to_datetime(events["<event_date>"])})
+    earliest = ids["as_of"].min() - pd.Timedelta(days=730)
+    events = events[(events["<event_date>"] >= earliest)
+                    & (events["<event_date>"] < ids["as_of"].max())]
+    joined = ids.merge(events, on="<key>")
+    return joined[joined["<event_date>"] < joined["as_of"]]          # strict
 ```
+
+On PySpark (only when your brief says so), `source` is a Spark DataFrame and `F`
+is `pyspark.sql.functions`: the same steps with `F.split`, `F.to_date`, a
+`left_semi` join for the key cut, and `where`.
 
 The tool reports rows, match rate (share of model ids with at least one event),
 and point-in-time violations, then waits for the user. A violation fails the
@@ -91,28 +124,29 @@ When the direction needs information no model column or source carries, it is
 one of two kinds of request. Both are challenged: can the data that exists now
 already supply it?
 
-**Within the CAS scope** - the tables the analyst listed, with SQL:
-1. Check `scope(status="unused_raw")` and `catalog` for the CAS variables that
-   carry it. A variable marked `requested` is already asked for by an earlier
+**Within a scope** - the tables the analyst listed, with SQL:
+1. Check `scope(status="unused_raw")` (add `scope_name` for one scope) and
+   `catalog` for the scope variables that carry it. A variable marked `requested` is already asked for by an earlier
    request (the brief lists them). Build on the others. Use a requested column
    only beside new columns that add information.
-2. Its idea (the run's first stage) writes the CAS variables it needs in `data`,
-   spelled as `scope()` lists them.
+2. Its idea (the run's first stage) writes the scope variables it needs in
+   `data`, spelled as `scope()` lists them.
 3. Call `screen_request(gap, sql, source_name)`:
    * `gap` - one paragraph: what is missing, why the direction needs it, and
      which features it would enable.
-   * `sql` - BigQuery SQL over the CAS tables, selecting only the needed
-     columns, the join key, and the event date, for the customers and the date
-     range of the model sample. Filter early; these tables are very large.
+   * `sql` - SQL in the scope's dialect (the brief names it) over one scope's
+     tables, selecting only the needed columns, the join key, and the event
+     date, for the customers and the date range of the model sample. Filter
+     early; these tables are very large.
    * `source_name` - a short snake_case name for the new source.
-   The SQL is screened against the CAS columns; a refusal costs nothing.
+   The SQL is screened against the scope's columns; a refusal costs nothing.
 
-**Beyond the CAS scope** - data the bank or the market holds elsewhere:
+**Beyond scope** - data the bank or the market holds outside every scope:
 external information (bureau triggers, macro, merchant or industry data), the
 strategies applied to an account (RLA, line actions, collections treatment),
 calling and contact history, servicing and complaints, and more. Nobody here can
 describe all of it; the idea is what counts.
-1. Its idea is marked `beyond_cas`, and its `data` says what it needs and where
+1. Its idea is marked `beyond_scope`, and its `data` says what it needs and where
    it would come from.
 2. Call `propose_new_data(gap, source_name, data, features)` - no SQL. Be
    specific: the behaviour it shows, the grain (per account, per call, per

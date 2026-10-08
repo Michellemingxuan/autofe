@@ -347,3 +347,9 @@
   .split { grid-template-columns: minmax(0, 1fr); }
   .overview { display: none; }
 }
+
+/* The theme pool: one chip per theme, faded once a run has explored it. */
+.themeChips { display: flex; flex-wrap: wrap; gap: 6px; }
+.themeChip { display: inline-flex; align-items: center; gap: 6px; padding: 3px 10px; border-radius: var(--j-radius-pill); border: 1px solid var(--j-accent-line); background: var(--j-accent-soft); color: var(--j-accent-deep); font-size: var(--j-fs-sm); }
+.themeChip i { font-style: normal; font-size: var(--j-fs-meta); font-weight: 700; }
+.themeUsed { border-color: var(--j-border); background: var(--j-surface); color: var(--j-ink-3); }

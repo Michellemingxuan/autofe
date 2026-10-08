@@ -71,6 +71,39 @@ pandas, the slips that cost attempts:
 * A ratio's denominator can be 0 or missing: guard it (see above), and fill
   "no events" with what it means (a count of 0), not with 0 for everything.
 
+## Scale - the screen is a sample
+
+Your script is tried on the screen rows, but a verified feature is computed
+again at evaluation on the full model data, against the whole of each source -
+your brief's "Data size" gives both. A linked source there holds every event of
+every id: often hundreds of millions of rows. Write every script for that:
+* Name each column you read in quotes - `s["<amount>"]`, `s[["<id>", "as_of",
+  "<event_date>"]]`. On pandas, only the columns your code names (plus the id
+  and `as_of`) are loaded; a column built from a variable is not.
+* Filter first: cut the events to your window (and to the categories you need)
+  before any groupby, merge or sort.
+* **Many-to-many joins are the main danger.** A merge returns, for each key,
+  the left rows with that key times the right rows with it. Two event-level
+  frames joined on the id - a source with itself, two sources, events with
+  events - give every id (its events x its other events) rows: 300 x 300 is
+  90,000 rows for one id, and the full data has millions of ids. Before every
+  merge, ask: is the key unique on at least one side?
+  * Aggregate each side to one row per id (`groupby("<id>").agg(...)`), then
+    merge the aggregates - always one-to-one.
+  * Merging events with a per-id table (`base`, an aggregate) is many-to-one:
+    fine. Pass `validate="many_to_one"` so pandas checks it.
+  * Need two sources together per event ("payments within 30 days of a spend")?
+    Aggregate both to (id, day) or (id, month) first, then join on those keys.
+  * The runner refuses a many-to-many merge in a feature, with the numbers -
+    rewrite the join; do not patch around it.
+* No pivot or `unstack` over a column with many values, no cross joins, no
+  `sort_values` over all events when a `groupby(...).max()` / `idxmax` gives the
+  answer, no `.astype(str)` on a large column.
+* Prefer one `groupby(...).agg(...)` with several outputs to several passes.
+* Each screen reply says how the script scales: a `scale` note means it would
+  not finish, or not fit, on the full data. Treat it like a failure - the next
+  script must be leaner.
+
 The examples show the shape of the code only. Names in `<angle brackets>` stand
 for real ones from your brief: `<id>` the id column, `<source>` a source,
 `<event_date>` and `<amount>` its columns, `<feature>` your feature's name.
@@ -86,7 +119,7 @@ def build(spark, sources, base):
     return out
 ```
 
-Spark example (same feature):
+PySpark example (same feature) - only when your brief's engine is PySpark:
 
 ```python
 def build(spark, sources, base):

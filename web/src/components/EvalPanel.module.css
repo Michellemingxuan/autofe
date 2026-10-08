@@ -13,6 +13,7 @@
 .state.running { background: var(--j-accent-soft); color: var(--j-accent-deep); }
 .state.done { background: var(--j-good-soft); color: var(--j-good-ink); }
 .state.error { background: var(--j-danger-soft); color: var(--j-danger); }
+.state.stopped { background: var(--j-chip); color: var(--j-ink-3); }
 
 .body { flex: 1; overflow-y: auto; padding: 4px 14px 14px; display: flex; flex-direction: column; }
 .section { padding: 12px 0; border-bottom: 1px solid var(--j-border-soft); display: flex; flex-direction: column; gap: 6px; }

@@ -97,7 +97,8 @@ export type Workspace = {
   additional_data_dir: string | null
   sources: Source[]
   scope: Record<string, number>
-  scope_files: { name: string; path: string }[]
+  scopes: Record<string, Record<string, number>>   // by keyword: status -> variables
+  scope_files: { scope: string; name: string; path: string }[]
   scope_notes: { name: string; chars: number }[]
   shots: ShotCategory[]
   defaults: Omit<Params, 'sources'> & { level_weights?: number[] }
@@ -119,6 +120,7 @@ export type RunSummary = {
   requests: number
   status: 'running' | 'done' | 'unfinished'
   stopped_because: string | null
+  explore?: boolean                   // an open exploration: no direction from the user
 }
 
 export type CodeCard = {
@@ -178,12 +180,13 @@ export type DataRequest = {
   source_name: string
   gap: string
   features: string
-  sql: string                  // empty beyond the CAS scope
+  sql: string                  // empty beyond scope
   tables: string[]
   columns?: string[]
-  scope?: 'cas' | 'beyond_cas'  // within the CAS scope (SQL, screened) or beyond it (an idea)
-  data?: string                // beyond CAS: the data it needs and where it would come from
+  scope?: string               // the scope it reads, by keyword (CAS, say), or 'beyond_scope' (an idea)
+  data?: string                // beyond scope: the data it needs and where it would come from
   refunded?: boolean           // dropped as covered by current data - its intent came back
+  deleted?: boolean            // taken off the request set by the user
   status: 'proposed' | 'kept' | 'dropped' | string
   challenge?: {
     verdict: 'constructible' | 'partly' | 'new' | 'unchallenged'
@@ -198,7 +201,8 @@ export type DataRequest = {
 
 /** One idea of the brainstorm. Older runs carry a hypothesis and no name. */
 export type Idea = { n: number; name?: string; level?: string; lens: string
-                     description?: string; hypothesis?: string; data: string; beyond_cas?: boolean }
+                     description?: string; hypothesis?: string; data: string
+                     beyond_scope?: boolean; beyond_cas?: boolean }   // beyond_cas: older runs
 
 export type StepKind = 'explore' | 'ideas' | 'linkage' | 'intent' | 'l3' | 'challenge' | 'stage' | 'summary'
 
@@ -245,6 +249,8 @@ export type RunView = {
   status: 'idle' | 'running' | 'waiting' | 'done' | 'error'
   stoppedBecause: string | null
   codeCount: number
+  explore: boolean                    // no direction: the agent draws a theme per round
+  themes: { round: number; theme: string; exploredBefore: number }[]
 }
 
 export type PoolFeature = {
@@ -265,7 +271,7 @@ export type PoolFeature = {
 export type EvalSummary = {
   eval_id: string
   started: number
-  status: 'running' | 'done' | 'error'
+  status: 'running' | 'done' | 'error' | 'stopped'
   features: { key: string; column: string; name: string; direction: string
               level?: string; delta?: number | null; description?: string }[]
   combinations: Record<string, { keys: string[]; columns: string[] }>
@@ -284,7 +290,7 @@ export type EvalStage = {
 export type ShapRank = { feature: string; rank: number; of: number; share: number }
 
 export type EvalView = {
-  status: 'idle' | 'running' | 'done' | 'error'
+  status: 'idle' | 'running' | 'done' | 'error' | 'stopped'
   startTs: number
   lastTs: number
   features: EvalSummary['features']
@@ -326,3 +332,31 @@ export type EvalResult = {
 }
 
 export type FeatureStats = { missing_rate: number | null; max_corr: number | null; max_corr_with: string | null }
+
+/** A kept data request in the request set - from any run. */
+export type RequestItem = DataRequest & {
+  key: string                  // run_id:intent
+  run_id: string
+  direction: string
+  kind: 'in_scope' | 'beyond_scope'
+  scope: string                // its scope's keyword, or 'beyond_scope'
+}
+
+export const BEYOND = 'beyond_scope'
+
+/** A request's scope as runs record it now: older runs said cas / beyond_cas. */
+export function scopeOf(raw: Record<string, any>): string {
+  const v = raw.scope
+  if (v === BEYOND || v === 'beyond_cas' || (!v && !raw.sql)) return BEYOND
+  return !v || v === 'cas' ? 'CAS' : v
+}
+
+/** The theme pool an open exploration draws from - made from the task description. */
+export type ThemePool = {
+  themes: { theme: string; runs: number }[]
+  made: number | null
+  stale: boolean                      // made for another task description
+  ready: boolean                      // the task is described
+  generating: boolean
+  error: string | null
+}

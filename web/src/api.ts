@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react'
 import type {
-  EvalResult, EvalSummary, Ev, Params, PathCheck, PoolFeature, RunSummary, SetupView, Source, Workspace,
+  EvalResult, EvalSummary, Ev, Params, PathCheck, PoolFeature, RequestItem, RunSummary, SetupView, Source,
+  ThemePool, Workspace,
 } from './types'
 
 // Every backend route the UI uses, in the order of the journey. The server's
@@ -39,6 +40,8 @@ export const api = {
   applySetup: (values: Record<string, unknown>) => post<SetupView>('/api/setup', { values }),
   resetSetup: () => post<SetupView>('/api/setup/reset'),
   checkPaths: (paths: string[]) => post<PathCheck>('/api/setup/check', { paths }),
+  themes: () => call<ThemePool>('/api/themes'),
+  makeThemes: () => post<ThemePool>('/api/themes'),
   upload: async (kind: string, file: File) => {
     // Multipart, so not through `call`, which sends JSON.
     const form = new FormData()
@@ -72,15 +75,19 @@ export const api = {
   deleteRun: (id: string) => del(`/api/runs/${id}`),
   deleteIntent: (runId: string, name: string) => del(`/api/runs/${runId}/intents/${name}`),
   requestsUrl: (runId: string) => `/api/runs/${runId}/requests.md`,
+  deleteRequest: (runId: string, intent: string) => del(`/api/runs/${runId}/requests/${intent}`),
 
   // 3. Evaluate
   features: () => call<PoolFeature[]>('/api/features'),
+  requests: () => call<RequestItem[]>('/api/requests'),
+  requestSetUrl: '/api/requests.md',
   evaluations: () => call<EvalSummary[]>('/api/evaluations'),
   results: () => call<EvalResult[]>('/api/results'),
   clearResults: () => del('/api/results'),
   evaluate: (features: string[], combinations: Record<string, string[]>) =>
     post<{ eval_id: string }>('/api/evaluations', { features, combinations }),
   deleteEvaluation: (id: string) => del(`/api/evaluations/${id}`),
+  stopEvaluation: (id: string) => post(`/api/evaluations/${id}/cancel`),
   removeResult: (id: string, variant: string) =>
     del(`/api/evaluations/${id}/variants/${encodeURIComponent(variant)}`),
 }
@@ -94,10 +101,11 @@ export const streamUrl = {
 const EVENTS = [
   'run_started', 'agent_message', 'tool_started', 'tool_completed', 'skill_loaded',
   'code_status', 'approval_required', 'approval_resolved', 'feature_screened',
-  'feature_verified', 'intent_deleted', 'data_request', 'request_challenged',
+  'feature_verified', 'intent_deleted', 'data_request', 'request_challenged', 'request_deleted',
   'stage_done', 'stage_started', 'agent_nudged', 'source_detected', 'ideas_recorded', 'ideas_sent_back',
+  'theme_drawn',
   'run_done', 'run_error',
-  'eval_started', 'eval_status', 'eval_log', 'eval_done', 'eval_error', 'variant_removed',
+  'eval_started', 'eval_status', 'eval_log', 'eval_done', 'eval_error', 'eval_stopped', 'variant_removed',
 ]
 
 /**

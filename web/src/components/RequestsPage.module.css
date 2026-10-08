@@ -1,0 +1,21 @@
+/* The request set: rows and the side card come from EvaluatePage.module.css. */
+.filters { display: flex; gap: 4px; }
+.filter { border: 1px solid var(--j-border); background: var(--j-surface); color: var(--j-ink-3); border-radius: var(--j-radius-pill); padding: 2px 10px; font-size: var(--j-fs-meta); }
+.filterOn { border-color: var(--j-accent-line); background: var(--j-accent-soft); color: var(--j-accent-deep); font-weight: 600; }
+
+.kind { font-size: 9.5px; font-weight: 700; padding: 1px 6px; border-radius: 4px; white-space: nowrap; }
+.in_scope { background: var(--j-accent-soft); color: var(--j-accent-deep); }
+.beyond_scope { background: var(--j-chip); color: var(--j-ink-3); }
+.verdict { font-size: var(--j-fs-meta); color: var(--j-good-ink); white-space: nowrap; }
+.clamp { display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
+
+.field { display: flex; flex-direction: column; gap: 4px; }
+.label { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; font-size: var(--j-fs-meta); color: var(--j-ink-4); }
+.label code, .chips code { font-family: var(--j-font-mono); font-size: 10.5px; padding: 1px 6px; border-radius: 4px; background: var(--j-chip); color: var(--j-ink-2); }
+.chips { display: flex; flex-wrap: wrap; gap: 5px; }
+.text { color: var(--j-ink-2); font-size: var(--j-fs-sm); line-height: 1.45; white-space: pre-wrap; }
+
+.counts { display: flex; flex-direction: column; gap: 4px; color: var(--j-ink-3); font-size: var(--j-fs-sm); }
+.counts b { color: var(--j-ink); font-variant-numeric: tabular-nums; }
+.download { text-align: center; text-decoration: none; }
+.disabled { opacity: 0.45; pointer-events: none; }

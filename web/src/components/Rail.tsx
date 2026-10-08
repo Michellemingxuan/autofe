@@ -25,6 +25,9 @@ const STEPS: { page: Page; name: string;
     hint: (_, __, e) => `${e.length} evaluation${e.length === 1 ? '' : 's'}` },
 ]
 
+// The pages under step 3.
+const EVALUATE: Page[] = ['evaluate', 'requests', 'results']
+
 const when = (ts: number) => new Date(ts * 1000).toLocaleString([], {
   month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit',
 })
@@ -45,7 +48,7 @@ export function Rail({ route, workspace, runs, evaluations }: Props) {
         {STEPS.map((step, i) => (
           <button key={step.page}
                   className={`${s.step} ${route.page === step.page
-                    || (step.page === 'evaluate' && route.page === 'results') ? s.stepOn : ''}`}
+                    || (step.page === 'evaluate' && EVALUATE.includes(route.page)) ? s.stepOn : ''}`}
                   onClick={() => navigate(step.page)}>
             <span className={s.stepNum}>{i + 1}</span>
             <span className={s.stepText}>
@@ -92,11 +95,13 @@ export function Rail({ route, workspace, runs, evaluations }: Props) {
         </>
       )}
 
-      {(route.page === 'evaluate' || route.page === 'results') && (
+      {EVALUATE.includes(route.page) && (
         <>
           <div className={s.subnav}>
             <button className={`${s.subItem} ${route.page === 'evaluate' ? s.subOn : ''}`}
                     onClick={() => navigate('evaluate')}>Feature set</button>
+            <button className={`${s.subItem} ${route.page === 'requests' ? s.subOn : ''}`}
+                    onClick={() => navigate('requests')}>Request set</button>
             <button className={`${s.subItem} ${route.page === 'results' ? s.subOn : ''}`}
                     onClick={() => navigate('results')}>Results</button>
           </div>

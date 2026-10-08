@@ -50,6 +50,7 @@
 .unfinished { display: flex; flex-wrap: wrap; gap: 6px; }
 .pending { display: inline-flex; align-items: center; gap: 6px; border: 1px solid var(--j-accent-line); background: var(--j-accent-soft); color: var(--j-accent-deep); border-radius: var(--j-radius-pill); padding: 4px 11px; font-size: var(--j-fs-meta); font-family: var(--j-font-mono); }
 .pending.error { border-color: #f2b8b8; background: var(--j-danger-soft); color: var(--j-danger); }
+.pending.stopped { border-color: var(--j-border-strong); background: var(--j-chip); color: var(--j-ink-3); }
 .pendingDot { width: 7px; height: 7px; border-radius: 50%; background: currentColor; }
 .pending.running .pendingDot { animation: pulse 1s infinite; }
 /* The confirm opens over the row, to the left - the columns never move. */

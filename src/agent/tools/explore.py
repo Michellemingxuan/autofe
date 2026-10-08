@@ -12,7 +12,7 @@ __all__ = ["catalog", "scope", "sample_rows", "run_probe"]
 
 
 def catalog(session: Session, query: str = "") -> dict[str, Any]:
-    """Search model columns, the allowed sources and the CAS scope."""
+    """Search model columns, the allowed sources and the scopes."""
     found = session.ws.catalog(query)
     allowed = set(session.params.sources)
     if "sources" in found:
@@ -24,10 +24,11 @@ def catalog(session: Session, query: str = "") -> dict[str, Any]:
     return found
 
 
-def scope(session: Session, query: str = "", status: str = "", table: str = "") -> dict[str, Any]:
-    """The CAS variables - what each is, which table holds it, whether the model uses it,
-    and whether a data request already asks for it."""
-    out = session.ws.scope_variables(query, status, table)
+def scope(session: Session, query: str = "", status: str = "", table: str = "",
+          scope_name: str = "") -> dict[str, Any]:
+    """The scopes' variables - what each is, which scope and table hold it, whether the
+    model uses it, and whether a data request already asks for it."""
+    out = session.ws.scope_variables(query, status, table, scope_name=scope_name)
     taken = requested_columns(session)
     for v in out["variables"]:
         if (by := taken.get((str(v["table"]).lower(), str(v["variable"]).lower()))):
@@ -44,7 +45,8 @@ def sample_rows(session: Session, source: str = "model_database", n: int = 5,
     """A few labelled model rows, or the first rows of an allowed source."""
     tables = set(session.ws.scope()["table"].astype(str)) if len(session.ws.scope()) else set()
     if source in tables:
-        return (f"{source!r} is a CAS table: it has no rows in this workspace. scope(table="
+        return (f"{source!r} is a {session.ws.scope_of(source)} table: it has no rows in this "
+                f"workspace. scope(table="
                 f"{source!r}) lists its variables; an L3 request (screen_request) is how its "
                 "data is obtained.")
     if source != "model_database" and (problem := session.allowed(source)):

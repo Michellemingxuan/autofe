@@ -44,3 +44,9 @@
 .action:hover { background: var(--j-accent-soft); }
 .gone { margin: 24px; padding: 14px 16px; border-radius: var(--j-radius-card); background: var(--j-surface); border: 1px solid var(--j-border); color: var(--j-ink-3); max-width: 560px; }
 .split { color: var(--j-ink-mute); }
+
+/* An open exploration: the themes drawn, round by round. */
+.themes { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 4px; }
+.theme { display: inline-flex; align-items: baseline; gap: 6px; padding: 2px 10px; border-radius: var(--j-radius-pill); background: var(--j-accent-soft); color: var(--j-accent-deep); font-size: var(--j-fs-sm); }
+.theme i { font-style: normal; font-size: var(--j-fs-meta); color: var(--j-ink-4); }
+.themeWait { font-size: var(--j-fs-meta); color: var(--j-ink-4); }

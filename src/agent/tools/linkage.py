@@ -7,6 +7,7 @@ not model ids - before the analyst is asked; a leaky join never reaches them.
 
 from __future__ import annotations
 
+import os
 import re
 from typing import Any
 
@@ -84,6 +85,31 @@ def ensure_linked(session: Session, source: str) -> str | None:
     return None
 
 
+def _at_full_size(session: Session, linked: pd.DataFrame) -> dict[str, Any]:
+    """The linked rows at evaluation, scaled from the screen ids by the id ratio:
+    a row per (id, event before its as-of date), so a customer under several as-of
+    dates brings their events once per date - the join is many-to-many."""
+    ws = session.ws
+    full = ws.data_size()["full_rows"]
+    if not full or not len(linked):
+        return {}
+    ratio = full / len(ws.screen)
+    gb = float(linked.memory_usage(deep=True).sum()) * ratio / 1e9
+    out: dict[str, Any] = {
+        "events_per_id": round(len(linked) / max(linked[ws.id_col].nunique(), 1), 1),
+        "rows_at_full_size": int(len(linked) * ratio),
+        "gb_at_full_size": round(gb, 1)}
+    try:
+        machine = os.sysconf("SC_PAGE_SIZE") * os.sysconf("SC_PHYS_PAGES") / 1e9
+    except (ValueError, OSError, AttributeError):
+        return out
+    if gb > 0.5 * machine:
+        out["scale"] = (f"on the full data this linkage holds about {out['rows_at_full_size']:,} "
+                        f"rows, {gb:.0f} GB - the machine has {machine:.0f} GB. Keep fewer "
+                        "columns, and a shorter window of events before each as-of date.")
+    return out
+
+
 def _check(session: Session, linked: pd.DataFrame, time_column: str,
            rule: str) -> dict[str, Any]:
     id_col, screen = session.ws.id_col, session.ws.screen
@@ -106,6 +132,7 @@ def _check(session: Session, linked: pd.DataFrame, time_column: str,
         "unknown_ids": len(unknown_ids),
         "head": linked.head(5).to_string(index=False, max_colwidth=25),
     }
+    checks.update(_at_full_size(session, linked))
     if checks["point_in_time_violations"]:
         checks["error"] = (f"{checks['point_in_time_violations']} linked rows have "
                            f"{time_column} {'>' if rule == 'inclusive' else '>='} as_of; "

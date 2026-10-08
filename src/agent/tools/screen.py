@@ -14,6 +14,7 @@ attempt is given back.
 
 from __future__ import annotations
 
+import os
 import re
 from collections import Counter
 from typing import Any
@@ -127,10 +128,12 @@ def screen_feature(session: Session, name: str, description: str, level: str,
         reply["stdout"] = run.stdout
         # The usual cause is a column the frame does not have: show what it had.
         reply["frames"] = _frames(session, used)
-    if run.elapsed_s and run.elapsed_s > SLOW_SCRIPT_S:
+    if run.elapsed_s and run.elapsed_s > ws.cfg.agent.timeouts.slow_script_s:
         reply["slow"] = (f"the script took {run.elapsed_s:.0f}s on {len(ws.screen):,} screen rows - "
                          "it loops over rows or ids. Vectorise: filter, then groupby().agg(); "
                          "no apply, iterrows or Python loops.")
+    if run.ok and (note := scale_note(session, run)):
+        reply["scale"] = note
     # One failure tends to breed the next - patching the same code on a wrong
     # belief. Two in a row: the next screen waits for a look at the data.
     session.failed_streak = 0 if run.ok else session.failed_streak + 1
@@ -154,8 +157,48 @@ def screen_feature(session: Session, name: str, description: str, level: str,
 FAILED_STREAK = 2
 # Failed attempts one idea may have; the next is refused - move on.
 IDEA_FAILURES = 2
-# A script on the screen rows slower than this is told to vectorise.
-SLOW_SCRIPT_S = 30
+
+
+# A projection above this share of the evaluation time limit, or of the
+# machine's memory, is sent back to the agent.
+SCALE_WARN_SHARE = 0.5
+
+
+def _machine_mb() -> float | None:
+    try:
+        return os.sysconf("SC_PAGE_SIZE") * os.sysconf("SC_PHYS_PAGES") / 2**20
+    except (ValueError, OSError, AttributeError):
+        return None
+
+
+def scale_note(session: Session, run: Any) -> str | None:
+    """The screen is a sample; evaluation runs the same script on the full splits.
+    Scaled by the row ratio - roughly, as joins and sorts grow faster than rows -
+    a script that will not finish there, or not fit, is told so now."""
+    ws = session.ws
+    full = ws.data_size()["full_rows"]
+    if not full or full <= len(ws.screen):
+        return None
+    ratio = full / len(ws.screen)
+    limit_s = ws.cfg.agent.timeouts.eval_s
+    problems = []
+    projected_s = max((run.elapsed_s or 0) - (run.setup_s or 0), 0) * ratio
+    if projected_s > SCALE_WARN_SHARE * limit_s:
+        problems.append(f"about {projected_s / 60:.0f} min (the limit is {limit_s / 60:.0f})")
+    machine = _machine_mb()
+    # On spark the work is in the JVM, not this process: only the time says anything.
+    if session.params.engine != "spark" and run.peak_mb and machine:
+        projected_mb = run.peak_mb * ratio
+        if projected_mb > SCALE_WARN_SHARE * machine:
+            problems.append(f"about {projected_mb / 1024:.0f} GB of memory "
+                            f"(the machine has {machine / 1024:.0f} GB)")
+    if not problems:
+        return None
+    return (f"on the full data ({full:,} rows, {ratio:.0f}x the screen) this script would "
+            f"take {' and '.join(problems)}, and fail at evaluation. Make the next one "
+            "leaner: name only the columns you need, filter to the window before any "
+            "join or groupby, aggregate to one row per id early, never merge two "
+            "event-level frames.")
 
 
 def idea_of(name: str, ideas: list[dict[str, Any]]) -> str:

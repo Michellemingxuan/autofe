@@ -1,4 +1,4 @@
-import type { CodeCard, DataRequest, RunView, Step } from '../types'
+import { BEYOND, type CodeCard, type DataRequest, type RunView, type Step } from '../types'
 import { ToolChips } from './ToolChips'
 import s from './Timeline.module.css'
 
@@ -113,8 +113,8 @@ export function Timeline({ view, inView, onSelect }: {
                       ? `${step.request.challenge.verdict} → ${step.request.status}`
                     : step.kind === 'l3' && step.request?.challenge
                       ? `${step.request.challenge.verdict} → ${step.request.status}`
-                    : step.kind === 'l3' && step.request ? (step.request.scope === 'beyond_cas'
-                      ? 'proposed · beyond CAS' : `proposed · reads ${step.request.tables.join(', ')}`)
+                    : step.kind === 'l3' && step.request ? (step.request.scope === BEYOND
+                      ? 'proposed · beyond scope' : `proposed · ${step.request.scope} · reads ${step.request.tables.join(', ')}`)
                     : step.kind === 'stage' ? step.note : STATUS_LABEL[step.status]}
                   {step.row?.delta != null && (
                     <span className={s.delta}> · Δ {step.row.delta >= 0 ? '+' : ''}{step.row.delta.toFixed(4)}</span>
@@ -132,7 +132,7 @@ export function Timeline({ view, inView, onSelect }: {
 
 /**
  * A request's way through the run, on one line: proposed; screened - its SQL
- * validated (within the CAS scope only) (a try sent back is retried, shown as screening until one passes or
+ * validated (within a scope only) (a try sent back is retried, shown as screening until one passes or
  * the run ends); challenged; kept or dropped.
  */
 function Progress({ request: r, live }: { request?: DataRequest; live: boolean }) {
@@ -141,8 +141,8 @@ function Progress({ request: r, live }: { request?: DataRequest; live: boolean }
   const end: Pip = challenged !== 'on' ? 'pending' : r!.status === 'dropped' ? 'drop' : 'keep'
   const stages: [string, Pip][] = [
     ['proposed', 'on'],
-    // Beyond the CAS scope there is no SQL to screen: proposed, then challenged.
-    ...(r?.scope === 'beyond_cas' ? [] : [[screened === 'run' ? 'screening' : 'screened', screened] as [string, Pip]]),
+    // Beyond scope there is no SQL to screen: proposed, then challenged.
+    ...(r?.scope === BEYOND ? [] : [[screened === 'run' ? 'screening' : 'screened', screened] as [string, Pip]]),
     ['challenged', challenged],
     [end === 'drop' ? 'dropped' : end === 'keep' ? 'kept' : 'kept / dropped', end],
   ]

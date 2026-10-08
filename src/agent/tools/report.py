@@ -9,6 +9,7 @@ from __future__ import annotations
 
 from typing import Any
 
+from agent.tools.data_pull import request_scope
 from agent.session import Session
 
 __all__ = ["report_findings", "validated_sql"]
@@ -33,7 +34,7 @@ def report_findings(session: Session, summary: str) -> dict[str, Any]:
             return {"ok": False, "error": (
                 f"{left} more result(s) wanted ({session.budget()}). Propose from your ideas "
                 "before you report - screen_feature for an L1/L2 idea; for an L3 one, "
-                "screen_request within the CAS scope or propose_new_data beyond it. If the "
+                "screen_request within a scope or propose_new_data beyond scope. If the "
                 "direction is truly exhausted, call report_findings again and say why. "
                 "Nothing was spent.")}
     if session.data_requests:
@@ -48,7 +49,7 @@ REPORT_REFUSALS = 2
 def _results_wanted(session: Session) -> int:
     """How far a report would fall short of the target - while attempts remain.
     There is always room: a feature can be built from the data in hand, and a data
-    request can look beyond the CAS scope when the scope itself is spent."""
+    request can look beyond scope when the scopes themselves are spent."""
     if session.attempts >= session.max_attempts:
         return 0
     return session.wanted()
@@ -60,14 +61,15 @@ def validated_sql(session: Session) -> str:
     dropped = [r for r in session.data_requests if r.get("status") == "dropped"]
     lines = [f"Challenge: {len(kept)} kept, {len(dropped)} dropped (constructible from "
              "current data)."]
-    in_cas = [r for r in kept if r.get("sql")]
+    in_scope = [r for r in kept if r.get("sql")]
     beyond = [r for r in kept if not r.get("sql")]
-    if in_cas:
-        lines += ["", "## Validated SQL - the kept requests within the CAS scope"]
-        for r in in_cas:
-            lines += ["", f"### {r['intent']} {r['source_name']}", "```sql", r["sql"].strip(), "```"]
+    if in_scope:
+        lines += ["", "## Validated SQL - the kept requests within a scope"]
+        for r in in_scope:
+            lines += ["", f"### {r['intent']} {r['source_name']} ({request_scope(r)})",
+                      "```sql", r["sql"].strip(), "```"]
     if beyond:
-        lines += ["", "## Beyond the CAS scope - the kept ideas and the data they need"]
+        lines += ["", "## Beyond scope - the kept ideas and the data they need"]
         for r in beyond:
             lines += ["", f"### {r['intent']} {r['source_name']}", str(r.get("data", "")).strip()]
     if dropped:

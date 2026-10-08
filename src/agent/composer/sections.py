@@ -7,10 +7,11 @@ The wording around them is in the templates beside this file.
     skills        the run's skills, in full (agent/skills/*.md)
     shot_list     the shot categories, for the agent to read with `shots`
     gates         the analyst's minimum gains, in words
-    scope_notes   the analyst's notes on the data - the CAS scope and beyond it, verbatim
+    scopes        the scopes data may be requested from, by keyword - CAS, say
+    scope_notes   the analyst's notes on the data - the scopes and beyond them, verbatim
     quota         a mixed run's target, split across levels
     memory        what earlier directions proposed - not to be repeated
-    ideas         the ideas stage: the lenses, this run's focus, the L3 rule and CAS list
+    ideas         the ideas stage: the lenses, this run's focus, the L3 rule and scope list
     current_data  the model columns and linked sources - what a challenge checks against
     columns       the columns a feature can read - base and the run's sources, described
 """
@@ -23,7 +24,7 @@ from agent.memory import open_raw_columns, prior_features, prior_requests, reque
 from agent.session import Session
 from agent.tools.ideas import LENSES, MIN_FOCUS, MIN_LENSES, focus_lenses, ideas_in_round
 
-__all__ = ["skills", "shot_list", "gates", "scope_notes", "quota", "memory", "ideas", "current_data",
+__all__ = ["skills", "shot_list", "gates", "scopes", "scope_notes", "quota", "memory", "ideas", "current_data",
            "columns"]
 
 # Base features listed in the brief, at most - catalog(query) finds the rest.
@@ -52,15 +53,30 @@ def gates(session: Session) -> str:
     return "; ".join(gates)
 
 
+def scopes(ws: Any) -> str:
+    """The scopes, by keyword: what each is, its SQL, how big - one line each."""
+    scope = ws.scope()
+    lines = []
+    for name, sc in ws.scopes.items():
+        rows = scope[scope["scope"] == name] if len(scope) else scope
+        n_tables = rows["table"].nunique() if len(rows) else 0
+        size = (f"{n_tables} table{'' if n_tables == 1 else 's'}, {len(rows):,} variables "
+                f"({int((rows['status'] == 'unused_raw').sum()):,} unused_raw)"
+                if len(rows) else "no variable lists found")
+        what = f" - {sc.description.strip()}" if sc.description.strip() else ""
+        lines.append(f"  * `{name}`{what}. SQL: {sc.sql_dialect}. {size}.")
+    return "\n".join(lines) or "  * none - only requests beyond scope are possible."
+
+
 def scope_notes(ws: Any, limit: int = 8000) -> str:
-    """The user's guidance on the CAS scope, verbatim - it outranks the skills."""
+    """The user's guidance on the scopes, verbatim - it outranks the skills."""
     notes = ws.scope_notes()
     if not notes:
         return ""
     body = "\n\n".join(f"### {name}\n{text.strip()}" for name, text in notes)
     if len(body) > limit:
         body = body[:limit] + "\n[... truncated]"
-    return ("## Notes from the user on the data\nOn the CAS scope and on data beyond it. "
+    return ("## Notes from the user on the data\nOn the scopes and on data beyond them. "
             f"Follow these when choosing data and writing L3 requests.\n\n{body}\n\n")
 
 
@@ -101,17 +117,17 @@ def memory(session: Session, limit: int = 40) -> str:
                      "the additional data folder, where it appears as a source.")
         for r in reqs:
             what = (f"{', '.join(r['tables'] or [])}: {', '.join(r['columns'] or [])}"
-                    if r.get("tables") else f"beyond CAS: {str(r.get('data') or '')[:160]}")
+                    if r.get("tables") else f"beyond scope: {str(r.get('data') or '')[:160]}")
             lines.append(f"* `{r['source_name']}` - {what} ({r['status']}"
                          + (f": \"{r['note']}\"" if r.get("note") else "") + ")")
         requested = requested_columns(session)
         taken = sorted({f"{t}.{c}" for t, c in requested})
         if taken and not open_raw_columns(session, requested):
-            lines.append("Every unused_raw CAS column is already asked for. Within the CAS "
+            lines.append("Every unused_raw scope column is already asked for. Within a "
                          "scope, ask only for what the model and those requests lack (a model "
-                         "variable's history, a finer grain); the room is beyond it.")
+                         "variable's history, a finer grain); the room is beyond scope.")
         if taken:
-            lines.append("CAS columns already asked for: " + ", ".join(f"`{c}`" for c in taken)
+            lines.append("Scope columns already asked for: " + ", ".join(f"`{c}`" for c in taken)
                          + ". scope() marks them `requested`. Build L3 ideas on other columns. "
                          "A taken column belongs in a new request only beside new columns "
                          "that add information. If the direction needs only taken columns, "
@@ -146,11 +162,12 @@ def _l3_idea_rule(session: Session) -> str:
         return ""
     return f"""
 An L3 idea is a data request, of one of two kinds:
-* **Within the CAS scope** (`beyond_cas` false): in its `data`, the CAS variables
-  it needs, spelled exactly as listed below. It is proposed with BigQuery SQL
-  (screen_request), which is screened against the CAS columns.
-* **Beyond the CAS scope** (`beyond_cas` true): data the bank or the market
-  holds outside CAS - external information (bureau triggers, macro, merchant
+* **Within a scope** (`beyond_scope` false) - {", ".join(f"`{n}`" for n in session.ws.scopes) or "none set up"}:
+  in its `data`, the scope variables it needs, spelled exactly as listed below.
+  It is proposed with SQL in the scope's dialect (screen_request), which is
+  screened against the scope's columns.
+* **Beyond scope** (`beyond_scope` true): data the bank or the market holds
+  outside every scope - external information (bureau triggers, macro, merchant
   or industry data), the strategies applied to an account (RLA, line actions,
   collections treatment), calling and contact history, servicing and complaints,
   ... In its `data`, what it needs and where it would come from. No SQL: it is
@@ -159,33 +176,33 @@ An L3 idea is a data request, of one of two kinds:
 Both are challenged: can the data that exists now already supply it? An idea
 the model database and the linked sources already carry is an L1/L2 idea.
 
-{_cas_list(session)}
+{_scope_list(session)}
 """
 
 
-# CAS variables listed in the brief, at most - scope(query=...) finds the rest.
-CAS_LISTED = 80
+# Scope variables listed in the brief, at most - scope(query=...) finds the rest.
+SCOPE_LISTED = 80
 
 
-def _cas_list(session: Session) -> str:
-    """The unused_raw CAS variables an L3 idea can build on, those already requested
+def _scope_list(session: Session) -> str:
+    """The unused_raw scope variables an L3 idea can build on, those already requested
     marked - in the brief, so the ideas need no look-up to be grounded."""
     from agent.memory import requested_columns
 
     scope = session.ws.scope()
     if not len(scope):
-        return "The CAS scope is empty: no L3 idea is possible."
+        return "No scope has variable lists: only ideas beyond scope are possible."
     keys = {c for t in set(scope["table"].astype(str))
             for k in ("partition", "identifiers") for c in session.ws.table_profile(t)[k]}
     rows = scope[(scope["status"] == "unused_raw") & ~scope["variable"].isin(keys)
                  & ~scope["variable"].astype(str).str.endswith("pkey")]
     taken = requested_columns(session)
-    lines = [f"* `{r.variable}` ({r.table}) - {r.description}"
+    lines = [f"* `{r.variable}` ({r.scope} · {r.table}) - {r.description}"
              + (" - requested already" if (str(r.table).lower(), str(r.variable).lower()) in taken else "")
-             for r in rows.head(CAS_LISTED).itertuples(index=False)]
-    more = (f"\n... and {len(rows) - CAS_LISTED} more: scope(query=...) finds them."
-            if len(rows) > CAS_LISTED else "")
-    return "The unused_raw CAS variables:\n" + "\n".join(lines) + more
+             for r in rows.head(SCOPE_LISTED).itertuples(index=False)]
+    more = (f"\n... and {len(rows) - SCOPE_LISTED} more: scope(query=...) finds them."
+            if len(rows) > SCOPE_LISTED else "")
+    return "The unused_raw scope variables:\n" + "\n".join(lines) + more
 
 
 def current_data(session: Session) -> str:
@@ -195,7 +212,9 @@ def current_data(session: Session) -> str:
     sources = []
     for name in [s for s in session.params.sources if ws.linkage_path(s).exists()]:
         src = ws.sources()[name]
-        cols = "; ".join(f"`{c}` ({d})" for c, d in src.columns.items())
+        kept = _linked_columns(session, name)
+        cols = "; ".join(f"`{c}` ({d})" for c, d in src.columns.items()
+                         if kept is None or c in kept)
         sources.append(f"  * `{name}` - joined as id, as_of + {cols}")
     return (f"## The data that exists now\nModel database - id `{ws.id_col}`, "
             f"{len(ws.base_features)} columns:\n{base}\n\nLinked sources (event rows "
@@ -212,6 +231,19 @@ def _examples(values: Any, n: int = 3) -> str:
         if len(out) == n:
             break
     return ", ".join(str(v)[:24] for v in out)
+
+
+def _linked_columns(session: Session, source: str) -> set[str] | None:
+    """The columns the confirmed linkage returns - it may keep only some."""
+    path = session.linked.get(source)
+    if not path:
+        return None
+    try:
+        import pyarrow.dataset as ds
+
+        return set(ds.dataset(path, format="parquet").schema.names)
+    except Exception:  # noqa: BLE001 - then every column is listed
+        return None
 
 
 def columns(session: Session) -> str:
@@ -243,7 +275,41 @@ def columns(session: Session) -> str:
             state = ("linked" if ws.linkage_path(name).exists() else
                      "needs linkage first" if src.usable else "schema only - no data")
             lines.append(f"  * `{name}` ({state}):")
+            kept = _linked_columns(session, name)
             for c, d in src.columns.items():
+                if kept is not None and c not in kept:
+                    continue
                 lines.append(f"      * `{c}` - {d or '(no description)'}"
                              f"  e.g. {_examples(src.samples.get(c, []))}")
+    return "\n".join(lines) + "\n"
+
+
+def _count(n: int | None) -> str:
+    if n is None:
+        return "unknown"
+    for size, unit in ((1e9, "B"), (1e6, "M"), (1e3, "k")):
+        if n >= size:
+            return f"{n / size:.1f}{unit}"
+    return str(n)
+
+
+def data_size(session: Session) -> str:
+    """How big the data really is: the screen is a sample, and the same code runs
+    on the full splits at evaluation - the agent writes for that."""
+    ws = session.ws
+    size = ws.data_size()
+    n_screen, full = len(ws.screen), size["full_rows"]
+    lines = ["## Data size - write for the full data",
+             f"* Screen rows: {n_screen:,} - where your code is tried."]
+    if full:
+        lines.append(f"* Full model data: {full:,} rows (train + valid + test), about "
+                     f"{full / max(n_screen, 1):.0f}x the screen. At evaluation the same code "
+                     f"runs on all of it, against the whole of each source, within "
+                     f"{ws.cfg.agent.timeouts.eval_s / 60:.0f} minutes.")
+    for name, s in size["sources"].items():
+        disk = (f"{s['bytes'] / 1e9:.1f} GB" if s["bytes"] >= 1e8
+                else f"{s['bytes'] / 1e6:.1f} MB")
+        lines.append(f"* `{name}`: {_count(s['rows'])} rows, {disk} on disk.")
+    lines.append("Code that takes seconds on the screen can take hours, or run out of "
+                 "memory, on that - follow the Scale rules in the skills.")
     return "\n".join(lines) + "\n"

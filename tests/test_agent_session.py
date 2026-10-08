@@ -140,7 +140,7 @@ def test_leaky_linkage_is_refused_before_the_user_sees_it(workspace):
 
 
 def test_unlinked_source_costs_nothing_and_target_and_attempts_are_enforced(workspace, tmp_path):
-    workspace.cfg.agent.linkage_dir = str(tmp_path / "empty_linkage")
+    workspace.cfg.discovery.additional_data.linkage_dir = str(tmp_path / "empty_linkage")
     session = _session(workspace, "x", params=RunParams(K=1))
     reply = screen_feature(session, "f1", "d", "L1",
                                    'def build(spark, sources, base):\n    return sources["spends"]')
@@ -372,7 +372,7 @@ def test_shot_categories_append_rotate_and_reach_the_agent(workspace, tmp_path):
     spec.write_text(SPEC.format(a=ids[0], b=ids[1], c=ids[2], d="not_an_id"))
     fixed = tmp_path / "fixed.md"
     fixed.write_text(f"# Fixed\n## IDs\n{ids[3]}\n## Same examples each discovery?\nyes\n")
-    workspace.cfg.agent.shot_spec_paths = [str(spec), str(fixed)]
+    workspace.cfg.discovery.shot_spec_paths = [str(spec), str(fixed)]
     try:
         cats = categories(workspace)
         assert [c.key for c in cats] == ["clustering", "early_cures", "fixed"]
@@ -388,7 +388,7 @@ def test_shot_categories_append_rotate_and_reach_the_agent(workspace, tmp_path):
         assert shots(second, "early_cures") != shots(first, "early_cures")
         assert "Customers who went past due" in shots(first, "Early cures")
     finally:
-        workspace.cfg.agent.shot_spec_paths = []
+        workspace.cfg.discovery.shot_spec_paths = []
 
 
 def test_the_scope_is_read_once_until_a_file_changes(workspace):
@@ -398,7 +398,7 @@ def test_the_scope_is_read_once_until_a_file_changes(workspace):
 
     first = workspace.scope()
     assert workspace.scope() is first                         # no second read
-    path = workspace.scope_files()[0]
+    _, path = workspace.scope_files()[0]
     original = path.read_bytes()                              # the fixture is shared
     try:
         frame = pd.read_csv(path)
@@ -455,9 +455,12 @@ def test_the_scope_tool_lists_cas_variables_and_sampling_one_explains(workspace)
     assert {v["variable"] for v in scope(session, query="decline")["variables"]} == {"auth_decline_cnt_30d"}
     assert scope(session, table="wwcas_synthetic")["total"] == 14
     assert "no rows in this workspace" in sample_rows(session, "wwcas_synthetic")
-    overview = session.ws.catalog("")["cas_scope"]
+    overview = session.ws.catalog("")["scopes"]["CAS"]
     assert overview["tables"]["wwcas_synthetic"]["unused_raw"] == 6
     assert overview["tables"]["wwcas_synthetic"]["partition"] == ["trans_dt"]
+    assert overview["sql"] == "BigQuery"
+    assert scope(session, scope_name="CAS")["total"] == 14 and scope(session, scope_name="X")["total"] == 0
+    assert {v["scope"] for v in scope(session)["variables"]} == {"CAS"}
     assert session.ws.catalog("unused_raw")["total_matches"] == 6     # status is searchable
 
 
@@ -685,7 +688,7 @@ def test_a_mixed_run_splits_its_target_by_level(workspace):
 
     from agent.session import level_quota
 
-    workspace.cfg.agent.linkage_dir = str(workspace.linkage_dir)      # payments/spends linked
+    workspace.cfg.discovery.additional_data.linkage_dir = str(workspace.linkage_dir)      # payments/spends linked
     params = RunParams(K=2000, levels=["L1", "L2", "L3"]).resolve(workspace)
     split = level_quota(workspace, params, "seed")
     assert list(split) == ["L2", "L1", "L3"] and sum(split.values()) == 2000
@@ -727,11 +730,11 @@ def test_once_the_cas_scope_is_used_up_l3_looks_beyond_it(no_history):
                "WHERE trans_dt BETWEEN '2024-01-01' AND '2024-12-31'")
         assert screen_request(first, "why", sql, column)["recorded"]
 
-    # Every unused_raw column is asked for - L3 keeps its share: the room is beyond CAS.
+    # Every unused_raw column is asked for - L3 keeps its share: the room is beyond scope.
     assert "L3" in level_quota(no_history, params, "seed")
     later = Session(no_history, "more", params=RunParams(K=3, levels=["L3"]))
     text = brief(later)
-    assert "the room is beyond it" in text and "propose_new_data" in text
+    assert "the room is beyond scope" in text and "propose_new_data" in text
 
 
 def test_a_request_beyond_the_cas_scope_is_an_idea_with_no_sql_and_is_challenged(no_history):
@@ -747,21 +750,23 @@ def test_a_request_beyond_the_cas_scope_is_an_idea_with_no_sql_and_is_challenged
                              "each account per month, 24 months back", "rla_cut_last_6m")
     assert reply["recorded"] and reply["intent"] == "R1" and session.attempts == 1
     record = session.data_requests[0]
-    assert record["scope"] == "beyond_cas" and record["sql"] == "" and record["tables"] == []
+    assert record["scope"] == "beyond_scope" and record["sql"] == "" and record["tables"] == []
     assert not (session.run_dir / "data_requests" / "R1_rla_treatments.sql").exists()
 
     verdict = challenge_request(session, "R1", "new", "no source carries treatments")
     assert verdict["status"] == "kept"
     summary = validated_sql(session)
-    assert "Beyond the CAS scope" in summary and "RLA strategy log" in summary
-    assert "Beyond the CAS scope - the data it needs" in \
+    assert "Beyond scope" in summary and "RLA strategy log" in summary
+    assert "Beyond scope - the data it needs" in \
         (session.run_dir / "data_requests.md").read_text()
 
-    # An L3 idea names CAS variables, or is marked beyond CAS and says what it needs.
+    # An L3 idea names scope variables, or is marked beyond scope and says what it needs.
     base = {"lens": "trend", "level": "L3", "description": "d"}
-    assert not record_ideas(session, [{**base, "name": "a", "data": "rla"}])["ok"]
-    beyond = record_ideas(session, [{**base, "name": "a", "beyond_cas": True, "data": "x"}])
-    assert not beyond["ok"] and "where it would come from" in beyond["error"]
+    named = record_ideas(session, [{**base, "name": "a", "data": "rla"}])
+    assert not named["ok"] and "Within a scope (CAS)" in named["error"]
+    for field in ("beyond_scope", "beyond_cas"):                   # the old name still reads
+        beyond = record_ideas(session, [{**base, "name": "a", field: True, "data": "x"}])
+        assert not beyond["ok"] and "where it would come from" in beyond["error"]
 
 
 def test_an_l3_report_with_requests_left_is_sent_back_while_the_scope_has_room(no_history):
@@ -864,3 +869,140 @@ def test_a_script_the_guard_refuses_spends_nothing(workspace):
                            "def build(spark, sources, base):\n    return pd.read_csv('data/test.csv')")
     assert not reply["ok"] and "Nothing was spent" in reply["error"] and session.attempts == 0
     assert not any(e["event"] == "code_status" for e in session.events)       # never ran
+
+
+def test_a_feature_loads_only_the_source_columns_it_names(tmp_path):
+    import pandas as pd
+
+    from agent._child import named_columns
+    from agent.execution import run_code
+
+    cols = ["id", "as_of", "amount", "merchant", "channel"]
+    assert named_columns('s["amount"]', cols, {"id", "as_of"}) == ["id", "as_of", "amount"]
+    assert named_columns("s.select_dtypes('number')", cols, {"id", "as_of"}) is None
+
+    linked = tmp_path / "linked.parquet"
+    pd.DataFrame({"id": ["a", "b"], "as_of": pd.to_datetime(["2024-01-01"] * 2),
+                  "amount": [1.0, 2.0], "merchant": ["m", "n"]}).to_parquet(linked)
+    base = tmp_path / "base.parquet"
+    pd.DataFrame({"id": ["a", "b"]}).to_parquet(base)
+    result = run_code('''
+def build(spark, sources, base):
+    s = sources["spends"]
+    print(sorted(s.columns))
+    return s.groupby("id")["amount"].sum().rename("f").reset_index()
+''', "feature", workdir=tmp_path / "w", engine="pandas", id_col="id", base_path=base,
+                      sources={"spends": str(linked)}, tag="f")
+    assert result.ok, result.error
+    assert result.stdout.strip() == "['amount', 'as_of', 'id']"
+    assert result.peak_mb is not None
+
+
+def test_the_brief_gives_the_full_size_and_a_screen_warns_what_will_not_scale(workspace,
+                                                                              monkeypatch):
+    from agent.composer import compose
+    from agent.tools import screen as screen_tool
+
+    size = workspace.data_size()
+    assert size["full_rows"] > len(workspace.screen)
+    assert size["sources"]["spends"]["rows"] > 0
+    session = _session(workspace, "x", params=RunParams(K=2))
+    assert "## Data size - write for the full data" in compose(session)
+
+    class Run:
+        ok, elapsed_s, setup_s, peak_mb = True, 1.0, 0.0, 10.0
+
+    assert screen_tool.scale_note(session, Run()) is None
+    monkeypatch.setattr(workspace.cfg.agent.timeouts, "eval_s", 1.0)
+    assert "min (the limit is" in screen_tool.scale_note(session, Run())
+
+
+def test_the_skills_pandas_linkage_example_links_point_in_time(workspace):
+    import re as _re
+
+    skill = open("src/agent/skills/data_sourcing.md").read()
+    example = _re.findall(r"```python\n(def link.*?)```", skill, _re.S)[-1]
+    code = (example.replace("<id>", "id").replace("<key>", "customer_id")
+            .replace("<event_date>", "event_dt").replace("<column>", "amount"))
+    session = _session(workspace, "link", approver=AutoApprover(), params=RunParams(K=1))
+    reply = propose_linkage(session, "spends", code, "event_dt")
+    assert reply["ok"], reply
+    assert reply["checks"]["point_in_time_violations"] == 0
+
+
+def test_a_spark_script_without_pyspark_is_refused_with_a_reason(tmp_path, monkeypatch):
+    from agent import execution
+
+    monkeypatch.setattr(execution, "_SPARK", False)
+    result = execution.run_code("def link(base_ids, source): return source", "linkage",
+                                workdir=tmp_path, engine="spark", id_col="id",
+                                base_path=tmp_path / "base.parquet")
+    assert not result.ok and "pyspark is not installed" in result.error
+
+
+def test_a_merge_is_sized_before_it_runs():
+    import pandas as pd
+
+    from agent._child import size_merge
+
+    events = pd.DataFrame({"id": ["a"] * 3 + ["b"] * 2, "v": range(5)})
+    per_id = pd.DataFrame({"id": ["a", "b"], "w": [1, 2]})
+    assert size_merge(events, events, on="id") == {
+        "rows": 3 * 3 + 2 * 2, "many_to_many": True, "left_per_key": 3.0, "right_per_key": 3.0}
+    one = size_merge(events, per_id, on="id", how="left")
+    assert one["many_to_many"] is False and one["rows"] == 5 + 5
+
+
+def test_a_feature_may_not_join_events_to_events_but_a_linkage_joins_ids_to_events(tmp_path):
+    import pandas as pd
+
+    from agent.execution import run_code
+
+    linked = tmp_path / "linked.parquet"
+    pd.DataFrame({"id": ["a"] * 4 + ["b"] * 4, "as_of": pd.to_datetime(["2024-01-01"] * 8),
+                  "amount": range(8)}).to_parquet(linked)
+    base = tmp_path / "base.parquet"
+    pd.DataFrame({"id": ["a", "b"]}).to_parquet(base)
+    common = dict(workdir=tmp_path / "w", engine="pandas", id_col="id", base_path=base)
+    self_join = run_code('''
+def build(spark, sources, base):
+    s = sources["spends"][["id", "amount"]]
+    pairs = s.merge(s, on="id")
+    return pairs.groupby("id")["amount_x"].sum().rename("f").reset_index()
+''', "feature", sources={"spends": str(linked)}, tag="f", **common)
+    assert not self_join.ok and "many-to-many merge" in self_join.error
+
+    raw = tmp_path / "events.csv"
+    pd.DataFrame({"key": ["a", "a", "b"], "v": [1, 2, 3]}).to_csv(raw, index=False)
+    link = run_code('''
+def link(base_ids, source):
+    ids = pd.concat([base_ids, base_ids]).assign(key=lambda d: d["id"],
+        as_of=pd.Timestamp("2024-01-01"))
+    return ids.merge(source, on="key")
+''', "linkage", raw={"events": str(raw)}, source="events", tag="l", **common)
+    assert link.ok, link.error
+
+
+def test_an_exploration_draws_a_new_theme_each_round(no_history):
+    from agent import themes
+    from agent.tools.ideas import record_ideas
+
+    themes.save(no_history, ["payment counts", "spend volatility", "income relative to the line"])
+    directed = _session(no_history, "x", params=RunParams(K=2, levels=["L1"]))
+    assert not themes.draw_theme(directed)["ok"]                 # a direction is followed
+
+    session = _session(no_history, themes.OPEN, explore=True, params=RunParams(K=2, levels=["L1"]))
+    ideas = [{"name": f"i{n}", "lens": lens, "level": "L1", "description": "d", "data": "x"}
+             for n, lens in enumerate(["trend", "ratio", "volatility", "recency"])]
+    refused = record_ideas(session, ideas)
+    assert not refused["ok"] and "draw_theme" in refused["error"]  # the theme comes first
+    first = themes.draw_theme(session)
+    assert first["ok"] and first["round"] == 1 and first["explored_before"] == 0
+    assert themes.draw_theme(session)["theme"] == first["theme"]  # one per round
+    record_ideas(session, ideas)
+    session.round = 1
+    second = themes.draw_theme(session)
+    assert second["round"] == 2 and second["theme"] != first["theme"]
+    drawn = [e["theme"] for e in session.events if e["event"] == "theme_drawn"]
+    assert drawn == [first["theme"], second["theme"]]
+    assert themes.explored(no_history)[first["theme"].lower()] == 1

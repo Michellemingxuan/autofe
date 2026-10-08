@@ -151,7 +151,7 @@ export function ResultsPage({ selected }: { selected: string | null }) {
               <button key={e.eval_id} className={`${s.pending} ${s[e.status]}`}
                       onClick={() => select(e.eval_id, null)}>
                 <span className={s.pendingDot} />
-                {e.status === 'running' ? 'Evaluating' : 'Failed'}: {e.features.map((f) => f.column).join(', ')}
+                {e.status === 'running' ? 'Evaluating' : e.status === 'stopped' ? 'Stopped' : 'Failed'}: {e.features.map((f) => f.column).join(', ')}
                 {Object.keys(e.combinations).length > 0 && ` · ⊕ ${Object.keys(e.combinations).join(', ⊕ ')}`}
               </button>
             ))}

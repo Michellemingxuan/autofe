@@ -10,10 +10,10 @@ type Values = Record<string, unknown>
 
 /** Take a category off the agent's list: the clustering file, or one spec. */
 export async function removeShot(cat: ShotCategory, block: SetupBlock) {
-  const specPaths = (block.fields.find((f) => f.key === 'agent.shot_spec_paths')?.value as string[]) ?? []
+  const specPaths = (block.fields.find((f) => f.key === 'discovery.shot_spec_paths')?.value as string[]) ?? []
   await api.applySetup(cat.kind === 'clustering'
     ? { 'discovery.few_shot_path': '' }
-    : { 'agent.shot_spec_paths': specPaths.filter((p) => p !== cat.path) })
+    : { 'discovery.shot_spec_paths': specPaths.filter((p) => p !== cat.path) })
 }
 
 /**

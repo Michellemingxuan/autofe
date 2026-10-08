@@ -6,20 +6,22 @@ import { NewDirection } from './components/NewDirection'
 import { RunPage } from './components/RunPage'
 import { EvaluatePage } from './components/EvaluatePage'
 import { ResultsPage } from './components/ResultsPage'
+import { RequestsPage } from './components/RequestsPage'
 import s from './App.module.css'
 
 // The journey: 1. Setup - point at the data, confirm each source's linkage;
 // 2. Discover - run directions that generate verified features;
 // 3. Evaluate - the feature set: pick single features and combinations, judge
-//    them on test; Results lists every variant ever evaluated, with its details.
-export type Page = 'setup' | 'discover' | 'evaluate' | 'results'
+//    them on test; the request set gathers every kept data request; Results lists
+//    every variant ever evaluated, with its details.
+export type Page = 'setup' | 'discover' | 'evaluate' | 'requests' | 'results'
 export type Route = { page: Page; id: string | null }
 
 // The route lives in the hash - #/discover/<run>, #/results/<evaluation>[.<variant>] - so a
 // reload or a shared link reopens the same view.
 function readRoute(): Route {
   const [, page, id] = window.location.hash.split('/')
-  const known: Page[] = ['setup', 'discover', 'evaluate', 'results']
+  const known: Page[] = ['setup', 'discover', 'evaluate', 'requests', 'results']
   return { page: known.includes(page as Page) ? (page as Page) : 'setup', id: id || null }
 }
 
@@ -69,6 +71,7 @@ export function App() {
         {route.page === 'evaluate' && (
           <EvaluatePage onStarted={(id) => { refreshEvals(); navigate('results', id) }} />
         )}
+        {route.page === 'requests' && <RequestsPage />}
         {route.page === 'results' && <ResultsPage selected={route.id} />}
       </main>
     </div>

@@ -17,6 +17,7 @@ not verified does not count against it; you have up to {max_attempts} attempts.
 * Shots - labelled examples, read with shots: {shot_list}.
 
 {columns}
+{data_size}
 ## This run, as the user set it
 * Engine: {engine} - write {code_language} feature code. A `link()` for a new
   source is {linkage_language} (the linkage engine).

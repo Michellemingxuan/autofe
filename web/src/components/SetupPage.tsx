@@ -94,7 +94,12 @@ export function SetupPage({ workspace, onChange }: { workspace: Workspace | null
               <span className={`${s.node} ${s['node_' + state(b)]}`} aria-hidden />
               <Block block={b} values={values} state={state(b)} onApplied={applied}>
                 {b.key === 'model' && <ModelFields block={b} values={values} set={set} checks={checks} />}
-                {b.key === 'context' && <Fields block={b} values={values} set={set} checks={checks} />}
+                {b.key === 'context' && (
+                  <>
+                    <Fields block={b} values={values} set={set} checks={checks} />
+                    <ThemePoolPart />
+                  </>
+                )}
                 {b.key === 'shots' && (
                   <ShotsBody block={b} values={values} set={set} checks={checks}
                              workspace={workspace} onApplied={applied} />
@@ -125,7 +130,7 @@ export function SetupPage({ workspace, onChange }: { workspace: Workspace | null
                     {jobId && <LinkageJob jobId={jobId} onClose={() => { setJobId(null); onChange() }} />}
                   </>
                 )}
-                {b.key === 'scope' && <Fields block={b} values={values} set={set} checks={checks} />}
+                {b.key === 'scope' && <ScopeFields block={b} values={values} set={set} checks={checks} />}
               </Block>
             </li>
           ))}
@@ -294,23 +299,32 @@ function Readout({ block, workspace: w, values, checks }: {
         </div>
       ) : <p className={s.rdLine}>No sources found in the folder.</p>
     case 'scope': {
-      const used = w.scope.in_model ?? 0, quiet = w.scope.in_model_unused ?? 0, raw = w.scope.unused_raw ?? 0
-      const all = used + quiet + raw
-      if (!all) return <p className={s.rdLine}>No CAS scope files found.</p>
+      const scopes = Object.entries(w.scopes ?? {})
+      if (!scopes.length) return <p className={s.rdLine}>No scope is set up: only requests beyond scope are possible.</p>
       return (
-        <div className={s.rdScope}>
-          <div className={s.scopeBar}>
-            <span style={{ flex: used }} className={s.scopeUsed} />
-            {quiet > 0 && <span style={{ flex: quiet }} className={s.scopeQuiet} />}
-            <span style={{ flex: raw }} className={s.scopeRaw} />
-          </div>
-          <p className={s.rdLine}>
-            <b>{used.toLocaleString()}</b> CAS variables already in the model
-            {quiet > 0 && <>, <b>{quiet.toLocaleString()}</b> in it without importance</>},{' '}
-            <b>{raw.toLocaleString()}</b> raw and unused - the room the agent has.
-            {w.scope_notes.length > 0 && <> Your notes: {w.scope_notes.map((n) => n.name).join(', ')}.</>}
-          </p>
-        </div>
+        <>
+          {scopes.map(([name, counts]) => {
+            const used = counts.in_model ?? 0, quiet = counts.in_model_unused ?? 0, raw = counts.unused_raw ?? 0
+            if (!(used + quiet + raw)) return <p key={name} className={s.rdLine}><b>{name}</b>: no variable lists found.</p>
+            return (
+              <div key={name} className={s.rdScope}>
+                <div className={s.scopeBar}>
+                  <span style={{ flex: used }} className={s.scopeUsed} />
+                  {quiet > 0 && <span style={{ flex: quiet }} className={s.scopeQuiet} />}
+                  <span style={{ flex: raw }} className={s.scopeRaw} />
+                </div>
+                <p className={s.rdLine}>
+                  <b>{name}</b>: <b>{used.toLocaleString()}</b> variables already in the model
+                  {quiet > 0 && <>, <b>{quiet.toLocaleString()}</b> in it without importance</>},{' '}
+                  <b>{raw.toLocaleString()}</b> raw and unused - the room the agent has.
+                </p>
+              </div>
+            )
+          })}
+          {w.scope_notes.length > 0 && (
+            <p className={s.rdLine}>Your notes: {w.scope_notes.map((n) => n.name).join(', ')}.</p>
+          )}
+        </>
       )
     }
     case 'evaluation': {
@@ -335,6 +349,68 @@ const fmtBytes = (b: number) =>
   !b ? '–' : b > 1e9 ? `${(b / 1e9).toFixed(1)} GB` : b > 1e6 ? `${(b / 1e6).toFixed(1)} MB` : `${Math.max(1, Math.round(b / 1e3))} KB`
 
 // -------------------------------------------------------------------- fields
+
+/** The themes an open exploration draws from - made from the task description. */
+function ThemePoolPart() {
+  const [pool, refresh] = usePolled(api.themes, [], 3000)
+  const [error, setError] = useState<string | null>(null)
+  if (!pool) return null
+  const make = async () => {
+    setError(null)
+    try { await api.makeThemes() } catch (e: any) { setError(e.message) }
+    refresh()
+  }
+  return (
+    <section className={s.part}>
+      <h3 className={s.partTitle}>Themes for open explorations</h3>
+      <p className={s.empty}>
+        A direction left empty explores: each round the agent draws one of these themes, the least
+        explored first. They are made from the task description, context, columns, sources and
+        scopes - again whenever those change.
+      </p>
+      {!pool.ready && <p className={s.empty}>Describe the task above first.</p>}
+      {pool.generating && <p className={s.empty}>Making the themes…</p>}
+      {pool.stale && !pool.generating && <p className={s.empty}>Made for an earlier task description.</p>}
+      {(pool.error || error) && <p className={s.error}>{pool.error || error}</p>}
+      {pool.themes.length > 0 && (
+        <div className={s.themeChips}>
+          {pool.themes.map((t) => (
+            <span key={t.theme} className={`${s.themeChip} ${t.runs ? s.themeUsed : ''}`}
+                  title={t.runs ? `explored by ${t.runs} run${t.runs === 1 ? '' : 's'}` : 'not explored yet'}>
+              {t.theme}{t.runs > 0 && <i>{t.runs}</i>}
+            </span>
+          ))}
+        </div>
+      )}
+      {pool.ready && (
+        <div><button className={s.secondary} disabled={pool.generating} onClick={make}>
+          {pool.themes.length ? 'Make the themes again' : 'Make the themes'}</button></div>
+      )}
+    </section>
+  )
+}
+
+/** One section per scope, under its keyword - the same three settings each. */
+function ScopeFields({ block, values, set, checks }: {
+  block: SetupBlock; values: Values; set: (k: string, v: unknown) => void; checks: PathCheck
+}) {
+  const scopes = [...new Set(block.fields.map((f) => f.section ?? 'Scope'))]
+  if (!scopes.length) {
+    return <p className={s.empty}>No scope is configured. Add one under discovery.additional_data.scopes
+      in the config file, named by its keyword (CAS, say).</p>
+  }
+  return (
+    <>
+      {scopes.map((name) => (
+        <section key={name} className={s.part}>
+          <h3 className={s.partTitle}>{name}</h3>
+          <Fields block={{ ...block, fields: block.fields.filter((f) => (f.section ?? 'Scope') === name) }}
+                  values={values} set={set} checks={checks} />
+        </section>
+      ))}
+    </>
+  )
+}
 
 function Fields({ block, values, set, checks }: {
   block: SetupBlock; values: Values; set: (k: string, v: unknown) => void; checks: PathCheck

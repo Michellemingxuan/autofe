@@ -21,6 +21,7 @@ data:
     test:  data/synthetic_agent/test.csv     # out of time: the latest months
   target: default
   id_cols: [id]
+  id_format: "<customer_id>_<dt>_<marker>; dt is the as-of date as YYYYMMDD; customer_id joins to the sources' customer_id"
 
 features:
   base: []
@@ -36,11 +37,15 @@ discovery:
   metric: adj_gini
   column_descriptions_path: data/synthetic_agent/column_descriptions.json
   few_shot_path: data/synthetic_agent/few_shot.csv
+  additional_data:
+    dir: data/synthetic_agent/additional_data
+    linkage_dir: data/synthetic_agent/linkage
+    scopes:
+      CAS:
+        glob: "*_flagged.csv"
+        sql_dialect: BigQuery
 
 agent:
-  additional_data_dir: data/synthetic_agent/additional_data
-  linkage_dir: data/synthetic_agent/linkage
-  id_format: "<customer_id>_<dt>_<marker>; dt is the as-of date as YYYYMMDD; customer_id joins to the sources' customer_id"
   engine: pandas              # the synthetic case is small: pandas, no Spark needed
   linkage_engine: pandas
   max_intents: 5

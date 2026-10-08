@@ -8,6 +8,7 @@ features can later be built from it without leaking the future.
 ## The source: `{source}`
 {source_columns}
 
+{data_size}
 ## What to do
 1. Follow the linkage section of the data_sourcing skill below.
 2. Use sample_rows and run_probe to check key types and date formats on both sides.

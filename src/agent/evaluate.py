@@ -28,8 +28,12 @@ import argparse
 import copy
 import json
 import logging
+import multiprocessing
+import os
 import re
 import shutil
+import signal
+import threading
 import time
 import uuid
 from dataclasses import dataclass, field
@@ -38,14 +42,14 @@ from typing import Any
 
 import pandas as pd
 
-from agent.events import EventLog, read_events, run_logged
+from agent.events import EventLog, finite, read_events, run_logged
 from agent.tools.linkage import engine_of
 from agent.workspace import Workspace
 from validation.data import read_frame
 from validation.pipeline import Pipeline
 from validation.stages.analysis import _pct_label
 
-__all__ = ["Evaluation", "feature_pool", "list_evaluations", "evaluation_results", "removed_variants",
+__all__ = ["Evaluation", "EvaluationProcess", "feature_pool", "list_evaluations", "evaluation_results", "removed_variants",
            "run_linkage",
            "CAPTURE_PERCENTS"]
 
@@ -125,10 +129,12 @@ def list_evaluations(ws: Workspace) -> list[dict[str, Any]]:
         started = next((e for e in events if e["event"] == "eval_started"), None)
         if started is None:
             continue
-        ended = {e["event"] for e in events} & {"eval_done", "eval_error"}
+        ended = {e["event"] for e in events} & {"eval_done", "eval_error", "eval_stopped"}
+        status = ("done" if "eval_done" in ended else "stopped" if "eval_stopped" in ended
+                  else "error" if ended else "running")
         out.append({"eval_id": folder.name, "started": started["ts"],
                     "features": started["features"], "combinations": started["combinations"],
-                    "status": "done" if "eval_done" in ended else "error" if ended else "running"})
+                    "status": status})
     return out
 
 
@@ -223,7 +229,7 @@ class Evaluation:
     def _run(self, code: str, mode: str, base_path: Path, *, engine: str, **kwargs: Any):
         agent = self.ws.cfg.agent
         return run_logged(self.log, code, mode, engine=engine, id_col=self.ws.id_col,
-                          base_path=base_path, timeout_s=agent.code_timeout_s,
+                          base_path=base_path, timeout_s=agent.timeouts.eval_s,
                           spark_conf=agent.spark_conf, **kwargs)
 
     def materialise(self) -> dict[str, pd.DataFrame]:
@@ -377,6 +383,95 @@ class Evaluation:
 
     def delete(self) -> None:
         shutil.rmtree(self.folder)
+
+
+def _evaluate_in_child(cfg: Any, features: list[str], combinations: dict[str, list[str]],
+                       eval_id: str) -> None:
+    """The evaluation's own process. A session of its own, so a stop ends it and
+    every script and worker it started, at once."""
+    os.setsid()
+    Evaluation(Workspace.from_config(cfg), features, combinations, eval_id=eval_id).run()
+
+
+class EvaluationProcess:
+    """An evaluation as the server runs it: in a process of its own, so the user
+    can stop it at any point - mid-script or mid-training - and an evaluation that
+    runs out of memory on the full data ends alone, not with the server and a
+    discovery run beside it. The server sees its events as the child writes them."""
+
+    def __init__(self, job: Evaluation):
+        self.job, self.eval_id, self.folder = job, job.eval_id, job.folder
+        self.path = job.log.path
+        self.events: list[dict[str, Any]] = list(job.events)
+        self.listeners: list[Any] = []
+        self.process: Any = None
+        self.stopped = False
+        self._offset = 0
+        self._reading = threading.Lock()
+
+    def run(self) -> None:
+        ctx = multiprocessing.get_context("spawn")
+        self.process = ctx.Process(
+            target=_evaluate_in_child, name=f"evaluation-{self.eval_id}",
+            args=(self.job.ws.cfg, self.job.features, self.job.combinations, self.eval_id))
+        self.process.start()
+        while self.process.is_alive():
+            self._read()
+            time.sleep(0.3)
+        self.process.join()
+        self._read()
+        if self.done:
+            return
+        if self.stopped:
+            self.emit("eval_stopped", reason="stopped by the user")
+        elif self.process.exitcode in (-9, 137):
+            self.emit("eval_error", error="the evaluation was killed by the operating system "
+                                          "(exit -9) - almost always out of memory on the full data")
+        else:
+            self.emit("eval_error",
+                      error=f"the evaluation process ended unexpectedly (exit {self.process.exitcode})")
+
+    @property
+    def done(self) -> bool:
+        """Its log has ended - the process may still be exiting."""
+        self._read()
+        return any(e["event"] in ("eval_done", "eval_error", "eval_stopped") for e in self.events)
+
+    def stop(self) -> None:
+        self.stopped = True
+        if self.process is None or self.process.pid is None:
+            return
+        try:
+            os.killpg(self.process.pid, signal.SIGKILL)     # its scripts and workers too
+        except (ProcessLookupError, PermissionError):
+            pass
+        if self.process.is_alive():
+            self.process.kill()
+
+    def emit(self, event: str, **payload: Any) -> dict[str, Any]:
+        """Once the child is done, the server writes to the log itself."""
+        record = EventLog(self.folder, self.eval_id).emit(event, **payload)
+        self._read()
+        return record
+
+    def _read(self) -> None:
+        """New complete lines of the child's log, to the events and the listeners."""
+        with self._reading:                  # the hub's thread and a request's, both
+            if not self.path.exists():
+                return
+            with open(self.path, "rb") as fh:
+                fh.seek(self._offset)
+                chunk = fh.read()
+            end = chunk.rfind(b"\n")
+            if end < 0:
+                return
+            self._offset += end + 1
+            for line in chunk[: end + 1].decode(errors="replace").splitlines():
+                if line.strip():
+                    record = finite(json.loads(line))
+                    self.events.append(record)
+                    for listener in list(self.listeners):
+                        listener(record)
 
 
 # The pipeline checks that fall short in every evaluation, by design: an evaluation

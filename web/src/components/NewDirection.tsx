@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react'
-import { api, rerunDraft, type RerunDraft } from '../api'
+import { api, rerunDraft, usePolled, type RerunDraft } from '../api'
 import { navigate } from '../App'
 import type { Level, Params, Workspace } from '../types'
 import { SOURCE_STATE } from './Rail'
@@ -26,6 +26,7 @@ const LEVELS: { level: Level; title: string; text: string }[] = [
 /** Start a direction: the idea in words, and the run's parameters. */
 export function NewDirection({ workspace, busy, onStarted }: Props) {
   const [direction, setDirection] = useState('')
+  const [themePool] = usePolled(api.themes, [], 5000)
   const [params, setParams] = useState<Params | null>(null)
   const [error, setError] = useState<string | null>(null)
   const [starting, setStarting] = useState(false)
@@ -53,6 +54,9 @@ export function NewDirection({ workspace, busy, onStarted }: Props) {
   }, [params?.levels.join(',')])  // eslint-disable-line
 
   if (!workspace || !params) return <div className={s.wrap}>Loading…</div>
+  const pool = themePool?.themes ?? []
+  const open = !direction.trim()                // no direction: an open exploration
+  const unexplored = pool.filter((t) => t.runs === 0).length
   const set = <K extends keyof Params>(key: K, value: Params[K]) => setParams({ ...params, [key]: value })
   const toggle = <T,>(list: T[], item: T) =>
     list.includes(item) ? list.filter((x) => x !== item) : [...list, item]
@@ -98,6 +102,13 @@ export function NewDirection({ workspace, busy, onStarted }: Props) {
           <textarea className={s.text} rows={6} value={direction}
                     placeholder="e.g. customers who pay back less of what they spend are riskier"
                     onChange={(e) => setDirection(e.target.value)} />
+          <div className={s.hint}>
+            {pool.length
+              ? <>Or leave it empty for an open exploration: each round the agent draws a theme from
+                  the pool - {pool.length} themes, {unexplored} not explored yet - the least explored first.</>
+              : themePool?.generating ? 'The theme pool for open explorations is being made…'
+              : 'Leaving it empty needs the theme pool, made in Setup from the task description.'}
+          </div>
           <div className={s.examples}>
             {EXAMPLES.map((x) => (
               <button key={x} className={s.example} onClick={() => setDirection(x)}>{x}</button>
@@ -219,20 +230,22 @@ export function NewDirection({ workspace, busy, onStarted }: Props) {
           })()}
           {l3Only && (
             <div className={s.note}>
-              <b>Data-request run.</b> Nothing is built or screened. The agent reads the CAS scope and
-              your notes, then proposes data requests until {params.K} survive its challenge - within
-              the CAS scope as BigQuery SQL, beyond it as an idea and the data it needs - for you to
-              review and download when it ends.
+              <b>Data-request run.</b> Nothing is built or screened. The agent reads the scopes
+              ({Object.keys(workspace?.scopes ?? {}).join(', ') || 'none set up'}) and your notes, then
+              proposes data requests until {params.K} survive its challenge - within a scope as SQL,
+              beyond scope as an idea and the data it needs - for you to review and download when it
+              ends.
             </div>
           )}
           {needsSource && <div className={s.warn}>L2 needs at least one source.</div>}
           {error && <div className={s.error}>{error}</div>}
 
           <div className={s.startRow}>
-            <button className={s.start} disabled={!direction.trim() || busy || starting || noFeatureLevel}
+            <button className={s.start} disabled={(open && !pool.length) || busy || starting || noFeatureLevel}
                     onClick={start}>
               {busy ? 'A direction is running' : starting ? 'Starting…'
                 : rerun ? 'Re-run, replacing the earlier run'
+                : open ? 'Start an open exploration'
                 : l3Only ? 'Start data-request run' : 'Start direction'}
             </button>
             {rerun && (

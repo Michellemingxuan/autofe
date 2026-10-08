@@ -29,8 +29,8 @@ noisier still.
   a level). If that does not move it, the idea is spent.
 * **Verified** - build on it in a *different* direction rather than variants of
   it: a near-copy will be redundant with it in the final evaluation.
-* **Signal seems to need data nobody has** - L3: `screen_request` within the
-  CAS scope, `propose_new_data` beyond it.
+* **Signal seems to need data nobody has** - L3: `screen_request` within a
+  scope, `propose_new_data` beyond scope.
 
 Spread the attempts over different hypotheses. Several distinct verified
 features are worth more than one feature tuned five ways.

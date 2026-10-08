@@ -1,6 +1,6 @@
 """Challenge a data request: can what it asks for be built from the data we have?
 
-A pull from the CAS is effort - a BigQuery job over very large tables, then a
+A pull from a scope is effort - a query job over very large tables, then a
 source to link. It is worth it only for information the current data cannot
 give. So in a data-request run every proposal goes through one loop:
 

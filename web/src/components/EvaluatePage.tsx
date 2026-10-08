@@ -20,17 +20,20 @@ export function EvaluatePage({ onStarted }: { onStarted: (id: string) => void })
   const [opened, setOpened] = useState<string | null>(null)
   const [error, setError] = useState<string | null>(null)
   const [starting, setStarting] = useState(false)
+  const [query, setQuery] = useState('')
 
   const byKey = useMemo(() => Object.fromEntries((pool ?? []).map((f) => [f.key, f])), [pool])
+  const shown = useMemo(() => (pool ?? []).filter((f) => matches(query,
+    [f.name, f.description, f.direction, f.level, f.run_id, f.code, ...f.sources])), [pool, query])
   const groups = useMemo(() => {
     const out: { run_id: string; direction: string; features: PoolFeature[] }[] = []
-    for (const f of pool ?? []) {
+    for (const f of shown) {
       let g = out.find((x) => x.run_id === f.run_id)
       if (!g) out.push(g = { run_id: f.run_id, direction: f.direction, features: [] })
       g.features.push(f)
     }
     return out
-  }, [pool])
+  }, [shown])
 
   // A feature removed from the pool leaves the selection and any combination.
   useEffect(() => {
@@ -77,9 +80,14 @@ export function EvaluatePage({ onStarted }: { onStarted: (id: string) => void })
             <span className={`eyebrow ${s.panelTitle}`}>Feature pool</span>
             <span className={s.meta}>{pool?.length ?? 0} verified · {groups.length} directions · click a feature for its code</span>
           </div>
+          <SearchBox value={query} onChange={setQuery} shown={shown.length} total={pool?.length ?? 0}
+                     placeholder="Search name, description, direction, source or code" />
           <div className={s.scroll}>
             {pool && pool.length === 0 && (
               <div className={s.empty}>No verified features yet - run a direction in Discover.</div>
+            )}
+            {pool && pool.length > 0 && shown.length === 0 && (
+              <div className={s.empty}>No feature matches “{query.trim()}”.</div>
             )}
             {groups.map((g) => (
               <div key={g.run_id} className={s.group}>
@@ -150,6 +158,29 @@ export function EvaluatePage({ onStarted }: { onStarted: (id: string) => void })
 
         </div>
       </div>
+    </div>
+  )
+}
+
+/** Every word of the query, case aside, found somewhere in the texts. */
+export function matches(query: string, texts: (string | null | undefined)[]): boolean {
+  const words = query.toLowerCase().split(/\s+/).filter(Boolean)
+  if (!words.length) return true
+  const blob = texts.filter(Boolean).join(' ').toLowerCase()
+  return words.every((w) => blob.includes(w))
+}
+
+/** The list's search: filters as you type; Esc clears it. */
+export function SearchBox({ value, onChange, shown, total, placeholder }: {
+  value: string; onChange: (v: string) => void; shown: number; total: number; placeholder: string
+}) {
+  return (
+    <div className={s.searchRow}>
+      <input className={s.search} type="search" value={value} placeholder={placeholder}
+             aria-label="Search the list"
+             onChange={(e) => onChange(e.target.value)}
+             onKeyDown={(e) => { if (e.key === 'Escape') onChange('') }} />
+      {value.trim() && <span className={s.meta}>{shown} of {total}</span>}
     </div>
   )
 }

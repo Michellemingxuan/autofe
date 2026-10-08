@@ -67,3 +67,8 @@
 .code { font-family: var(--j-font-mono); font-size: 11px; line-height: 1.5; background: var(--j-sys-box); color: var(--j-sys-mono); padding: 9px 11px; border-radius: 8px; overflow-x: auto; max-height: 320px; margin: 0; }
 .linkage summary { font-size: var(--j-fs-meta); color: var(--j-ink-4); cursor: pointer; padding: 2px 0; }
 
+
+/* Search over the list, under its head. */
+.searchRow { display: flex; align-items: center; gap: 8px; padding: 8px 14px; border-bottom: 1px solid var(--j-border); }
+.search { flex: 1; min-width: 0; border: 1px solid var(--j-border-strong); border-radius: var(--j-radius-ctl); padding: 6px 10px; font-size: var(--j-fs-sm); }
+.search:focus { outline: 2px solid var(--j-accent-line); outline-offset: 0; border-color: var(--j-accent); }

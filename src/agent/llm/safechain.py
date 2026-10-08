@@ -6,16 +6,19 @@ measured against the private environment, and revised for autofe:
 * no node-trace telemetry and no token estimates (tiktoken's first-use download
   is what stalled every round there) - noteworthy events go to the run's LLM log;
 * one concurrency gate, not two pools (:mod:`agent.llm.firewall`);
-* the stream drops a chunk that re-sends the whole answer so far - a structured
-  answer arriving twice (``{...}{...}``) is not valid JSON, and the run failed on it.
+* a streamed call is made as a plain call and replayed as a stream. The agent
+  reads whole items, not tokens, so streaming bought nothing - and the stream
+  had no stall-and-retry: a wedged stream sat 180s and then failed the run. As a
+  plain call it gets the retry below, and a model that re-sends the whole answer
+  at the end of a stream (``{...}{...}``, not JSON) cannot happen.
 
 Kept as is, because each was a measured fix:
 
 * STALL-AND-RETRY. SafeChain calls do not run slow, they stall: a call still
-  running at 40s (``SAFECHAIN_STALL_RETRY_S``) is wedged, and a fresh request has
-  a fresh chance. Healthy calls take 2-13s; a stall that is ridden out resolves
-  at 126-131s, so the second attempt gets the whole budget
-  (``SAFECHAIN_CALL_TIMEOUT_S``, 180s). ``SAFECHAIN_STALL_RETRY_S=0`` turns it off.
+  running at 40s (``agent.llm.stall_retry_s``) is wedged, and a fresh request
+  has a fresh chance. Healthy calls take 2-13s; a stall that is ridden out
+  resolves at 126-131s, so the second attempt gets the whole budget
+  (``agent.llm.timeout_s``, 180s). ``stall_retry_s: 0`` turns it off.
 * ``ainvoke``, not a thread: it is genuinely cancellable, so a timeout aborts the
   request instead of leaving a worker running. Nothing on the loop may block -
   a blocking call makes requests slow and unkillable at once.
@@ -69,8 +72,6 @@ try:
 except ImportError:  # pragma: no cover - only the private env needs it
     pass
 
-_SAFECHAIN_CALL_TIMEOUT_S = float(os.environ.get("SAFECHAIN_CALL_TIMEOUT_S", "180"))
-_SAFECHAIN_STALL_RETRY_S = float(os.environ.get("SAFECHAIN_STALL_RETRY_S", "40"))
 
 
 class SafeChainAsyncOpenAI:
@@ -83,9 +84,11 @@ class SafeChainAsyncOpenAI:
         "uploads", "vector_stores", "assistants", "threads", "beta",
     })
 
-    def __init__(self, *, model_name: str, firewall: Firewall):
+    def __init__(self, *, model_name: str, firewall: Firewall, call_s: float = 180.0,
+                 stall_s: float = 40.0):
         self._model_name = model_name
         self._firewall = firewall
+        self._call_s, self._stall_s = call_s, stall_s
         self._llm: Any = None                       # built on first use
         self.chat = _SafeChainChat(self)
 
@@ -113,10 +116,10 @@ class SafeChainAsyncOpenAI:
         model_id = os.environ.get("SAFECHAIN_MODEL", self._model_name)
         try:
             self._llm = await asyncio.wait_for(amodel(model_id),
-                                               timeout=_SAFECHAIN_CALL_TIMEOUT_S)
+                                               timeout=self._call_s)
         except asyncio.TimeoutError as e:
             raise TimeoutError(f"safechain amodel() build did not return within "
-                               f"{_SAFECHAIN_CALL_TIMEOUT_S:.0f}s") from e
+                               f"{self._call_s:.0f}s") from e
 
 
 class _SafeChainChat:
@@ -167,6 +170,7 @@ class _SafeChainChatCompletions:
         lc_messages = _to_lc_messages(messages)
         bind_kwargs = _bind_kwargs(tools, tool_choice, response_format, extra=passthrough)
         log = self._parent._firewall.logger
+        call_s, stall_s = self._parent._call_s, self._parent._stall_s
 
         def _chain(active_model: Any):
             bound = active_model.bind(**bind_kwargs) if bind_kwargs else active_model
@@ -175,7 +179,7 @@ class _SafeChainChatCompletions:
         async def _run(active_model: Any) -> Any:
             # A short first attempt, then one that may outlast a stall. The first is
             # clamped so a lowered call timeout is never exceeded.
-            first_s = min(_SAFECHAIN_STALL_RETRY_S, _SAFECHAIN_CALL_TIMEOUT_S)
+            first_s = min(stall_s, call_s)
             if first_s > 0:
                 try:
                     return await asyncio.wait_for(
@@ -185,31 +189,28 @@ class _SafeChainChatCompletions:
             try:
                 return await asyncio.wait_for(
                     _chain(active_model).ainvoke({"messages": lc_messages}),
-                    timeout=_SAFECHAIN_CALL_TIMEOUT_S)
+                    timeout=call_s)
             except asyncio.TimeoutError:
                 if first_s > 0:
                     log.log("safechain_retry_stalled", {"first_attempt_s": first_s,
-                                                        "retry_budget_s": _SAFECHAIN_CALL_TIMEOUT_S})
+                                                        "retry_budget_s": call_s})
                 raise
 
-        async def _run_stream(active_model: Any):
-            return _chain(active_model).astream({"messages": lc_messages})
-
         try:
-            reply = await (_run_stream(llm) if stream else _run(llm))
+            reply = await _run(llm)
         except asyncio.TimeoutError as e:
             raise TimeoutError(f"safechain LLM call did not return within "
-                               f"{_SAFECHAIN_CALL_TIMEOUT_S:.0f}s") from e
+                               f"{call_s:.0f}s") from e
         except Exception as e:  # noqa: BLE001 - re-classified below
             es = str(e)
             if "401" in es:                          # token expiry: rebuild, retry once
                 await self._parent._arefresh_llm()
                 refreshed = await self._parent._aensure_llm()
                 try:
-                    reply = await (_run_stream(refreshed) if stream else _run(refreshed))
+                    reply = await _run(refreshed)
                 except asyncio.TimeoutError as te:
                     raise TimeoutError(f"safechain LLM call did not return within "
-                                       f"{_SAFECHAIN_CALL_TIMEOUT_S:.0f}s (after token refresh)"
+                                       f"{call_s:.0f}s (after token refresh)"
                                        ) from te
             elif "403" in es:
                 raise FirewallRejection("403", f"safechain blocked: {es}")
@@ -218,9 +219,8 @@ class _SafeChainChatCompletions:
             else:
                 raise
 
-        if stream:
-            return _SafeChainStream(agen=reply, model=model, log=log)
-        return _completion_from_message(reply, model)
+        completion = _completion_from_message(reply, model)
+        return _ReplayStream(completion) if stream else completion
 
 
 # ---------------------------------------------------------------- helpers
@@ -347,83 +347,42 @@ def _completion_from_message(message: Any, model: str) -> ChatCompletion:
         usage=_usage_from_message(message))
 
 
-class _SafeChainStream:
-    """Async-iterable over the model's real token stream, as ChatCompletionChunks:
-    a role delta first, a finish_reason terminator last. The gap between chunks is
-    bounded - a long answer is slow, a stalled transport is not."""
+class _ReplayStream:
+    """A finished ChatCompletion as the chunks a stream would have sent: the role,
+    the text, each tool call whole, then the finish reason (and usage)."""
 
-    # A chunk repeating at least this much of the answer so far is a re-send.
-    _RESEND_MIN = 20
+    def __init__(self, completion: ChatCompletion) -> None:
+        self._chunks = list(self._split(completion))
 
-    def __init__(self, *, agen, model: str, log: Any) -> None:
-        self._agen = agen
-        self._model = model
-        self._log = log
-        self._id = f"chatcmpl_{uuid.uuid4().hex[:24]}"
-        self._created = int(time.time())
-        self._sent_role = False
-        self._saw_tool_call = False
-        self._done = False
-        self._text = ""                          # the content forwarded so far
+    @staticmethod
+    def _split(completion: ChatCompletion):
+        choice = completion.choices[0]
+        message = choice.message
 
-    def __aiter__(self) -> "_SafeChainStream":
+        def chunk(delta: ChoiceDelta, finish_reason: str | None = None, usage=None):
+            return ChatCompletionChunk(id=completion.id, created=completion.created,
+                                       model=completion.model, object="chat.completion.chunk",
+                                       choices=[ChunkChoice(index=0, delta=delta,
+                                                            finish_reason=finish_reason)],
+                                       usage=usage)
+
+        yield chunk(ChoiceDelta(role="assistant"))
+        if message.content:
+            yield chunk(ChoiceDelta(content=message.content))
+        for i, tc in enumerate(message.tool_calls or []):
+            yield chunk(ChoiceDelta(tool_calls=[ChoiceDeltaToolCall(
+                index=i, id=tc.id, type="function",
+                function=ChoiceDeltaToolCallFunction(name=tc.function.name,
+                                                     arguments=tc.function.arguments))]))
+        yield chunk(ChoiceDelta(), finish_reason=choice.finish_reason, usage=completion.usage)
+
+    def __aiter__(self) -> "_ReplayStream":
         return self
 
-    def _chunk(self, delta: ChoiceDelta, finish_reason: str | None = None) -> ChatCompletionChunk:
-        return ChatCompletionChunk(id=self._id, created=self._created, model=self._model,
-                                   object="chat.completion.chunk",
-                                   choices=[ChunkChoice(index=0, delta=delta,
-                                                        finish_reason=finish_reason)])
-
-    def _new_text(self, text: str) -> str:
-        """What is new in a chunk's text. Some builds end a structured answer with
-        one chunk carrying the WHOLE answer again; forwarded as is, the SDK reads
-        `{...}{...}` - not JSON. A chunk that repeats everything sent so far
-        contributes only what follows it."""
-        if len(self._text) >= self._RESEND_MIN and text.startswith(self._text):
-            self._log.log("safechain_stream_resend", {"resent_chars": len(self._text)})
-            text = text[len(self._text):]
-        self._text += text
-        return text
-
     async def __anext__(self) -> ChatCompletionChunk:
-        if not self._sent_role:
-            self._sent_role = True
-            return self._chunk(ChoiceDelta(role="assistant"))
-        if self._done:
+        if not self._chunks:
             raise StopAsyncIteration
-        while True:
-            try:
-                raw = await asyncio.wait_for(self._agen.__anext__(),
-                                             timeout=_SAFECHAIN_CALL_TIMEOUT_S)
-            except StopAsyncIteration:
-                self._done = True
-                return self._chunk(ChoiceDelta(),
-                                   finish_reason="tool_calls" if self._saw_tool_call else "stop")
-            except asyncio.TimeoutError as e:
-                self._done = True
-                raise TimeoutError(f"safechain stream stalled for more than "
-                                   f"{_SAFECHAIN_CALL_TIMEOUT_S:.0f}s between chunks") from e
-            tool_calls = []
-            for tc in getattr(raw, "tool_call_chunks", None) or []:
-                if isinstance(tc, dict):           # partial arguments: the SDK reassembles
-                    args = tc.get("args")
-                    tool_calls.append(ChoiceDeltaToolCall(
-                        index=tc.get("index") or 0, id=tc.get("id") or None, type="function",
-                        function=ChoiceDeltaToolCallFunction(
-                            name=tc.get("name") or None,
-                            arguments=args if isinstance(args, str) else None)))
-            text = self._new_text(_content_text(getattr(raw, "content", "")))
-            if not text and not tool_calls:
-                continue
-            self._saw_tool_call = self._saw_tool_call or bool(tool_calls)
-            return self._chunk(ChoiceDelta(content=text or None, tool_calls=tool_calls or None))
+        return self._chunks.pop(0)
 
     async def close(self) -> None:
-        self._done = True
-        aclose = getattr(self._agen, "aclose", None)
-        if aclose is not None:
-            try:
-                await aclose()
-            except Exception:  # noqa: BLE001 - best-effort teardown
-                pass
+        self._chunks.clear()

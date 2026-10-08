@@ -167,7 +167,7 @@ The UI follows the journey in three steps.
      `shots` tool: the **clustering shots** - the prepare step's file
      (`discovery.few_shot_path`), or generated on the page from the screen's
      fit rows (KMeans per class, N rows × B batches) - then your own categories, appended in
-     order (`agent.shot_spec_paths`), one markdown file each:
+     order (`discovery.shot_spec_paths`), one markdown file each:
 
      ```markdown
      # Early cures
@@ -191,11 +191,14 @@ The UI follows the journey in three steps.
      can be uploaded). For each source with data the agent **proposes its
      linkage** - the point-in-time join to the model ids - and you approve
      it after seeing the code, the match rate and the point-in-time check.
-   * **Scope** - the CAS variables, flagged by whether the model uses them:
-     by default the `*_flagged.csv` files in the additional data folder
-     (`agent.scope_glob`), plus any listed in `agent.scope_paths`. **Scope
-     notes** (`agent.scope_notes_paths`; .md, .txt, .docx, .pdf - uploaded or
-     by path) are your guidance on using it, given to the agent verbatim.
+   * **Scope** - the tables data may be requested from, grouped into scopes
+     named by a keyword (`discovery.additional_data.scopes`; `CAS` by
+     default). Each scope's variables are flagged by whether the model uses
+     them: its `glob` in the additional data folder (`*_flagged.csv` for CAS),
+     plus any files in its `paths`. Its `notes_paths` (.md, .txt, .docx, .pdf -
+     uploaded or by path) are your guidance on using it, given to the agent
+     verbatim; `sql_dialect` and `description` tell the agent what it is.
+     Data outside every scope is *beyond scope*.
 2. **Discover** - a direction plus its **parameters**, prefilled from the
    config's `agent` section: K, the model, the engine, the verification
    threshold, which levels (L1, L2, L3) and which sources. The run
@@ -212,12 +215,13 @@ The UI follows the journey in three steps.
    each new feature in its model, and the verdict. Evaluations can be deleted.
 
 **A data-request run** - tick only L3. Nothing is built or screened. One
-agent reads the CAS scope, your scope notes and the shots, and takes each data
+agent reads the scopes, your scope notes and the shots, and takes each data
 pull it wants (up to K) through one loop:
 
-1. *Propose* - a rationale, the features it would enable, and BigQuery SQL.
-2. *Validate* - the tool reads the SQL against the CAS column lists: a table
-   outside the scope, an invented column, no identifier selected or no
+1. *Propose* - a rationale, the features it would enable, and SQL in the
+   scope's dialect - or, beyond scope, the data it needs and no SQL.
+2. *Validate* - the tool reads the SQL against the scope's column lists: a
+   table in no scope (or tables of two scopes), an invented column, no identifier selected or no
    partition-date filter sends it back before it costs anything.
 3. *Challenge* - the agent reflects on its own proposal: can this information
    be built from the model database and the linked sources? A pull is effort,
@@ -236,7 +240,7 @@ a tool runs code, checks it, records it - it never calls a model.
 
 What waits for you, and nothing else does: confirming a linkage (in Setup, or
 mid-run if a direction needs a source that has none), and an **L3 data pull**
-- the agent writes the gap and BigQuery SQL over the CAS scope; approve it,
+- the agent writes the gap and the SQL over a scope; approve it,
 run it, and drop the result in as a source.
 
 The API the UI calls is listed in `src/agent/server.py`;
@@ -244,8 +248,8 @@ The API the UI calls is listed in `src/agent/server.py`;
 the frontend calls a path the server lacks.
 
 Sources are `<name>.parquet|csv` beside `<name>_data_sample.json`
-(`{column: [description, [samples]]}`); CAS scope files are the
-`*_flagged.csv` exports in the same folder. Scripts run in a subprocess with a
+(`{column: [description, [samples]]}`); scope files (the CAS scope's are the
+`*_flagged.csv` exports) sit in the same folder. Scripts run in a subprocess with a
 guard against file access, on pandas or Spark (`agent.engine`). The LLM is
 `agent.llm`: `openai`, or `safechain` through the client in `src/agent/llm/`
 (copied from AgenticSys_v2: a call stalled at 40s is re-issued, capped at 180s -
