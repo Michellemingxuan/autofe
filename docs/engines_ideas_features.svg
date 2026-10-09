@@ -1,0 +1,342 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 84 1290 900"
+     font-family="ui-sans-serif, -apple-system, 'Segoe UI', system-ui, Helvetica, sans-serif">
+  <defs>
+    <filter id="shadow" x="-20%" y="-20%" width="140%" height="140%">
+      <feGaussianBlur in="SourceAlpha" stdDeviation="1.2"/>
+      <feOffset dy="1.5"/>
+      <feComponentTransfer><feFuncA type="linear" slope="0.14"/></feComponentTransfer>
+      <feMerge><feMergeNode/><feMergeNode in="SourceGraphic"/></feMerge>
+    </filter>
+    <marker id="ar-gray" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse">
+      <path d="M0,1 L10,5 L0,9 Z" fill="#8A8275"/>
+    </marker>
+    <marker id="ar-purple" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse">
+      <path d="M0,1 L10,5 L0,9 Z" fill="#7A5AA8"/>
+    </marker>
+    <marker id="ar-blue" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse">
+      <path d="M0,1 L10,5 L0,9 Z" fill="#3E6E9E"/>
+    </marker>
+    <marker id="ar-amber" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse">
+      <path d="M0,1 L10,5 L0,9 Z" fill="#A0782E"/>
+    </marker>
+  </defs>
+
+  <rect width="1290" height="984" fill="#FAF9F5"/>
+
+  <!-- ============================================================ -->
+  <!-- 0 · ANALYST DIRECTION                                        -->
+  <!-- ============================================================ -->
+  <g filter="url(#shadow)">
+    <rect x="30" y="102" width="560" height="74" rx="8" fill="#FFFFFF" stroke="#A0782E" stroke-width="1"/>
+  </g>
+  <rect x="30" y="102" width="6" height="74" rx="3" fill="#A0782E"/>
+  <text x="48" y="122" font-size="12.5" font-weight="700" fill="#A0782E">0 · Analyst direction</text>
+  <text x="48" y="142" font-size="11" fill="#2D2D2D" font-style="italic">“Find customers drifting out of pattern</text>
+  <text x="48" y="156" font-size="11" fill="#2D2D2D" font-style="italic">before the first missed payment.”</text>
+  <text x="48" y="170" font-size="8.5" fill="#5C5044">target and horizon set by the model; focus set by the analyst</text>
+
+
+  <!-- direction -> generators, direction -> idea check -->
+  <path d="M150,176 V198" stroke="#A0782E" stroke-width="1.4" fill="none" marker-end="url(#ar-amber)"/>
+  <path d="M520,176 V222" stroke="#A0782E" stroke-width="1.2" stroke-dasharray="4,3" fill="none" marker-end="url(#ar-amber)"/>
+
+  <!-- ============================================================ -->
+  <!-- BODY (shifted below the direction band)                      -->
+  <!-- ============================================================ -->
+  <g transform="translate(0,84)">
+
+  <!-- column titles -->
+  <text x="60" y="128" font-size="12.5" font-weight="700" fill="#2D2D2D">1 · Idea generators</text>
+  <text x="290" y="128" font-size="12.5" font-weight="700" fill="#2D2D2D">2 · Ideas</text>
+  <text x="630" y="128" font-size="12.5" font-weight="700" fill="#2D2D2D">3 · Features</text>
+  <text x="920" y="128" font-size="12.5" font-weight="700" fill="#2D2D2D">4 · Checks, cheapest first</text>
+
+  <!-- ============================================================ -->
+  <!-- 1 · GENERATORS                                               -->
+  <!-- ============================================================ -->
+  <g filter="url(#shadow)">
+    <rect x="60" y="145" width="180" height="50" rx="7" fill="#FFFFFF" stroke="#D4C5A9" stroke-width="0.8"/>
+    <rect x="60" y="205" width="180" height="50" rx="7" fill="#FFFFFF" stroke="#D4C5A9" stroke-width="0.8"/>
+    <rect x="60" y="265" width="180" height="50" rx="7" fill="#FFFFFF" stroke="#D4C5A9" stroke-width="0.8"/>
+    <rect x="60" y="325" width="180" height="50" rx="7" fill="#FFFFFF" stroke="#D4C5A9" stroke-width="0.8"/>
+    <rect x="60" y="385" width="180" height="50" rx="7" fill="#FFFFFF" stroke="#D4C5A9" stroke-width="0.8"/>
+    <rect x="60" y="445" width="180" height="50" rx="7" fill="#FFFFFF" stroke="#D4C5A9" stroke-width="0.8"/>
+  </g>
+  <g font-size="11" font-weight="700" fill="#2D2D2D">
+    <text x="72" y="162">G1 Causal chain</text>
+    <text x="72" y="222">G2 Contrastive abduction</text>
+    <text x="72" y="282">G3 Morphological grid</text>
+    <text x="72" y="342">G4 Inversion</text>
+    <text x="72" y="402">G5 Perspective rotation</text>
+    <text x="72" y="462">G6 Analogy transfer</text>
+  </g>
+  <g font-size="8.5" fill="#5C5044">
+    <text x="72" y="175">shock → strain → coping → miss</text>
+    <text x="72" y="235">base look-alikes: why one defaults</text>
+    <text x="72" y="295">empty cells of a five-axis grid</text>
+    <text x="72" y="355">habits that strained customers drop</text>
+    <text x="72" y="415">collections, fraud, customer, rival</text>
+    <text x="72" y="475">churn, drawdown, survival, HRV</text>
+  </g>
+  <!-- yield bars -->
+  <g font-size="8" fill="#5C5044">
+    <rect x="72" y="182" width="110" height="5" rx="2.5" fill="#EEE9DC"/><rect x="72" y="182" width="66" height="5" rx="2.5" fill="#3E6E9E"/><text x="190" y="188">yield .60</text>
+    <rect x="72" y="242" width="110" height="5" rx="2.5" fill="#EEE9DC"/><rect x="72" y="242" width="50" height="5" rx="2.5" fill="#3E6E9E"/><text x="190" y="248">yield .45</text>
+    <rect x="72" y="302" width="110" height="5" rx="2.5" fill="#EEE9DC"/><rect x="72" y="302" width="11" height="5" rx="2.5" fill="#3E6E9E"/><text x="190" y="308">yield .10</text>
+    <rect x="72" y="362" width="110" height="5" rx="2.5" fill="#EEE9DC"/><rect x="72" y="362" width="28" height="5" rx="2.5" fill="#3E6E9E"/><text x="190" y="368">yield .25</text>
+    <rect x="72" y="422" width="110" height="5" rx="2.5" fill="#EEE9DC"/><rect x="72" y="422" width="33" height="5" rx="2.5" fill="#3E6E9E"/><text x="190" y="428">yield .30</text>
+    <rect x="72" y="482" width="110" height="5" rx="2.5" fill="#EEE9DC"/><rect x="72" y="482" width="44" height="5" rx="2.5" fill="#3E6E9E"/><text x="190" y="488">yield .40</text>
+  </g>
+
+  <!-- generator -> idea arrows -->
+  <g stroke="#8A8275" stroke-width="1.1" fill="none" marker-end="url(#ar-gray)">
+    <path d="M240,170 C264,170 264,219 288,219"/>
+    <path d="M240,470 C264,470 264,227 288,227"/>
+    <path d="M240,230 C264,230 264,297 288,297"/>
+    <path d="M240,410 C264,410 264,305 288,305"/>
+    <path d="M240,290 C264,290 264,379 288,379"/>
+    <path d="M240,350 C264,350 264,457 288,457"/>
+  </g>
+
+  <!-- ============================================================ -->
+  <!-- 2 · IDEAS                                                    -->
+  <!-- ============================================================ -->
+  <rect x="290" y="140" width="280" height="38" rx="7" fill="#F6EEDC" stroke="#A0782E" stroke-dasharray="3,2"/>
+  <text x="430" y="156" font-size="9.5" font-weight="700" fill="#5C5044" text-anchor="middle">On the way in: same idea? on direction? buildable?</text>
+  <text x="430" y="170" font-size="8.5" fill="#5C5044" text-anchor="middle">embed · cosine &gt; 0.85 → LLM merges · off-direction → drop</text>
+
+  <g filter="url(#shadow)">
+    <rect x="290" y="190" width="280" height="66" rx="7" fill="#FFFFFF" stroke="#4F8A5B" stroke-width="1.2"/>
+    <rect x="290" y="268" width="280" height="66" rx="7" fill="#FFFFFF" stroke="#D4C5A9" stroke-width="0.8"/>
+    <rect x="290" y="346" width="280" height="66" rx="7" fill="#F1EFEA" stroke="#C9C2B5" stroke-width="0.8"/>
+    <rect x="290" y="424" width="280" height="66" rx="7" fill="#FFFFFF" stroke="#D4C5A9" stroke-width="0.8"/>
+  </g>
+  <!-- idea 1 -->
+  <text x="302" y="208" font-size="11.5" font-weight="700" fill="#2D2D2D">Out-of-pattern spend</text>
+  <text x="302" y="221" font-size="8.5" fill="#5C5044">from G1 causal + G6 analogy (merged)</text>
+  <rect x="496" y="198" width="64" height="15" rx="7.5" fill="#E3EFE5"/><text x="528" y="209" font-size="8" font-weight="700" fill="#4F8A5B" text-anchor="middle">ACTIVE</text>
+  <text x="302" y="243" font-size="8" fill="#5C5044">P(useful)</text>
+  <rect x="346" y="237" width="150" height="6" rx="3" fill="#EEE9DC"/><rect x="346" y="237" width="120" height="6" rx="3" fill="#4F8A5B"/>
+  <text x="504" y="243" font-size="8" fill="#5C5044">.80 · 2 of 2</text>
+  <!-- idea 2 -->
+  <text x="302" y="286" font-size="11.5" font-weight="700" fill="#2D2D2D">Payment timing drift</text>
+  <text x="302" y="299" font-size="8.5" fill="#5C5044">from G2 contrastive + G5 perspective (merged)</text>
+  <rect x="496" y="276" width="64" height="15" rx="7.5" fill="#E6EEF6"/><text x="528" y="287" font-size="8" font-weight="700" fill="#3E6E9E" text-anchor="middle">EXPLORE</text>
+  <text x="302" y="321" font-size="8" fill="#5C5044">P(useful)</text>
+  <rect x="346" y="315" width="150" height="6" rx="3" fill="#EEE9DC"/><rect x="346" y="315" width="75" height="6" rx="3" fill="#3E6E9E"/>
+  <text x="504" y="321" font-size="8" fill="#5C5044">.50 · prior</text>
+  <!-- idea 3 -->
+  <text x="302" y="364" font-size="11.5" font-weight="700" fill="#8A8275" text-decoration="line-through">Spend velocity</text>
+  <text x="302" y="377" font-size="8.5" fill="#8A8275">from G3 morphological</text>
+  <rect x="496" y="354" width="64" height="15" rx="7.5" fill="#F3E1DC"/><text x="528" y="365" font-size="8" font-weight="700" fill="#B5523B" text-anchor="middle">RETIRED</text>
+  <text x="302" y="399" font-size="8" fill="#8A8275">P(useful)</text>
+  <rect x="346" y="393" width="150" height="6" rx="3" fill="#EEE9DC"/><rect x="346" y="393" width="12" height="6" rx="3" fill="#B5523B"/>
+  <text x="504" y="399" font-size="8" fill="#8A8275">.08 · 0 of 3</text>
+  <!-- idea 4 -->
+  <text x="302" y="442" font-size="11.5" font-weight="700" fill="#2D2D2D">Dropped routine merchants</text>
+  <text x="302" y="455" font-size="8.5" fill="#5C5044">from G4 inversion</text>
+  <rect x="496" y="432" width="64" height="15" rx="7.5" fill="#F6EEDC"/><text x="528" y="443" font-size="8" font-weight="700" fill="#A0782E" text-anchor="middle">LOW</text>
+  <text x="302" y="477" font-size="8" fill="#5C5044">P(useful)</text>
+  <rect x="346" y="471" width="150" height="6" rx="3" fill="#EEE9DC"/><rect x="346" y="471" width="38" height="6" rx="3" fill="#A0782E"/>
+  <text x="504" y="477" font-size="8" fill="#5C5044">.25 · 0 of 1</text>
+
+  <text x="290" y="506" font-size="9" fill="#4F8A5B" font-style="italic">Each round, sample a value from every idea's P(useful) and give the next</text>
+  <text x="290" y="518" font-size="9" fill="#4F8A5B" font-style="italic">features to the highest draws (Thompson sampling).</text>
+
+  <!-- idea -> feature arrows -->
+  <g stroke="#8A8275" stroke-width="1.1" fill="none" marker-end="url(#ar-gray)">
+    <path d="M570,218 C598,218 600,210 628,210"/>
+    <path d="M570,226 C598,226 600,258 628,258"/>
+    <path d="M570,301 C598,301 600,320 628,320"/>
+    <path d="M570,374 C598,374 600,372 628,372"/>
+    <path d="M570,384 C598,384 600,412 628,412"/>
+    <path d="M570,457 C598,457 600,464 628,464"/>
+  </g>
+
+  <!-- ============================================================ -->
+  <!-- 3 · FEATURES                                                 -->
+  <!-- ============================================================ -->
+  <g filter="url(#shadow)">
+    <rect x="630" y="190" width="230" height="40" rx="6" fill="#FFFFFF" stroke="#D4C5A9" stroke-width="0.8"/>
+    <rect x="630" y="238" width="230" height="40" rx="6" fill="#FFFFFF" stroke="#D4C5A9" stroke-width="0.8"/>
+    <rect x="630" y="300" width="230" height="40" rx="6" fill="#FFFFFF" stroke="#D4C5A9" stroke-width="0.8" stroke-dasharray="3,2"/>
+    <rect x="630" y="352" width="230" height="40" rx="6" fill="#F1EFEA" stroke="#C9C2B5" stroke-width="0.8"/>
+    <rect x="630" y="398" width="230" height="40" rx="6" fill="#F1EFEA" stroke="#C9C2B5" stroke-width="0.8"/>
+    <rect x="630" y="444" width="230" height="40" rx="6" fill="#FFFFFF" stroke="#D4C5A9" stroke-width="0.8"/>
+  </g>
+  <g font-family="ui-monospace, Menlo, monospace" font-size="10" font-weight="700">
+    <text x="642" y="206" fill="#2D2D2D">risk_weighted_oop</text>
+    <text x="642" y="254" fill="#2D2D2D">oop_change_3m</text>
+    <text x="642" y="316" fill="#2D2D2D">payday_shift</text>
+    <text x="642" y="368" fill="#8A8275">spend_vel_1m</text>
+    <text x="642" y="414" fill="#8A8275">spend_vel_ratio</text>
+    <text x="642" y="460" fill="#2D2D2D">routine_merchant_drop</text>
+  </g>
+  <g font-size="8.5" fill="#5C5044">
+    <text x="642" y="221">R² .31 · ρres .14 · Δ +.006 <tspan fill="#4F8A5B" font-weight="700">✓</tspan></text>
+    <text x="642" y="269">R² .58 · ρres .09 · Δ +.002 <tspan fill="#4F8A5B" font-weight="700">✓</tspan></text>
+    <text x="642" y="331" font-style="italic">queued, next round</text>
+    <text x="642" y="383">R² .96 <tspan fill="#B5523B" font-weight="700">✗ C1</tspan> · ≈ spend_3m</text>
+    <text x="642" y="429">R² .93 <tspan fill="#B5523B" font-weight="700">✗ C1</tspan> · ≈ spend_3m</text>
+    <text x="642" y="475">R² .22 · ρres .01 <tspan fill="#B5523B" font-weight="700">✗ C2</tspan></text>
+  </g>
+  <text x="860" y="497" font-size="8.5" fill="#5C5044" font-style="italic" text-anchor="end">oop = out-of-pattern</text>
+
+  <!-- features bracket -> C1 -->
+  <g stroke="#8A8275" stroke-width="1.1" fill="none">
+    <path d="M860,210 H878 M860,258 H878 M860,320 H878 M860,372 H878 M860,418 H878 M860,464 H878"/>
+    <path d="M878,172 V464"/>
+    <path d="M878,172 H918" marker-end="url(#ar-gray)"/>
+  </g>
+
+  <!-- ============================================================ -->
+  <!-- 4 · CHECKS                                                   -->
+  <!-- ============================================================ -->
+  <g filter="url(#shadow)">
+    <rect x="920" y="140" width="320" height="64" rx="7" fill="#FFFFFF" stroke="#7A5AA8" stroke-width="1.1"/>
+    <rect x="930" y="216" width="300" height="56" rx="7" fill="#FFFFFF" stroke="#D4C5A9" stroke-width="0.8"/>
+    <rect x="945" y="284" width="270" height="56" rx="7" fill="#FFFFFF" stroke="#D4C5A9" stroke-width="0.8"/>
+    <rect x="960" y="352" width="240" height="42" rx="7" fill="#FFFFFF" stroke="#D4C5A9" stroke-width="0.8"/>
+    <rect x="980" y="406" width="200" height="38" rx="7" fill="#FFFFFF" stroke="#D4C5A9" stroke-width="0.8"/>
+  </g>
+  <text x="932" y="157" font-size="11" font-weight="700" fill="#2D2D2D">C0 · Seen before?</text>
+  <text x="1230" y="157" font-size="8.5" fill="#7A5AA8" text-anchor="end" font-weight="700">vs. every earlier feature</text>
+  <text x="932" y="172" font-size="8.5" fill="#5C5044"><tspan font-weight="700">code</tspan> normalised AST · <tspan font-weight="700">meaning</tspan> embedded description</text>
+  <text x="932" y="184" font-size="8.5" fill="#5C5044">(both before it runs) · <tspan font-weight="700">values</tspan> rank ρ on the sketch</text>
+  <text x="932" y="197" font-size="8" fill="#B5523B">same code or ρ ≥ .95 → refuse · close meaning → say what differs</text>
+
+  <text x="942" y="233" font-size="11" font-weight="700" fill="#2D2D2D">C1 · Redundant with the model?</text>
+  <text x="1220" y="233" font-size="8.5" fill="#3E6E9E" text-anchor="end" font-weight="700">ms</text>
+  <text x="942" y="249" font-size="8.5" fill="#5C5044">R² on all model-database variables (catches combinations)</text>
+  <text x="942" y="263" font-size="8.5" fill="#B5523B">fail: R² &gt; 0.9 (log the nearest variable)</text>
+
+  <text x="957" y="301" font-size="11" font-weight="700" fill="#2D2D2D">C2 · New signal?</text>
+  <text x="1205" y="301" font-size="8.5" fill="#3E6E9E" text-anchor="end" font-weight="700">ms</text>
+  <text x="957" y="317" font-size="8.5" fill="#5C5044">|ρ| with the residual y − ŷ, not with y</text>
+  <text x="957" y="331" font-size="8.5" fill="#B5523B">fail: |ρres| &lt; τ (e.g. 0.02)</text>
+
+  <text x="972" y="369" font-size="11" font-weight="700" fill="#2D2D2D">C3 · Screen Δ</text>
+  <text x="1190" y="369" font-size="8.5" fill="#3E6E9E" text-anchor="end" font-weight="700">seconds</text>
+  <text x="972" y="385" font-size="8.5" fill="#5C5044">base vs base + 1, on the screen sample</text>
+
+  <text x="992" y="422" font-size="11" font-weight="700" fill="#2D2D2D">C4 · Full verdict</text>
+  <text x="1170" y="422" font-size="8.5" fill="#3E6E9E" text-anchor="end" font-weight="700">minutes</text>
+  <text x="992" y="436" font-size="8.5" fill="#5C5044">existing gates, full splits</text>
+
+  <g stroke="#8A8275" stroke-width="1.1" fill="none" marker-end="url(#ar-gray)">
+    <path d="M1080,204 V214"/>
+    <path d="M1080,272 V282"/>
+    <path d="M1080,340 V350"/>
+    <path d="M1080,394 V404"/>
+  </g>
+
+  <!-- model database + earlier features -->
+  <g filter="url(#shadow)">
+    <rect x="920" y="454" width="320" height="58" rx="7" fill="#FFFFFF" stroke="#3E6E9E" stroke-width="1"/>
+    <path d="M920,462 a7,7 0 0 1 7,-8 h306 a7,7 0 0 1 7,8 v8 h-320 z" fill="#3E6E9E"/>
+  </g>
+  <text x="932" y="466" font-size="9.5" font-weight="700" fill="#FFFFFF">Model database (var_1 … var_p, ŷ) + every earlier feature</text>
+  <text x="932" y="487" font-size="8.5" fill="#5C5044">Rank sketch on ~2k rows, plus each earlier feature's code and</text>
+  <text x="932" y="500" font-size="8.5" fill="#5C5044">description: C0–C2 are one matmul, one fit, one dot product.</text>
+  <path d="M1240,483 H1262 V172 H1242" stroke="#3E6E9E" stroke-width="1.1" stroke-dasharray="4,3" fill="none" marker-end="url(#ar-blue)"/>
+  <path d="M1262,244 H1232" stroke="#3E6E9E" stroke-width="1.1" stroke-dasharray="4,3" fill="none" marker-end="url(#ar-blue)"/>
+  <path d="M1262,312 H1217" stroke="#3E6E9E" stroke-width="1.1" stroke-dasharray="4,3" fill="none" marker-end="url(#ar-blue)"/>
+  <!-- ============================================================ -->
+  <!-- 5 · LOGGING BOARD                                            -->
+  <!-- ============================================================ -->
+  <path d="M980,425 H900 V560" stroke="#8A8275" stroke-width="1.1" fill="none" marker-end="url(#ar-gray)"/>
+  <text x="892" y="548" font-size="8.5" fill="#5C5044" font-style="italic" text-anchor="end">every outcome, pass or fail</text>
+
+  <g filter="url(#shadow)">
+    <rect x="60" y="562" width="1180" height="176" rx="8" fill="#FFFFFF" stroke="#D4C5A9" stroke-width="0.8"/>
+    <path d="M60,570 a8,8 0 0 1 8,-8 h1164 a8,8 0 0 1 8,8 v16 h-1180 z" fill="#7A5AA8"/>
+  </g>
+  <text x="74" y="579" font-size="11.5" font-weight="700" fill="#FFFFFF">5 · Feature logging board, shown in the prompt whenever a generator writes a new idea or an idea gets a new feature</text>
+
+  <g font-size="8.5" font-weight="700" fill="#5C5044">
+    <text x="76" y="606">generator</text>
+    <text x="170" y="606">idea</text>
+    <text x="320" y="606">feature</text>
+    <text x="470" y="606">level</text>
+    <text x="520" y="606">nearest model var</text>
+    <text x="660" y="606">R² on model</text>
+    <text x="745" y="606">ρ residual</text>
+    <text x="830" y="606">Δ screen</text>
+    <text x="905" y="606">status</text>
+    <text x="1030" y="606">what it teaches</text>
+  </g>
+  <line x1="72" y1="613" x2="1228" y2="613" stroke="#E5E0D2"/>
+  <g font-size="9" fill="#2D2D2D">
+    <text x="76" y="631">G1 causal</text><text x="170" y="631">Out-of-pattern spend</text>
+    <text x="320" y="631" font-family="ui-monospace, Menlo, monospace" font-size="8.5">risk_weighted_oop</text>
+    <text x="470" y="631">L2</text><text x="520" y="631">spend_dev_6m</text><text x="660" y="631">.31</text><text x="745" y="631">.14</text><text x="830" y="631">+.006</text>
+    <text x="905" y="631" fill="#4F8A5B" font-weight="700">✓ candidate</text><text x="1030" y="631" fill="#5C5044">idea is live</text>
+
+    <text x="76" y="653">G6 analogy</text><text x="170" y="653">Out-of-pattern spend</text>
+    <text x="320" y="653" font-family="ui-monospace, Menlo, monospace" font-size="8.5">oop_change_3m</text>
+    <text x="470" y="653">L2</text><text x="520" y="653">spend_dev_6m</text><text x="660" y="653">.58</text><text x="745" y="653">.09</text><text x="830" y="653">+.002</text>
+    <text x="905" y="653" fill="#4F8A5B" font-weight="700">✓ candidate</text><text x="1030" y="653" fill="#5C5044">2nd generator, same idea</text>
+
+    <text x="76" y="675">G3 morph</text><text x="170" y="675">Spend velocity</text>
+    <text x="320" y="675" font-family="ui-monospace, Menlo, monospace" font-size="8.5">spend_vel_1m</text>
+    <text x="470" y="675">L1</text><text x="520" y="675">spend_3m</text><text x="660" y="675" fill="#B5523B">.96</text><text x="745" y="675">.01</text><text x="830" y="675">—</text>
+    <text x="905" y="675" fill="#B5523B" font-weight="700">✗ C1 explained</text><text x="1030" y="675" fill="#5C5044">model already has it</text>
+
+    <text x="76" y="697">G3 morph</text><text x="170" y="697">Spend velocity</text>
+    <text x="320" y="697" font-family="ui-monospace, Menlo, monospace" font-size="8.5">spend_vel_ratio</text>
+    <text x="470" y="697">L1</text><text x="520" y="697">spend_3m</text><text x="660" y="697" fill="#B5523B">.93</text><text x="745" y="697">.02</text><text x="830" y="697">—</text>
+    <text x="905" y="697" fill="#B5523B" font-weight="700">✗ C1 → idea retired</text><text x="1030" y="697" fill="#5C5044">P(useful) fell below .10</text>
+
+    <text x="76" y="719">G4 inversion</text><text x="170" y="719">Dropped routine merchants</text>
+    <text x="320" y="719" font-family="ui-monospace, Menlo, monospace" font-size="8.5">routine_merchant_drop</text>
+    <text x="470" y="719">L2</text><text x="520" y="719">mcc_cnt</text><text x="660" y="719">.22</text><text x="745" y="719" fill="#B5523B">.01</text><text x="830" y="719">—</text>
+    <text x="905" y="719" fill="#B5523B" font-weight="700">✗ C2 no signal</text><text x="1030" y="719" fill="#5C5044">idea deprioritised</text>
+  </g>
+  <g stroke="#F1EDE3"><line x1="72" y1="639" x2="1228" y2="639"/><line x1="72" y1="661" x2="1228" y2="661"/><line x1="72" y1="683" x2="1228" y2="683"/><line x1="72" y1="705" x2="1228" y2="705"/></g>
+
+  <!-- feedback loops -->
+  <g stroke="#7A5AA8" stroke-width="1.4" fill="none" marker-end="url(#ar-purple)">
+    <path d="M430,562 V524"/>
+    <path d="M150,562 V499"/>
+  </g>
+  <rect x="438" y="530" width="300" height="24" rx="5" fill="#F3EEF8"/>
+  <text x="446" y="545" font-size="8.5" fill="#7A5AA8">update each idea: success = passes C1 + C2 → P(useful) up</text>
+  <rect x="158" y="522" width="226" height="34" rx="5" fill="#F3EEF8"/>
+  <text x="166" y="535" font-size="8.5" fill="#7A5AA8">generator yield = its ideas' success rate;</text>
+  <text x="166" y="548" font-size="8.5" fill="#7A5AA8">the next generator is drawn by its yield</text>
+
+  <!-- ============================================================ -->
+  <!-- ALGORITHM CHIPS                                              -->
+  <!-- ============================================================ -->
+  <g filter="url(#shadow)">
+    <rect x="60" y="762" width="380" height="110" rx="8" fill="#FFFFFF" stroke="#4F8A5B" stroke-width="0.9"/>
+    <rect x="455" y="762" width="380" height="110" rx="8" fill="#FFFFFF" stroke="#B5523B" stroke-width="0.9"/>
+    <rect x="850" y="762" width="390" height="110" rx="8" fill="#FFFFFF" stroke="#3E6E9E" stroke-width="0.9"/>
+  </g>
+  <text x="74" y="784" font-size="11.5" font-weight="700" fill="#4F8A5B">① Thompson sampling over ideas</text>
+  <g font-size="9" fill="#5C5044">
+    <text x="74" y="802">Each idea keeps a Beta(α, β): α counts features that passed</text>
+    <text x="74" y="816">C1 + C2, β those that failed. A new idea starts at Beta(1, 1).</text>
+    <text x="74" y="830">Features go to the ideas with the highest draws, so good ideas</text>
+    <text x="74" y="844">get deepened, and new or uncertain ones still get a try.</text>
+    <text x="74" y="858">The same rule over generators decides who writes the next idea.</text>
+  </g>
+  <text x="469" y="784" font-size="11.5" font-weight="700" fill="#B5523B">② Retire by evidence, not by a fixed count</text>
+  <g font-size="9" fill="#5C5044">
+    <text x="469" y="802">Retire when P(useful) &lt; 0.10 after at least 2 features.</text>
+    <text x="469" y="816">Two C1 failures on the same nearest variable is strong evidence.</text>
+    <text x="469" y="830">A retired idea keeps its reason ("≈ spend_3m"), so generators are</text>
+    <text x="469" y="844">told what not to rebuild, and a new idea that dedups onto it</text>
+    <text x="469" y="858">inherits its record, whichever generator wrote it.</text>
+  </g>
+  <text x="864" y="784" font-size="11.5" font-weight="700" fill="#3E6E9E">③ Cheap checks first, by cost</text>
+  <g font-size="9" fill="#5C5044">
+    <text x="864" y="802">C0–C2 read a precomputed sketch, so they cost milliseconds and</text>
+    <text x="864" y="816">can be run on every feature. C3 (seconds) and C4 (minutes) only</text>
+    <text x="864" y="830">see what survives. Use residual ρ, not ρ with y: one number for</text>
+    <text x="864" y="844">"is it new" that also catches signal the model already has.</text>
+    <text x="864" y="858">C0 catches a renamed or rewritten twin before any spend.</text>
+  </g>
+
+  </g>
+</svg>
