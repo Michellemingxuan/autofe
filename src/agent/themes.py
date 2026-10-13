@@ -118,7 +118,11 @@ def generate(ws: Workspace) -> list[str]:
             "requested from, and data beyond them. No two themes may say the same thing."),
         model=build_model(ws.cfg.agent.llm, log_dir=Path(ws.cfg.agent.run_dir) / "llm_logs"),
         output_type=FirstAnswer(Themes))
-    result = asyncio.run(Runner.run(agent, context_of(ws), max_turns=2))
+    from agent.llm_trace import TraceHooks, store_for
+
+    hooks = TraceHooks(store_for(ws.cfg), f"themes_{time.strftime('%Y%m%d_%H%M%S')}", "themes",
+                       kind="themes")
+    result = asyncio.run(Runner.run(agent, context_of(ws), max_turns=2, hooks=hooks))
     return save(ws, result.final_output.themes)
 
 
