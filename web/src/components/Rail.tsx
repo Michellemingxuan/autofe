@@ -7,6 +7,7 @@ type Props = {
   workspace: Workspace | null
   runs: RunSummary[]
   evaluations: EvalSummary[]
+  onBoard: () => void
 }
 
 export const SOURCE_STATE: Record<SourceState, { label: string; hint: string }> = {
@@ -33,7 +34,7 @@ const when = (ts: number) => new Date(ts * 1000).toLocaleString([], {
 })
 
 /** The dark rail: the three steps, and what each has made so far. */
-export function Rail({ route, workspace, runs, evaluations }: Props) {
+export function Rail({ route, workspace, runs, evaluations, onBoard }: Props) {
   return (
     <aside className={s.rail}>
       <div className={s.brand} title={workspace?.name ? `workspace: ${workspace.name}` : undefined}>
@@ -107,6 +108,11 @@ export function Rail({ route, workspace, runs, evaluations }: Props) {
           </div>
         </>
       )}
+
+      <button className={s.boardBtn} onClick={onBoard}
+              title="Every idea, the features and requests built from it, their checks and code, and whether each reached evaluation">
+        <span className={s.boardIcon} aria-hidden>▤</span> Logging board
+      </button>
     </aside>
   )
 }

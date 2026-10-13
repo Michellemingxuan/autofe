@@ -349,8 +349,17 @@ function Item({ item, job }: { item: TraceItem; job: Job }) {
       return <div className={`${s.note} ${s[item.tone]}`}>{item.text}</div>
     case 'ideas':
       return (
-        <div className={s.ideas}>
-          <div className={s.ideasFocus}>this run leans on {item.focus.map((f) => <code key={f}>{f}</code>)}</div>
+        <div className={`${s.ideas} ${item.sentBack ? s.ideasSentBack : ''}`}>
+          {item.sentBack
+            ? <div className={s.ideasFocus}>the ideas of try {item.sentBack}, sent back</div>
+            : item.focus.length > 0 && (
+              <div className={s.ideasFocus}>this round leans on the engines {item.focus.map((f) => <code key={f}>{f}</code>)}</div>
+            )}
+          {item.missed && item.missed.length > 0 && (
+            <div className={s.ideasMissed}>
+              Kept as the last resort - the answers kept missing: {item.missed.join('; ')}
+            </div>
+          )}
           {item.ideas.map((i) => {
             const proposed = i.name ? item.used?.[i.name] : undefined
             return (
@@ -361,10 +370,17 @@ function Item({ item, job }: { item: TraceItem; job: Job }) {
                     {i.name && <span className={s.ideaName}>{i.name}</span>}
                     {i.level && <span className={s.ideaLevel}>{i.level}</span>}
                     {(i.beyond_scope || i.beyond_cas) && <span className={s.ideaLevel}>beyond scope</span>}
-                    <code className={`${s.lens} ${item.focus.includes(i.lens) ? s.lensFocus : ''}`}>{i.lens}</code>
+                    {i.engine && (
+                      <code className={`${s.engine} ${item.focus.includes(i.engine) ? s.lensFocus : ''}`}
+                            title={item.focus.includes(i.engine) ? 'a focus engine this round' : 'idea engine'}>{i.engine}</code>
+                    )}
+                    <code className={s.lens} title="lens - the kind of signal">{i.lens}</code>
                     {proposed && <span className={s.ideaProposed}>→ {proposed}</span>}
                   </div>
                   <div>{i.description ?? i.hypothesis}</div>
+                  {i.measures && i.measures.length > 0 && (
+                    <ul className={s.ideaMeasures}>{i.measures.map((m) => <li key={m}>{m}</li>)}</ul>
+                  )}
                   {i.data && <div className={s.ideaData}>{i.data}</div>}
                 </div>
               </div>

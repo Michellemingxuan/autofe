@@ -194,3 +194,10 @@
 .ideaLevel { font-size: 9.5px; font-weight: 700; padding: 1px 6px; border-radius: 4px; background: var(--j-sys-block); color: var(--j-sys-dim); }
 .ideaProposed { font-family: var(--j-font-mono); font-size: var(--j-fs-meta); color: #86d7a3; font-weight: 600; }
 .ideaUsed .ideaN { color: #86d7a3; }
+
+/* Ideas: the engine that made each, a sent-back try dimmed, a last-resort note. */
+.engine { justify-self: start; font-family: var(--j-font-mono); font-size: var(--j-fs-meta); background: #1f3247; color: #8cc3ee; padding: 1px 6px; border-radius: 4px; }
+.ideasSentBack { opacity: 0.6; }
+.ideasMissed { font-size: var(--j-fs-meta); color: #e7c27a; line-height: 1.4; }
+
+.ideaMeasures { margin: 3px 0 0 16px; padding: 0; font-size: var(--j-fs-meta); color: var(--j-sys-text); line-height: 1.45; }

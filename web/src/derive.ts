@@ -1,6 +1,6 @@
 import { scopeOf } from './types'
 import type {
-  ApprovalCard, CodeCard, DataRequest, EvalView, Ev, LedgerRow, RefusedTry, RunView, Step, StepKind,
+  ApprovalCard, CodeCard, DataRequest, EvalView, Ev, Idea, LedgerRow, RefusedTry, RunView, Step, StepKind,
   ToolUse, TraceItem,
 } from './types'
 
@@ -170,8 +170,9 @@ export function deriveRun(events: Ev[]): RunView {
       }
 
       case 'ideas_recorded': {
-        const step = open('ideas', `${e.round ? `round ${e.round} · ` : ''}${e.theme ? `${e.theme} · ` : ''}${e.ideas.length} ideas · ${new Set(e.ideas.map((i: any) => i.lens)).size} lenses`)
-        step.items.push({ kind: 'ideas', seq: e.seq, focus: e.focus ?? [], ideas: e.ideas })
+        const step = open('ideas', ideasTitle(e))
+        step.items.push({ kind: 'ideas', seq: e.seq, focus: e.focus ?? [], ideas: e.ideas,
+                         ...(e.lenient ? { missed: e.missed ?? [] } : {}) })
         close('done')
         break
       }
@@ -179,6 +180,7 @@ export function deriveRun(events: Ev[]): RunView {
       case 'ideas_sent_back':
         here().items.push({ kind: 'note', seq: e.seq, tone: 'info',
           text: `Ideas sent back to fix (try ${e.attempt}): ${e.error}` })
+        if (e.ideas?.length) here().items.push({ kind: 'ideas', seq: e.seq, focus: [], ideas: ideasOf(e.ideas), sentBack: e.attempt })
         break
 
       case 'skill_loaded':
@@ -511,8 +513,9 @@ export function deriveL3(events: Ev[]): RunView {
       }
 
       case 'ideas_recorded': {
-        const step = withWords(push('ideas', `${e.round ? `round ${e.round} · ` : ''}${e.theme ? `${e.theme} · ` : ''}${e.ideas.length} ideas · ${new Set(e.ideas.map((i: any) => i.lens)).size} lenses`))
-        step.items.push({ kind: 'ideas', seq: e.seq, focus: e.focus ?? [], ideas: e.ideas })
+        const step = withWords(push('ideas', ideasTitle(e)))
+        step.items.push({ kind: 'ideas', seq: e.seq, focus: e.focus ?? [], ideas: e.ideas,
+                         ...(e.lenient ? { missed: e.missed ?? [] } : {}) })
         step.status = 'done'
         ideasStep = step
         explore = null
@@ -605,6 +608,7 @@ export function deriveL3(events: Ev[]): RunView {
       case 'ideas_sent_back':
         exploreStep().items.push({ kind: 'note', seq: e.seq, tone: 'info',
           text: `Ideas sent back to fix (try ${e.attempt}): ${e.error}` })
+        if (e.ideas?.length) exploreStep().items.push({ kind: 'ideas', seq: e.seq, focus: [], ideas: ideasOf(e.ideas), sentBack: e.attempt })
         break
 
       case 'agent_nudged':
@@ -692,4 +696,19 @@ function markUsedIdeas(view: RunView) {
   for (const step of view.steps) {
     for (const item of step.items) if (item.kind === 'ideas') item.used = used
   }
+}
+
+
+/** A round of ideas, as its step reads: the round, the theme, how many, from how
+ *  many engines - and a note when the checks never passed and it was kept anyway. */
+function ideasTitle(e: any): string {
+  const engines = new Set(e.ideas.map((i: any) => i.engine).filter(Boolean)).size
+  return `${e.round ? `round ${e.round} · ` : ''}${e.theme ? `${e.theme} · ` : ''}${e.ideas.length} ideas · `
+    + (engines ? `${engines} engines` : `${new Set(e.ideas.map((i: any) => i.lens)).size} lenses`)
+    + (e.lenient ? ' · kept though the spread missed' : '')
+}
+
+/** The ideas of a sent-back try, numbered as the agent gave them. */
+function ideasOf(ideas: any[]): Idea[] {
+  return ideas.map((i, k) => ({ ...i, n: k + 1 }))
 }

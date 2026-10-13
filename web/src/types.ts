@@ -89,6 +89,7 @@ export type Params = {
 
 export type Workspace = {
   name: string
+  trace_viewer?: string | null      // the trace viewer started beside the server, if any
   base_features: number
   id_column: string
   id_format: string
@@ -170,7 +171,9 @@ export type TraceItem =
   | { kind: 'skill'; seq: number; name: string }
   | { kind: 'note'; seq: number; tone: 'info' | 'error' | 'done'; text: string }
   | { kind: 'ideas'; seq: number; focus: string[]; ideas: Idea[]
-      used?: Record<string, string> }   // idea name -> the intent that proposed it (I3, R1)
+      used?: Record<string, string>     // idea name -> the intent that proposed it (I3, R1)
+      sentBack?: number                 // a try the checks returned: its attempt number
+      missed?: string[] }               // recorded anyway, last resort: the rules it missed
   | CodeCard
   | ApprovalCard
 
@@ -201,6 +204,8 @@ export type DataRequest = {
 
 /** One idea of the brainstorm. Older runs carry a hypothesis and no name. */
 export type Idea = { n: number; name?: string; level?: string; lens: string
+                     engine?: string                                   // the idea engine that made it
+                     measures?: string[]                               // ways to measure it
                      description?: string; hypothesis?: string; data: string
                      beyond_scope?: boolean; beyond_cas?: boolean }   // beyond_cas: older runs
 
@@ -266,6 +271,73 @@ export type PoolFeature = {
   code: string
   missing_linkage: string[]
   linkage: Record<string, string>
+}
+
+// One row of the logging board (GET /api/board): a feature or a data request
+// with the idea it tests - or an idea that made nothing yet. Written by the
+// server from the run's records, not from the agent's account of them.
+export type BoardRow = {
+  run_id: string
+  direction: string
+  idea: string
+  round: number | null
+  engine: string
+  lens: string
+  idea_status: '' | 'explore' | 'active' | 'low' | 'retired'
+  p_useful: number | null
+  idea_description: string
+  idea_measures: string[]   // the ways the idea can be measured, as the agent gave them
+  kind: 'feature' | 'request' | 'idea'
+  name: string
+  level: string | null
+  description: string
+  differs: string
+  code: string
+  attempt: string | null
+  seen_before: string
+  max_model_rho: number | null   // C1: the largest |Spearman rho| with a model column
+  nearest_rho: number | null     // ... its sign kept: the rho with `nearest`
+  nearest: string
+  residual_rho: number | null
+  note: string
+  gini_gain: number | null
+  capture_gain: number | null
+  status: string
+  reason: string
+  evidence: 'signal' | 'none' | null
+  // A verified feature only: '' for a failed feature, a request or an idea alone.
+  sent: '' | 'not evaluated' | 'evaluated' | 'evaluated · removed' | 'removed'
+  verdict: string          // the evaluation's verdict, PASS or FAIL, when evaluated
+}
+
+// One model call of a run (GET /api/runs/<id>/llm_calls): where in the run, how
+// long, how many tokens - and, in full (GET /api/llm_calls/<n>), what it saw and said.
+export type LlmCall = {
+  id: number
+  run_id: string
+  stage: 'ideas' | 'propose' | 'linkage' | 'themes' | string
+  round: number | null
+  call: number
+  agent: string
+  model: string
+  started_at: number
+  ended_at: number | null
+  duration_ms: number | null
+  input_items: number | null
+  input_chars: number | null
+  input_tokens: number | null
+  cached_tokens: number | null
+  output_tokens: number | null
+  reasoning_tokens: number | null
+  tokens_estimated: number
+  tool_calls: string[]
+  outcome: 'ok' | 'unfinished' | string
+  output_preview: string
+}
+export type LlmCallFull = LlmCall & {
+  system_prompt: string
+  input_json: unknown[] | { _elided: string; size: number } | null
+  output_json: unknown[] | { _elided: string; size: number } | null
 }
 
 export type EvalSummary = {

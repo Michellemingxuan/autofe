@@ -1,0 +1,47 @@
+.backdrop { position: fixed; inset: 0; z-index: 50; background: rgba(15, 23, 42, 0.38); display: flex; justify-content: center; padding: 24px; }
+.panel { width: min(1400px, 100%); min-height: 0; display: flex; flex-direction: column; background: var(--j-surface); border: 1px solid var(--j-border); border-radius: var(--j-radius-card); box-shadow: 0 12px 40px rgba(15, 23, 42, 0.25); overflow: hidden; }
+
+.head { display: flex; justify-content: space-between; align-items: center; gap: 12px; padding: 14px 18px; border-bottom: 1px solid var(--j-border); }
+.stats { display: flex; align-items: baseline; gap: 22px; flex-wrap: wrap; }
+.stat { font-size: var(--j-fs-sm); color: var(--j-ink-4); }
+.stat b { font-size: 18px; font-weight: 600; color: var(--j-ink); margin-right: 4px; }
+.close { border: none; background: transparent; font-size: 22px; color: var(--j-ink-4); }
+
+.body2 { flex: 1; min-height: 0; display: grid; grid-template-columns: 360px minmax(0, 1fr); }
+.list { overflow-y: auto; border-right: 1px solid var(--j-border); padding: 6px 0; }
+.side { overflow-y: auto; background: var(--j-sys-bg); color: var(--j-sys-text); }
+.none { color: var(--j-ink-mute); padding: 16px; font-size: var(--j-fs-sm); }
+.side .none { color: var(--j-sys-dim); }
+
+.stageHead { font-size: var(--j-fs-meta); font-weight: 700; text-transform: uppercase; letter-spacing: 0.04em; color: var(--j-label); padding: 10px 14px 4px; }
+.row { display: flex; gap: 10px; width: 100%; text-align: left; border: none; background: transparent; padding: 7px 14px; border-left: 3px solid transparent; }
+.row:hover { background: var(--j-surface-soft); }
+.rowOn { background: var(--j-accent-soft); border-left-color: var(--j-accent); }
+.callN { font-family: var(--j-font-mono); font-size: var(--j-fs-meta); color: var(--j-ink-mute); width: 22px; text-align: right; padding-top: 2px; }
+.rowMain { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+.rowWhat { display: flex; gap: 4px; flex-wrap: wrap; font-size: var(--j-fs-sm); color: var(--j-ink-2); }
+.rowWhat code { font-family: var(--j-font-mono); font-size: var(--j-fs-meta); background: var(--j-chip); padding: 1px 6px; border-radius: 4px; }
+.rowWhat em { color: var(--j-ink-4); }
+.rowMeta { font-size: var(--j-fs-meta); color: var(--j-ink-4); }
+.bad { color: var(--j-danger); }
+
+.detail { padding: 14px 18px; display: flex; flex-direction: column; gap: 14px; }
+.detailHead { font-size: var(--j-fs-sm); color: var(--j-sys-text-strong); font-weight: 600; }
+.detail h4 { font-size: var(--j-fs-sm); color: var(--j-sys-head); display: flex; align-items: baseline; gap: 8px; margin-bottom: 6px; }
+.detail h4 span { font-weight: 400; font-size: var(--j-fs-meta); color: var(--j-sys-dim); }
+.brief { white-space: pre-wrap; font-family: var(--j-font-mono); font-size: var(--j-fs-meta); color: var(--j-sys-mono); background: var(--j-sys-box); padding: 10px; border-radius: 8px; max-height: 360px; overflow-y: auto; }
+
+.item { background: var(--j-sys-card); border-radius: 8px; padding: 8px 10px; margin-bottom: 6px; border-left: 3px solid var(--j-sys-rule); }
+.user { border-left-color: #4fa9e8; }
+.assistant { border-left-color: #86d7a3; }
+.call { border-left-color: #c9b8f2; }
+.tool { border-left-color: #e7c27a; }
+.itemHead { display: flex; align-items: baseline; gap: 8px; margin-bottom: 4px; }
+.role { font-size: var(--j-fs-meta); font-weight: 700; color: var(--j-sys-head); text-transform: uppercase; letter-spacing: 0.03em; }
+.size { font-size: var(--j-fs-meta); color: var(--j-sys-dim); }
+.more { margin-left: auto; border: 1px solid var(--j-sys-rule); background: transparent; color: var(--j-sys-link); border-radius: 5px; padding: 0 7px; font-size: var(--j-fs-meta); }
+.body { white-space: pre-wrap; word-break: break-word; font-family: var(--j-font-mono); font-size: var(--j-fs-meta); color: var(--j-sys-mono); margin: 0; line-height: 1.45; }
+
+.headRight { display: flex; align-items: center; gap: 14px; }
+.open { font-size: var(--j-fs-sm); color: var(--j-accent-deep); text-decoration: none; border: 1px solid var(--j-accent-line); border-radius: var(--j-radius-ctl); padding: 4px 10px; }
+.open:hover { background: var(--j-accent-soft); }

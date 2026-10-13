@@ -4,6 +4,7 @@ import { deriveRun } from '../derive'
 import { Trace } from './Trace'
 import { Timeline } from './Timeline'
 import { ConfirmButton } from './ConfirmButton'
+import { LlmCalls } from './LlmCalls'
 import s from './RunPage.module.css'
 
 const STATUS_LABEL: Record<string, string> = {
@@ -19,6 +20,7 @@ export function RunPage({ runId, onChange, onDeleted, onRerun }: {
   const view = useMemo(() => deriveRun(events), [events])
   const [jumpTo, setJumpTo] = useState<{ id: number; n: number } | null>(null)
   const [inView, setInView] = useState<number | null>(null)
+  const [calls, setCalls] = useState(false)          // the model-call trace, open
 
   // The rail's counts change when a run finishes or verifies a feature.
   const verified = view.ledger.filter((r) => r.verified && !r.deleted).length
@@ -90,6 +92,8 @@ export function RunPage({ runId, onChange, onDeleted, onRerun }: {
             <span className={s.of}>{view.maxAttempts ? `/ ${view.maxAttempts} ` : ''}attempts</span>
           </div>
           <div className={s.actions}>
+            <button className={s.action} onClick={() => setCalls(true)}
+                    title="Every model call of this run: what went in, what came out, tokens and time">Model calls</button>
             {live && <button className={s.stop} onClick={() => api.cancel('runs', runId)}>Stop</button>}
             {l3 && view.requests.length > 0 && (
               <a className={s.action} href={api.requestsUrl(runId)} download
@@ -116,6 +120,7 @@ export function RunPage({ runId, onChange, onDeleted, onRerun }: {
         <Timeline view={view} inView={inView}
                   onSelect={(id) => setJumpTo({ id, n: Date.now() })} />
       </div>
+      {calls && <LlmCalls runId={runId} onClose={() => setCalls(false)} />}
     </div>
   )
 }

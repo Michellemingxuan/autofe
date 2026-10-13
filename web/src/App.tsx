@@ -7,6 +7,7 @@ import { RunPage } from './components/RunPage'
 import { EvaluatePage } from './components/EvaluatePage'
 import { ResultsPage } from './components/ResultsPage'
 import { RequestsPage } from './components/RequestsPage'
+import { LoggingBoard } from './components/LoggingBoard'
 import s from './App.module.css'
 
 // The journey: 1. Setup - point at the data, confirm each source's linkage;
@@ -40,6 +41,7 @@ export function App() {
   const [workspace, refreshWorkspace] = usePolled(api.workspace, [], 4000)
   const [runs, refreshRuns] = usePolled(api.runs, [])
   const [evaluations, refreshEvals] = usePolled(api.evaluations, [])
+  const [board, setBoard] = useState(false)
 
   // An evaluation used to open under Evaluate; it now opens beside the results.
   useEffect(() => {
@@ -53,7 +55,8 @@ export function App() {
 
   return (
     <div className={s.shell}>
-      <Rail route={route} workspace={workspace} runs={runs ?? []} evaluations={evaluations ?? []} />
+      <Rail route={route} workspace={workspace} runs={runs ?? []} evaluations={evaluations ?? []}
+            onBoard={() => setBoard(true)} />
       <main className={s.main}>
         {route.page === 'setup' && (
           <SetupPage workspace={workspace} onChange={refreshWorkspace} />
@@ -74,6 +77,7 @@ export function App() {
         {route.page === 'requests' && <RequestsPage />}
         {route.page === 'results' && <ResultsPage selected={route.id} />}
       </main>
+      {board && <LoggingBoard onClose={() => setBoard(false)} />}
     </div>
   )
 }

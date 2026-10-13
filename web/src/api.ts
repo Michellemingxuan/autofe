@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
 import type {
-  EvalResult, EvalSummary, Ev, Params, PathCheck, PoolFeature, RequestItem, RunSummary, SetupView, Source,
+  BoardRow, EvalResult, LlmCall, LlmCallFull, EvalSummary, Ev, Params, PathCheck, PoolFeature, RequestItem, RunSummary, SetupView, Source,
   ThemePool, Workspace,
 } from './types'
 
@@ -76,6 +76,9 @@ export const api = {
   deleteIntent: (runId: string, name: string) => del(`/api/runs/${runId}/intents/${name}`),
   requestsUrl: (runId: string) => `/api/runs/${runId}/requests.md`,
   deleteRequest: (runId: string, intent: string) => del(`/api/runs/${runId}/requests/${intent}`),
+  board: () => call<BoardRow[]>('/api/board'),
+  llmCalls: (runId: string) => call<LlmCall[]>(`/api/runs/${runId}/llm_calls`),
+  llmCall: (id: number) => call<LlmCallFull>(`/api/llm_calls/${id}`),
 
   // 3. Evaluate
   features: () => call<PoolFeature[]>('/api/features'),

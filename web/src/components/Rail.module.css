@@ -77,3 +77,13 @@
 .subItem { border: none; background: transparent; color: var(--j-rail-dim); text-align: left; padding: 6px 10px; border-radius: var(--j-radius-ctl); font-weight: 600; }
 .subItem:hover { color: var(--j-rail-text); background: var(--j-rail-active); }
 .subOn { color: var(--j-rail-text); background: var(--j-rail-active); }
+
+/* The logging board opens from the rail's foot, whatever page is shown. */
+.boardBtn {
+  margin-top: auto;
+  display: flex; align-items: center; gap: 8px;
+  border: 1px solid var(--j-rail-btn-border); background: transparent; color: var(--j-rail-text);
+  border-radius: var(--j-radius-ctl); padding: 8px 10px; text-align: left; font-weight: 600;
+}
+.boardBtn:hover { background: var(--j-rail-active); border-color: var(--j-rail-accent); }
+.boardIcon { color: var(--j-rail-accent); }
