@@ -100,7 +100,7 @@ def test_each_kind_of_run_is_briefed_with_its_skills(workspace):
     linkage_brief = brief
 
     direction = Session(workspace, "x", params=RunParams(K=1, min_capture_gain=0.01))
-    assert list(direction.skills) == ["data_sourcing", "feature", "evaluate"]
+    assert list(direction.skills) == ["ideas", "data_sourcing", "feature", "evaluate"]
     text = brief(direction)
     assert "## Skill: feature" in text and "def build(spark, sources, base)" in text
     assert "capture-rate gain" in text and "report_findings" in text
@@ -232,18 +232,37 @@ def test_a_running_script_is_stopped_at_once_and_a_slow_one_times_out(tmp_path):
     assert slow.error.startswith("timed out after 1s - vectorise")
 
 
-def test_an_idea_that_failed_twice_takes_no_third_attempt(workspace):
+def test_an_idea_whose_features_carry_no_signal_is_worked_later_not_refused(workspace):
+    from agent.board import idea_standing, order_ideas
     from agent.tools.screen import idea_of
 
     assert idea_of("pay_gap_v3", []) == idea_of("pay_gap_final", []) == "pay_gap"
     assert idea_of("pay_gap_60d_fixed", [{"name": "pay_gap_60d"}]) == "pay_gap_60d"
     session = _session(workspace, "x", params=RunParams(K=3))
+    session.ideas = session.round_ideas = [{"name": "pay_gap", "engine": "analogy"},
+                                           {"name": "tenure_curve", "engine": "mechanism"}]
+    copy = "def build(spark, sources, base):\n    out = base[['id']].copy()\n    out['{n}'] = base['{c}'] * 2\n    return out"
+    # A failed script says nothing about the idea: it does not count against it.
     broken = "def build(spark, sources, base):\n    return base[['id', 'as_of']]"
-    for name in ("pay_gap", "pay_gap_v2"):
-        assert screen_feature(session, name, "d", "L1", broken)["intent"]
-        session.failed_streak = 0                              # it probed in between
-    third = screen_feature(session, "pay_gap_v3", "d", "L1", broken)
-    assert not third["ok"] and "has failed 2 times" in third["error"] and session.attempts == 2
+    assert screen_feature(session, "pay_gap", "d", "L1", broken)["reason"].startswith("script failed")
+    session.failed_streak = 0
+    # Two features the model already has (C1): the idea draws low ...
+    for name, column in (("pay_gap_v1", "income_est"), ("pay_gap_v2", "credit_limit")):
+        reply = screen_feature(session, name, "d", "L1", copy.format(n=name, c=column),
+                               differs="another base column")
+        assert reply["reason"].startswith("explained by the model") and reply["checks"]["max_model_rho"] > 0.9
+        assert reply["checks"]["nearest"] == column
+    standing = {i["name"]: i for i in reply["ideas"]}
+    assert standing["pay_gap"]["status"] == "low" and standing["pay_gap"]["p_useful"] == 0.25
+    assert set(reply["work_next"]) == {"pay_gap", "tenure_curve"}
+    # ... and is worked later - Thompson sampling, not a ban:
+    low, fresh = (dict(name="pay_gap", **idea_standing(["none", "none"])),
+                  dict(name="tenure_curve", **idea_standing([])))
+    firsts = [order_ideas([low, fresh], seed=str(i))[0] for i in range(400)]
+    assert 0 < firsts.count("pay_gap") < firsts.count("tenure_curve")
+    third = screen_feature(session, "pay_gap_v3", "d", "L1", copy.format(n="pay_gap_v3", c="tenure_months"),
+                           differs="tenure, not money")
+    assert "intent" in third and session.attempts == 4           # still screened
 
 
 def test_bad_contract_is_reported_not_raised(workspace):
@@ -274,7 +293,13 @@ def build(spark, sources, base):
     out["pay_to_spend_90d"] = base["income_est"] / base["credit_limit"]
     return out
 """
-    assert screen_feature(second, "pay_to_spend_90d", "d", "L1", util)["verified"]
+    checks = workspace.cfg.agent.checks
+    limit, checks.max_model_rho = checks.max_model_rho, None  # this test is about names, not C1
+    try:
+        assert screen_feature(second, "pay_to_spend_90d", "d", "L1", util,
+                              differs="income against the limit, not payments against spend")["verified"]
+    finally:
+        checks.max_model_rho = limit
 
     pool = {f["key"] for f in feature_pool(workspace)}
     a, b = f"{first.run_id}:pay_to_spend_90d", f"{second.run_id}:pay_to_spend_90d"
@@ -287,6 +312,25 @@ def build(spark, sources, base):
     assert {"base", f"loi__{col_a}", "combo__both"} <= set(variants)
     assert variants[f"loi__{col_a}"]["gini_gain_test"] > 0.03
     assert evaluation.events[-1]["event"] == "eval_done"
+
+    # The board: an evaluated feature says so, with its verdict; a removed one too.
+    from agent.board import board_rows
+
+    def board(name, run):
+        return next(r for r in board_rows(workspace) if r["name"] == name and r["run_id"] == run)
+    assert board("pay_to_spend_90d", first.run_id)["sent"] == "evaluated"
+    assert board("pay_to_spend_90d", first.run_id)["verdict"] in ("PASS", "FAIL")
+    assert first.delete_intent("pay_to_spend_90d")
+    assert board("pay_to_spend_90d", first.run_id)["sent"] == "evaluated · removed"
+
+    # The base model is the same in the next evaluation: kept, then reused - not retrained.
+    logs = lambda e: " ".join(x.get("message", "") for x in e.events if x["event"] == "eval_log")  # noqa: E731
+    assert "reusing the kept model" not in logs(evaluation)
+    again = Evaluation(workspace, [b], {})
+    rerun = again.run()
+    assert "base: reusing the kept model" in logs(again)
+    base_row = lambda o: next(r for r in o["comparison"] if r["variant"] == "base")  # noqa: E731
+    assert base_row(rerun)["adj_gini_test"] == base_row(out)["adj_gini_test"]
 
 
 def test_a_request_in_a_mixed_run_is_challenged_not_put_to_the_analyst(no_history):
@@ -541,15 +585,28 @@ def test_a_later_direction_remembers_what_was_proposed(no_history):
     later = _session(workspace, "spend again", params=RunParams(K=3, min_gini_gain=-1.0))
     assert "`spend_90d`" in brief(later) and "Earlier directions" in brief(later)
 
-    # The same quantity under a new name is refused, and costs nothing.
+    # The same code under a new name is refused before it runs, and costs nothing (C0).
     twin = screen_feature(later, "total_spend_last_quarter", "d", "L1",
                           WINDOW.format(days=90, name="total_spend_last_quarter"))
-    assert not twin["ok"] and "identical to `spend_90d`" in twin["error"]
+    assert not twin["ok"] and "the same code as `spend_90d`" in twin["error"]
     assert later.attempts == 0
+    # Other code with the same values is refused once built, and costs nothing too.
+    rewritten = WINDOW.format(days=90, name="quarter_outlay").replace(
+        'out["id"].map(recent.groupby("id")["amount"].sum()).fillna(0.0)',
+        'out["id"].map(recent["amount"].groupby(recent["id"]).sum()).fillna(0) * 1.0')
+    values_twin = screen_feature(later, "quarter_outlay", "d", "L1", rewritten)
+    assert not values_twin["ok"] and "identical to `spend_90d`" in values_twin["error"]
+    assert later.attempts == 0
+    # So is one that means much the same, until it says what differs.
+    alike = screen_feature(later, "spend_90d_total", "90-day spend total", "L1",
+                           WINDOW.format(days=60, name="spend_90d_total"))
+    assert not alike["ok"] and "differs" in alike["error"] and later.attempts == 0
 
     # Another window measures something else, and is screened as usual.
     other = screen_feature(later, "spend_30d", "30-day spend", "L1",
-                           WINDOW.format(days=30, name="spend_30d"))
+                           WINDOW.format(days=30, name="spend_30d"), differs="30 days, not 90")
+    # C0 lets it through on its word, and says what it resembled.
+    assert later.ledger[-1]["checks"]["seen_before"].startswith("like `spend_90d`")
     assert "verified" in other and later.attempts == 1
 
     # A deleted feature is forgotten.
@@ -593,46 +650,135 @@ def test_a_later_run_is_told_which_cas_columns_are_already_requested(no_history)
     assert "used up" not in memory_brief(later)     # other raw columns are still open
 
 
-def _ideas(lenses):
-    return [{"name": f"idea_{i}_{lens}", "lens": lens, "description": f"an idea through {lens}",
-             "data": "auth_decline_cnt_30d from the CAS"} for i, lens in enumerate(lenses)]
+def _ideas(lenses, engines=None):
+    from agent.engines import ENGINES
+
+    engines = engines or [ENGINES[i % len(ENGINES)] for i in range(len(lenses))]
+    return [{"name": f"idea_{'abcdefghijklmnop'[i]}_{lens}", "engine": engine, "lens": lens,
+             "measures": ["first way to measure it", "second way to measure it"],
+             "description": f"an idea through {lens}",
+             "data": "auth_decline_cnt_30d from the CAS"}
+            for i, (lens, engine) in enumerate(zip(lenses, engines))]
 
 
 def test_proposals_wait_for_ideas_with_a_spread(no_history):
     from agent import tools
     from agent.agent import build_agent
     from agent.composer import compose as brief
-    from agent.tools.ideas import LENSES, MIN_FOCUS, record_ideas
+    from agent.engines import ENGINES
+    from agent.tools.ideas import LENSES, focus_engines, record_ideas
 
     session = _session(no_history, "x", params=RunParams(K=2, levels=["L3"]))
     session.ideas_required = True                      # as the runner sets it
-    assert "Ideas first" in brief(session) and session.focus   # this run's focus, in the brief
+    text = brief(session, "ideas")                     # the ideas stage's brief
+    assert "Ideas first" in text and "| `mechanism` | Mechanism simulation |" in text
+    assert "## Skill: ideas" in text
+    assert "## Ideas first" not in brief(session)      # not the proposals" brief
     sql = ("SELECT customer_id, trans_dt, auth_decline_cnt_30d FROM wwcas_synthetic "
            "WHERE trans_dt > '2024-01-01'")
     early = screen_request(session, "why", sql, "declines")
     assert not early["ok"] and "the ideas come first" in early["error"] and session.attempts == 0
 
-    others = [k for k in LENSES if k not in session.focus]
-    narrow = record_ideas(session, _ideas([others[0]] * 4))                    # one lens only
+    focus = focus_engines(session)                     # this round's, drawn and recorded
+    assert len(focus) == 2 and focus_engines(session) == focus
+    assert [e["focus"] for e in session.events if e["event"] == "engines_drawn"] == [focus]
+    others = [k for k in ENGINES if k not in focus]
+    lenses = list(LENSES)[:4]
+    narrow = record_ideas(session, _ideas(lenses[:1] * 4, focus * 2))         # one lens only
     assert not narrow["ok"] and "lenses" in narrow["error"]
-    unfocused = record_ideas(session, _ideas(others[:4]))                     # misses the focus
-    assert not unfocused["ok"] and "focus" in unfocused["error"]
-    assert not record_ideas(session, [{"name": "x", "lens": "vibes", "description": "x"}])["ok"]
-    unnamed = record_ideas(session, [{"name": "Not A Name", "lens": "trend", "description": "x"}])
+    one_engine = record_ideas(session, _ideas(lenses, [focus[0]] * 4))        # one engine only
+    assert not one_engine["ok"] and "[MISSING] at least 3 different engines" in one_engine["error"]
+    unfocused = record_ideas(session, _ideas(lenses, others + others[:1]))    # misses the focus
+    assert not unfocused["ok"] and "focus engines" in unfocused["error"]
+    assert not record_ideas(session, [{"name": "x", "engine": "mechanism", "lens": "vibes",
+                                       "description": "x"}])["ok"]
+    vague = record_ideas(session, [{"name": "x", "engine": "brainstorm", "lens": "trend",
+                                    "description": "x"}])
+    assert not vague["ok"] and "engine 'brainstorm'" in vague["error"]
+    unnamed = record_ideas(session, [{"name": "Not A Name", "engine": "mechanism", "lens": "trend",
+                                      "description": "x"}])
     assert not unnamed["ok"] and "snake_case name" in unnamed["error"]
-    spread = record_ideas(session, _ideas(session.focus[:MIN_FOCUS] + others[:2]))
-    assert spread["ok"] and len(spread["lenses"]) == 4
-    assert screen_request(session, "why", sql, "declines")["recorded"]
+    spread = record_ideas(session, _ideas(lenses, focus + others[:2]))
+    assert spread["ok"] and len(spread["lenses"]) == 4 and len(spread["engines"]) == 4
+    saved = json.loads((session.run_dir / "ideas.json").read_text())    # the board reads them
+    assert [i["engine"] for i in saved] == focus + others[:2] and saved[0]["round"] == 1
+    # With ideas recorded, a proposal says which idea it tests.
+    unlinked = screen_request(session, "why", sql, "declines")
+    assert not unlinked["ok"] and "say which idea this tests" in unlinked["error"]
+    assert not screen_request(session, "why", sql, "declines", idea="no_such")["ok"]
+    assert screen_request(session, "why", sql, "declines", idea=saved[0]["name"])["recorded"]
+    assert session.data_requests[0]["idea"] == saved[0]["name"]
     assert any(e["event"] == "ideas_recorded" for e in session.events)
     # The ideas are the first stage's structured answer, not a tool.
     assert "brainstorm" not in [t.name for t in tools.for_agent(session)]
     stage = build_agent(session, "ideas")
     assert stage.output_type.output_type is tools.Ideas          # read leniently: FirstAnswer
-    assert {t.name for t in stage.tools} == {"catalog", "scope", "sample_rows", "shots", "run_probe"}
+    assert {t.name for t in stage.tools} == {"engine", "catalog", "scope", "sample_rows", "shots",
+                                             "run_probe"}
+
+
+def test_each_engine_has_its_guide_and_the_focus_follows_their_yield():
+    from agent.engines import ENGINES, draw_focus, engine_guide
+
+    assert ENGINES == ("mechanism", "contrastive", "analogy", "morphological", "others")
+    assert "Minsky" in engine_guide("mechanism")["guide"]                 # the theory library
+    assert "population" in engine_guide("morphological")["guide"]         # the seven axes
+    assert not engine_guide("vibes")["ok"]
+    board = ([{"engine": "analogy", "status": "active"}] * 12
+             + [{"engine": "mechanism", "status": "low"}] * 12)
+    draws = [draw_focus(board, seed=str(i))["focus"] for i in range(200)]
+    assert sum("analogy" in f for f in draws) > 180            # a strong engine is asked more
+    weak = sum("mechanism" in f for f in draws)
+    untried = [sum(e in f for f in draws) for e in ("contrastive", "morphological", "others")]
+    assert weak < min(untried) and min(untried) > 30           # untried engines still get turns
+    assert draw_focus(board, "x") == draw_focus(board, "x")    # seeded, so on record
+
+
+def test_ideas_that_say_the_same_thing_are_sent_back_and_a_retired_one_refused(no_history):
+    from agent.tools.ideas import LENSES, focus_engines, record_ideas
+
+    def round_of(session, descriptions):
+        focus = focus_engines(session)
+        engines = [*focus, *[e for e in ("analogy", "others", "contrastive", "morphological")
+                             if e not in focus]][:4]
+        return [{"name": name, "engine": engine, "lens": lens, "level": "L1", "description": text,
+                 "measures": ["first way to measure it", "second way to measure it"],
+                 "data": "x"} for (name, text), engine, lens
+                in zip(descriptions, engines, list(LENSES)[:4])]
+
+    first = _session(no_history, "x", params=RunParams(K=2, levels=["L1"]))
+    alike = round_of(first, [("pay_drift", "payment day drifting toward the due date"),
+                             ("pay_late_drift", "payment day drifting toward the due date each cycle"),
+                             ("spend_vol", "volatility of monthly spend"),
+                             ("inquiry_burst", "bureau inquiries in a short window")])
+    sent_back = record_ideas(first, alike)
+    assert not sent_back["ok"] and "say much the same thing" in sent_back["error"]
+    alike[1] = {**alike[1], "name": "fee_rise", "description": "fees and charges rising"}
+    assert record_ideas(first, alike)["ok"]
+    # spend_vol's two features carry no signal: low, with the reason on the board.
+    first.ledger += [{"name": "spend_vol", "reason": "explained by the model: ... `spend_3m`"},
+                     {"name": "spend_vol_v2", "reason": "no new signal: |ρ| ..."}]
+    first.save_ledger()
+
+    later = _session(no_history, "y", params=RunParams(K=2, levels=["L1"]))
+    again = round_of(later, [("monthly_spend_volatility", "volatility of monthly spend"),
+                             ("pay_channel_switch", "switch of payment channel"),
+                             ("limit_raise_surge", "spend surge after a limit increase"),
+                             ("min_pay_cluster", "payments at exactly the minimum due")])
+    # Not refused: linked to it, and starting from its record - so it is drawn late.
+    linked = record_ideas(later, again)
+    assert linked["ok"] and linked["linked"][0]["same_as"] == f"{first.run_id}:spend_vol"
+    assert linked["linked"][0]["p_useful"] == 0.25 and "no new signal" in linked["linked"][0]["why_not"]
+    from agent.board import session_ideas
+
+    standing = {i["name"]: i for i in session_ideas(later)}
+    assert standing["monthly_spend_volatility"]["status"] == "low"
+    assert standing["pay_channel_switch"]["status"] == "explore"
 
 
 def test_ideas_come_in_rounds_and_a_round_ends_when_its_ideas_are_used(no_history):
-    from agent.tools.ideas import LENSES, focus_lenses, ideas_in_round, record_ideas
+    from agent.engines import ENGINES
+    from agent.tools.ideas import LENSES, focus_engines, ideas_in_round, record_ideas
 
     big = _session(no_history, "x", params=RunParams(K=100, levels=["L1"], ideas_per_round=10))
     assert ideas_in_round(big) == 10                      # a large K: ten at a time
@@ -640,18 +786,19 @@ def test_ideas_come_in_rounds_and_a_round_ends_when_its_ideas_are_used(no_histor
     assert "[MISSING] 10 to 10 ideas (you gave 11)" in too_many["error"]
     session = _session(no_history, "x", params=RunParams(K=2, levels=["L1"], ideas_per_round=10))
     assert ideas_in_round(session) == 4                   # a few more than still wanted
-    lenses = list(dict.fromkeys([*focus_lenses(session), *LENSES]))[:4]
+    lenses = list(LENSES)[:4]
+    engines = list(dict.fromkeys([*focus_engines(session), *ENGINES]))[:4]
     # Every requirement comes back, met or not - fixing one must not break another.
-    short = record_ideas(session, _ideas(lenses[:1] * 2))
+    short = record_ideas(session, _ideas(lenses[:1] * 2, engines[:2]))
     assert "[MISSING] 4 to 10 ideas (you gave 2)" in short["error"]
     assert "[MISSING] at least 4 different lenses" in short["error"]
-    assert record_ideas(session, _ideas(lenses))["round"] == 1
+    assert record_ideas(session, _ideas(lenses, engines))["round"] == 1
     for _ in range(3):
         session.take_attempt()
     assert session.round_over() is None                   # one idea is still untried
     session.take_attempt()
     assert "round 1's ideas are used" in session.round_over() and session.round_spent
-    again = record_ideas(session, _ideas(lenses))       # the same names as round 1
+    again = record_ideas(session, _ideas(lenses, engines))       # the same names as round 1
     assert not again["ok"] and "earlier round" in again["error"]
 
 
@@ -663,21 +810,12 @@ def test_the_report_check_stays_on_when_the_ideas_never_pass(workspace):
     assert not report_findings(session, "early")["ok"]
 
 
-def test_each_run_leans_on_different_lenses(no_history):
-    from agent.tools.ideas import focus_lenses
-
-    a = _session(no_history, "x")
-    b = _session(no_history, "x")
-    assert focus_lenses(a) != focus_lenses(b)
-    assert focus_lenses(a) == focus_lenses(a)                 # taken once per run
-
-
-
 def test_an_l3_idea_must_name_cas_data(no_history):
     from agent.tools.ideas import record_ideas
 
     session = _session(no_history, "x", params=RunParams(K=2, levels=["L3"]))
-    from_sources = record_ideas(session, [{"name": "spend_trend_3m", "lens": "trend", "level": "L3",
+    from_sources = record_ideas(session, [{"name": "spend_trend", "engine": "mechanism", "measures": ["first way to measure it", "second way to measure it"], 
+                                         "lens": "trend", "level": "L3",
                                          "description": "spend trend over 3 months",
                                          "data": "spends source"}])
     assert not from_sources["ok"] and "L1/L2 idea" in from_sources["error"]
@@ -711,7 +849,7 @@ def build(spark, sources, base):
     session.ledger[0]["verified"] = False
     other = ratio.replace("inc_lim", "lim_x_inc").replace('base["income_est"] / base["credit_limit"]',
                                                           'base["credit_limit"] * base["income_est"]')
-    assert screen_feature(session, "lim_x_inc", "d", "L1", other)["intent"] == "I2"
+    assert screen_feature(session, "lim_x_inc", "d", "L1", other, differs="a product")["intent"] == "I2"
     # Once L1 has its result, L1 takes no more - the rest of the target is L3.
     session.ledger[0]["verified"] = True
     third = screen_feature(session, "util_sq", "d", "L1", ratio.replace("inc_lim", "util_sq"))
@@ -761,7 +899,8 @@ def test_a_request_beyond_the_cas_scope_is_an_idea_with_no_sql_and_is_challenged
         (session.run_dir / "data_requests.md").read_text()
 
     # An L3 idea names scope variables, or is marked beyond scope and says what it needs.
-    base = {"lens": "trend", "level": "L3", "description": "d"}
+    base = {"engine": "mechanism", "lens": "trend", "level": "L3", "description": "d",
+            "measures": ["first way to measure it", "second way to measure it"]}
     named = record_ideas(session, [{**base, "name": "a", "data": "rla"}])
     assert not named["ok"] and "Within a scope (CAS)" in named["error"]
     for field in ("beyond_scope", "beyond_cas"):                   # the old name still reads
@@ -848,10 +987,12 @@ def test_the_composer_puts_the_prompt_together_and_can_print_it(workspace, capsy
     names = sorted(p.name for p in TEMPLATES_DIR.glob("*.md"))
     assert names == ["data_scout.md", "feature_engineer.md", "linkage_writer.md", "messages.md"]
     assert SKILLS_DIR.name == "skills" and SKILLS_DIR.parent.name == "agent"     # beside tools/
-    assert sorted(p.stem for p in SKILLS_DIR.glob("*.md")) == ["data_sourcing", "evaluate", "feature"]
+    assert sorted(p.stem for p in SKILLS_DIR.glob("*.md")) == ["data_sourcing", "evaluate", "feature",
+                                                                "ideas"]
     l3 = Session(workspace, "x", params=RunParams(K=2, levels=["L3"]))
     assert template_for(l3) == "data_scout" and "data scout" in compose(l3)
-    assert message("propose", names="a, b").startswith("Stage 2 of 2")
+    assert message("propose", round=1, budget="0/2 results", targets_left="2 results",
+                   round_ideas="(ideas)", gates="Gini gain above +0.0000").startswith("Round 1 - proposals")
 
     from pathlib import Path
 
@@ -992,7 +1133,8 @@ def test_an_exploration_draws_a_new_theme_each_round(no_history):
     assert not themes.draw_theme(directed)["ok"]                 # a direction is followed
 
     session = _session(no_history, themes.OPEN, explore=True, params=RunParams(K=2, levels=["L1"]))
-    ideas = [{"name": f"i{n}", "lens": lens, "level": "L1", "description": "d", "data": "x"}
+    ideas = [{"name": f"i{n}", "engine": "analogy", "lens": lens, "level": "L1", "description": "d", "measures": ["first way to measure it", "second way to measure it"], 
+              "data": "x"}
              for n, lens in enumerate(["trend", "ratio", "volatility", "recency"])]
     refused = record_ideas(session, ideas)
     assert not refused["ok"] and "draw_theme" in refused["error"]  # the theme comes first
@@ -1006,3 +1148,301 @@ def test_an_exploration_draws_a_new_theme_each_round(no_history):
     drawn = [e["theme"] for e in session.events if e["event"] == "theme_drawn"]
     assert drawn == [first["theme"], second["theme"]]
     assert themes.explored(no_history)[first["theme"].lower()] == 1
+
+
+def test_the_cheap_checks_see_code_meaning_and_what_the_model_misses():
+    import numpy as np
+    import pandas as pd
+
+    from agent.checks import Sketch, code_fingerprint, model_checks, similarity
+    from validation.config import ChecksConfig
+
+    # C0 - code: the same computation under other names is the same fingerprint.
+    a = 'def build(spark, sources, base):\n    x = base["a"] / base["b"]  # ratio\n    return base.assign(r1=x)[["id", "r1"]]'
+    b = 'def build(spark, sources, base):\n    """Doc."""\n    ratio = base["a"] / base["b"]\n    return base.assign(r2=ratio)[["id", "r2"]]'
+    assert code_fingerprint(a, "r1") == code_fingerprint(b, "r2")
+    assert code_fingerprint(a, "r1") != code_fingerprint(a.replace('"b"', '"c"'), "r1")
+    assert code_fingerprint("def build(:", "x") is None
+    # C0 - meaning: another window reads alike; another measure does not.
+    near, far = similarity("spend_vol_90d volatility of monthly spend over 90 days",
+                           ["spend_vol_30d volatility of monthly spend over 30 days",
+                            "days past due count in the last year"])
+    assert near > 0.6 > far
+
+    rng = np.random.default_rng(0)
+    n = 2000
+    base = pd.DataFrame({"x1": rng.normal(size=n), "x2": rng.normal(size=n)})
+    hidden = rng.normal(size=n)
+    y = (base["x1"] + hidden + rng.normal(size=n) > 0).astype(float).to_numpy()
+    eval_rows = np.arange(1000, n)
+    sketch = Sketch(base, eval_rows, y, 1 / (1 + np.exp(-base["x1"].to_numpy()[eval_rows])))
+    screener = type("S", (), {"_agent_sketch": sketch})()
+    # C2 is information only by default: measured, never a failure.
+    noise = rng.normal(size=n)
+    _, default = model_checks(screener, noise, ChecksConfig())
+    assert default == "" and ChecksConfig().min_residual_rho is None
+    checks = ChecksConfig(min_residual_rho=0.02)                 # made a gate, as the config can
+    # C1: a rescaled model column is a near-copy - |rho| 1 with it, named.
+    measured, reason = model_checks(screener, (base["x1"] * 3).to_numpy(), checks)
+    assert measured["max_model_rho"] > 0.99 and measured["nearest"] == "x1"
+    assert reason.startswith("explained by the model")
+    # Pairwise by design: the sum of two columns is close to neither - the fit judges it.
+    mixed, ok_mixed = model_checks(screener, (base["x1"] + base["x2"]).to_numpy(), checks)
+    assert mixed["max_model_rho"] < 0.9 and not ok_mixed.startswith("explained")
+    # C2: noise tracks nothing the model misses; the hidden driver does.
+    _, gated = model_checks(screener, noise, checks)
+    assert gated.startswith("no new signal")
+    found, ok = model_checks(screener, hidden, checks)
+    assert not ok and found["residual_rho"] > 0.2 and found["max_model_rho"] < 0.1
+
+
+def test_the_model_history_reaches_the_brief_and_check_c0(no_history, tmp_path):
+    from agent.composer import compose as brief
+    from agent.model_history import read
+
+    from pathlib import Path
+
+    empty = read(Path(__file__).resolve().parents[1] / "data/cdss_us_sbs/model_history.md")         # the template: Gen9, no rows
+    assert empty == {"current": "Gen9", "variables": []}
+    doc = tmp_path / "history.md"
+    doc.write_text("Current model: Gen9\n\n| generation | variable | description | status | why |\n"
+                   "| --- | --- | --- | --- | --- |\n"
+                   "| Gen7 | income_to_limit | income relative to the credit limit | dropped | unstable across vintages |\n")
+    no_history.cfg.agent.model_history = str(doc)
+    try:
+        session = _session(no_history, "x", params=RunParams(K=2, levels=["L1"]))
+        assert "`income_to_limit` (Gen7, dropped: unstable across vintages)" in brief(session)
+        code = "def build(spark, sources, base):\n    out = base[['id']].copy()\n    out['inc_lim'] = base['income_est'] / base['credit_limit']\n    return out"
+        seen = screen_feature(session, "inc_lim", "income relative to the credit limit", "L1", code)
+        assert not seen["ok"] and "Gen7 - dropped (unstable across vintages)" in seen["error"]
+        assert session.attempts == 0
+        fixed = screen_feature(session, "inc_lim", "income relative to the credit limit", "L1", code,
+                               differs="six-month median income, which is stable across vintages")
+        assert "intent" in fixed
+    finally:
+        no_history.cfg.agent.model_history = None
+
+
+def test_a_request_on_the_board_is_kept_or_dropped_and_says_why():
+    from agent.board import _evaluation, _request_outcome
+
+    challenged = {"status": "dropped", "challenge": {"reasoning": "utilisation is a base column"}}
+    assert _request_outcome(challenged, True) == (
+        "dropped", "challenge: the current data already supplies it - utilisation is a base column")
+    assert _request_outcome({"status": "kept", "deleted": True}, True) == ("dropped", "removed by the analyst")
+    assert _request_outcome({"approved": False, "note": "too costly"}, True) == (
+        "dropped", "rejected by the analyst: too costly")
+    assert _request_outcome({"approved": True}, True)[0] == "kept"
+    assert _request_outcome({"status": "proposed"}, True)[0] == "dropped"     # the run ended first
+    assert _request_outcome({"status": "proposed"}, False)[0] == "pending"    # still running
+    # Evaluation is for verified features only.
+    assert _evaluation({"verified": False}, "r:f", {}) == ("", "")
+    assert _evaluation({"verified": True}, "r:f", {}) == ("not evaluated", "")
+    assert _evaluation({"verified": True, "deleted": True}, "r:f", {}) == ("removed", "")
+    done = {"r:f": {"verdict": "PASS", "removed": False}}
+    assert _evaluation({"verified": True}, "r:f", done) == ("evaluated", "PASS")
+    assert _evaluation({"verified": True}, "r:f", {"r:f": {"verdict": "FAIL", "removed": True}}) == (
+        "evaluated · removed", "FAIL")
+
+
+def test_a_round_that_keeps_missing_the_spread_still_keeps_its_ideas(no_history):
+    from agent.tools.ideas import focus_engines, record_ideas
+
+    # The run that lost its ideas: three per round, L1 and L2 both wanted.
+    session = _session(no_history, "x", params=RunParams(K=10, levels=["L1", "L2"], ideas_per_round=3))
+    session.quota = {"L2": 6, "L1": 4}
+    focus = focus_engines(session)
+    narrow = [{"name": f"i{n}", "engine": focus[n % 2], "lens": lens, "level": "L1", "measures": ["first way to measure it", "second way to measure it"], 
+               "description": f"idea {n}", "data": "x"}
+              for n, lens in enumerate(["calendar", "recency", "trend"])]
+    sent_back = record_ideas(session, narrow)
+    assert not sent_back["ok"]
+    # It says what to change, not only what is missing.
+    assert "To fix: change the engine of 1 idea(s) to one not used yet" in sent_back["error"]
+    assert "make one idea level L2" in sent_back["error"]
+    # The last resort: recorded anyway, with the rules it missed - never lost.
+    kept = record_ideas(session, narrow + [{"name": "Bad Name", "engine": "x", "lens": "trend"}],
+                        lenient=True)
+    assert kept["ok"] and [i["name"] for i in session.ideas] == ["i0", "i1", "i2"]
+    recorded = next(e for e in session.events if e["event"] == "ideas_recorded")
+    assert recorded["lenient"] and any("engines" in m for m in recorded["missed"])
+    assert any("snake_case" in m for m in recorded["missed"])           # the invalid one, skipped
+    assert (session.run_dir / "ideas.json").exists()                     # on the board
+
+
+def test_an_idea_is_a_hypothesis_its_features_name_it(workspace):
+    from agent.board import board_rows
+    from agent.tools.ideas import focus_engines, record_ideas
+
+    session = _session(workspace, "x", params=RunParams(K=2, levels=["L1"]))
+    focus = focus_engines(session)
+    engines = [*focus, *[e for e in ("analogy", "others", "contrastive", "mechanism") if e not in focus]][:4]
+    good = [{"name": n, "engine": e, "lens": l, "level": "L1", "description": f"the {n} hypothesis",
+             "measures": [f"{n} measured one way", f"{n} measured another way"], "data": "base"}
+            for n, e, l in zip(["capacity_strain", "limit_dependence", "tenure_maturity", "income_mismatch"],
+                               engines, ["capacity", "level", "trend", "peer"])]
+    # A feature's name is not an idea's, and one way to measure it is not enough.
+    feature_like = record_ideas(session, [{**good[0], "name": "income_to_limit_6m"}, *good[1:]])
+    assert not feature_like["ok"] and "reads like a feature" in feature_like["error"]
+    one_measure = record_ideas(session, [{**good[0], "measures": ["just one"]}, *good[1:]])
+    assert not one_measure["ok"] and "2 to 5 measures" in one_measure["error"]
+    assert record_ideas(session, good)["ok"]
+    # Features are named for what they compute, and say which idea they test.
+    code = "def build(spark, sources, base):\n    out = base[['id']].copy()\n    out['{n}'] = base['income_est'] / base['credit_limit'] ** 0.5\n    return out"
+    reply = screen_feature(session, "income_over_limit", "income per unit of limit", "L1",
+                           code.format(n="income_over_limit"), idea="capacity_strain")
+    assert "intent" in reply and session.ledger[0]["idea"] == "capacity_strain"
+    assert session.ledger[0]["checks"]["seen_before"].startswith("new")      # C0, on record
+    row = next(r for r in board_rows(workspace) if r["name"] == "income_over_limit")
+    assert row["idea"] == "capacity_strain" and len(row["idea_measures"]) == 2
+
+
+def test_the_proposal_message_carries_each_idea_in_the_order_to_work_it(workspace):
+    from agent.agent import _propose
+    from agent.tools.ideas import focus_engines, record_ideas
+
+    session = _session(workspace, "x", params=RunParams(K=2, levels=["L1"]))
+    focus = focus_engines(session)
+    engines = [*focus, *[e for e in ("analogy", "others", "contrastive", "mechanism") if e not in focus]][:4]
+    ideas = [{"name": n, "engine": e, "lens": l, "level": "L1", "description": f"the {n} hypothesis",
+              "measures": [f"{n} measured one way", f"{n} measured another way"], "data": "base columns"}
+             for n, e, l in zip(["capacity_strain", "limit_dependence", "tenure_maturity", "income_mismatch"],
+                                engines, ["capacity", "level", "trend", "peer"])]
+    assert record_ideas(session, ideas)["ok"]
+    session.ledger.append({"intent": "I1", "name": "limit_doubled", "idea": "limit_dependence",
+                           "verified": False, "reason": "explained by the model: R² 1.00; nearest `credit_limit`"})
+    text = _propose(session)
+    assert text.startswith("Round 1 - proposals") and "Still wanted: 2 results" in text
+    for n in ("capacity_strain", "limit_dependence", "tenure_maturity", "income_mismatch"):
+        assert f"`{n}` - " in text and f"{n} measured another way" in text
+    assert "Built so far: limit_doubled ✗ explained by the model" in text
+    assert "Why not yet: explained by the model" in text
+    assert "Gini gain above" in text and 'idea="<idea>"' in text
+    order = next(e["order"] for e in session.events if e["event"] == "ideas_ordered")
+    assert text.index(f"`{order[0]}`") < text.index(f"`{order[-1]}`")      # in the drawn order
+
+
+def test_every_model_call_is_traced_with_what_went_in_and_came_out(tmp_path):
+    import asyncio
+
+    from agents import Agent, ModelResponse, Runner, Usage
+    from agents.models.interface import Model
+    from openai.types.responses import ResponseOutputMessage, ResponseOutputText
+
+    from agent.llm_trace import TraceHooks, TraceStore
+
+    class Scripted(Model):
+        """Answers with text, reports usage - as the openai backend does."""
+        async def get_response(self, system_instructions, input, model_settings, tools,
+                               output_schema, handoffs, tracing, **kwargs):
+            text = ResponseOutputText(type="output_text", text="the answer", annotations=[])
+            message = ResponseOutputMessage(id="m1", type="message", role="assistant",
+                                            status="completed", content=[text])
+            return ModelResponse(output=[message], usage=Usage(requests=1, input_tokens=120,
+                                                               output_tokens=7, total_tokens=127),
+                                 response_id="r1")
+
+        def stream_response(self, *args, **kwargs):
+            raise NotImplementedError
+
+    store = TraceStore(tmp_path / "traces.db")
+    agent = Agent(name="feature_engineer", instructions="THE BRIEF", model=Scripted())
+    hooks = TraceHooks(store, "run_1", "propose", kind="direction", round=2)
+    result = asyncio.run(Runner.run(agent, "propose a feature", hooks=hooks))
+    assert result.final_output == "the answer"
+
+    [call] = store.calls("run_1")
+    assert (call["stage"], call["round"], call["call"], call["outcome"]) == ("propose", 2, 1, "ok")
+    assert (call["input_tokens"], call["output_tokens"], call["tokens_estimated"]) == (120, 7, 0)
+    assert call["duration_ms"] is not None and "the answer" in call["output_preview"]
+    full = store.call(call["id"])
+    assert full["system_prompt"] == "THE BRIEF"                       # the brief, kept once
+    assert "propose a feature" in json.dumps(full["input_json"])       # what the model saw
+    assert "the answer" in json.dumps(full["output_json"])
+    # A second call numbers on; the brief is stored once.
+    asyncio.run(Runner.run(agent, "again", hooks=TraceHooks(store, "run_1", "propose", round=2)))
+    assert [c["call"] for c in store.calls("run_1")] == [1, 2]
+    assert store._conn.execute("SELECT COUNT(*) FROM prompts").fetchone()[0] == 1
+    store.delete_run("run_1")
+    assert store.calls("run_1") == []
+
+
+def test_the_trace_viewer_shows_runs_calls_and_their_messages(tmp_path):
+    import time
+
+    from agent.llm_trace import TraceStore
+    from agent.trace_viewer import create_viewer
+
+    store = TraceStore(tmp_path / "llm_traces.db")
+    row = store.begin(run_id="run_1", stage="propose", round=1, call=1, model="gpt-4.1",
+                      started_at=time.time(), input_items=1, system_sha=store.prompt("THE BRIEF"),
+                      input_json=json.dumps([{"role": "user", "content": "propose <a feature>"}]),
+                      outcome="unfinished")
+    store.finish(row, duration_ms=1200, input_tokens=50, output_tokens=9, outcome="ok",
+                 tool_calls=json.dumps(["screen_feature"]),
+                 output_json=json.dumps([{"type": "function_call", "name": "screen_feature",
+                                          "arguments": "{\"name\": \"x\"}"}]))
+    client = create_viewer(tmp_path / "llm_traces.db").test_client()
+    index = client.get("/").get_data(as_text=True)
+    assert "run_1" in index and "propose" in index
+    page = client.get("/run/run_1").get_data(as_text=True)     # the conversation
+    assert "propose &lt;a feature&gt;" in page                 # the runner's turn, escaped
+    assert "Runner (user message)" in page                     # left: the runner's turns
+    assert "LLM model (assistant message) → tool call · screen_feature" in page    # right
+    assert "Tool (run by the runner) · screen_feature" in page
+    assert "model call 1" in page and "1.2 s" in page
+    assert page.count("THE BRIEF") == 1                        # each brief once
+    assert client.get("/run/run_1/lanes").status_code == 404   # one view: the conversation
+    sha = store._conn.execute("SELECT sha FROM prompts").fetchone()[0]
+    assert "THE BRIEF" in client.get(f"/prompt/{sha}").get_data(as_text=True)
+    assert client.get("/run/nope").status_code == 404
+
+
+
+def test_each_stage_reads_its_own_brief_and_only_what_this_run_can_need(workspace, tmp_path):
+    from agent.composer import compose
+
+    session = _session(workspace, "x", params=RunParams(K=2, levels=["L1", "L2"]))
+    ideas, propose = compose(session, "ideas"), compose(session, "propose")
+    # The ideas stage: engines, lenses, the ideas skill - no code contract.
+    assert "| `mechanism` |" in ideas and "## An idea is a hypothesis" in ideas
+    assert "## The contract" not in ideas and "## Scale - the screen is a sample" not in ideas
+    assert "## Levels" in ideas                               # what L1 / L2 mean
+    # The proposals: the code contract, scale, evaluation - not the engine table.
+    assert "## The contract" in propose and "## Skill: evaluate" in propose
+    assert "| `mechanism` |" not in propose and "## Then, per feature" in propose
+    assert "## Data size" in propose and "## Data size" not in ideas
+    # L3 is off: its section is in neither. Linkage: in the proposals only, and only
+    # while a source the run may use is unlinked.
+    from agent.composer import sections
+
+    for text in (ideas, propose):
+        assert "## L3 - when the data you need is not there" not in text
+    assert "## Linkage - once per source" not in ideas
+    assert ("## Linkage - once per source" in propose) == sections._needs_linkage(session)
+    with_l3 = _session(workspace, "x", params=RunParams(K=2, levels=["L1", "L3"]))
+    assert "## L3 - when the data you need is not there" in compose(with_l3, "propose")
+    # Forced either way: present when a source needs linking, absent when none does.
+    original = sections._needs_linkage
+    try:
+        sections.SECTION_WHEN[("data_sourcing", "Linkage")] = lambda s: True
+        assert "## Linkage - once per source" in compose(session, "propose")
+        assert "## Linkage - once per source" not in compose(session, "ideas")
+        sections.SECTION_WHEN[("data_sourcing", "Linkage")] = lambda s: False
+        assert "## Linkage - once per source" not in compose(session, "propose")
+    finally:
+        sections.SECTION_WHEN[("data_sourcing", "Linkage")] = original
+
+
+
+def test_a_failed_script_leaves_its_name_free_for_the_fix(workspace):
+    session = _session(workspace, "x", params=RunParams(K=3))
+    broken = "def build(spark, sources, base):\n    return base[['id', 'as_of']]"
+    assert screen_feature(session, "util_band_x", "d", "L1", broken)["reason"].startswith("script failed")
+    fixed = ("def build(spark, sources, base):\n    out = base[['id']].copy()\n"
+             "    out['util_band_x'] = (base['income_est'] % 997).astype(float)\n    return out")
+    again = screen_feature(session, "util_band_x", "d", "L1", fixed)       # the same name, fixed
+    assert "intent" in again and again["intent"] == "I2"
+    # A built one keeps its name.
+    taken = screen_feature(session, "util_band_x", "d", "L1", fixed.replace("997", "991"))
+    assert not taken["ok"] and "already taken" in taken["error"]

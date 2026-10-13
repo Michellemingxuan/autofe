@@ -7,7 +7,8 @@ scope() marks each requested column, so the agent plans around them before it
 proposes. Two checks remain as a backstop, refusing before anything is spent:
 
 * **A feature identical in values** to an earlier one: on the screen rows they
-  share, a rank correlation of at least ``SAME_FEATURE`` (0.99). The values of
+  share, a rank correlation of at least ``agent.checks.same_values`` (0.99) -
+  the values level of check C0 (agent.checks). The values of
   every screened feature are kept for this (``values/<name>.parquet``). A
   variation is not identical - a 30-day and a 90-day sum of the same events
   correlate well below that - so it is screened as usual.
@@ -32,12 +33,12 @@ if TYPE_CHECKING:
     from agent.session import Session
     from agent.workspace import Workspace
 
-__all__ = ["SAME_FEATURE", "prior_features", "prior_requests", "requested_columns", "open_raw_columns",
+__all__ = ["SAME_FEATURE", "prior_features", "earlier_features", "prior_requests", "requested_columns", "open_raw_columns",
            "scope_left",
            "memory_brief", "save_values", "same_feature", "same_request"]
 
-SAME_FEATURE = 0.99
-_NOT_RUNS = {"linkage", "evaluations", "replaced", "uploads", "shots"}
+SAME_FEATURE = 0.99              # when the config sets none
+_NOT_RUNS = {"linkage", "evaluations", "replaced", "uploads", "shots", "ideas", "base_model"}
 
 
 def _runs(ws: "Workspace") -> list[Path]:
@@ -70,6 +71,19 @@ def prior_features(ws: "Workspace", skip_run: str | None = None) -> list[dict[st
                                                      "verified", "delta", "reason")},
                             "run_id": folder.name, "direction": direction})
     return out
+
+
+def earlier_features(session: "Session") -> list[dict[str, Any]]:
+    """Every undeleted feature screened before this one - earlier runs' and this
+    run's - with its code and description: what C0 checks a new one against."""
+    out = []
+    for folder in _runs(session.ws):
+        ledger = folder / "ledger.json"
+        if folder.name == session.run_id or not ledger.exists():
+            continue
+        out += [{**e, "run_id": folder.name} for e in json.loads(ledger.read_text())
+                if not e.get("deleted")]
+    return out + [{**e, "run_id": session.run_id} for e in session.ledger if not e.get("deleted")]
 
 
 def prior_requests(ws: "Workspace", skip_run: str | None = None) -> list[dict[str, Any]]:
@@ -188,6 +202,8 @@ def same_feature(session: "Session", name: str, values: np.ndarray) -> str | Non
                     index=ws.screen[ws.id_col].astype(str).to_numpy())
     if new.notna().sum() < 50 or new.nunique() < 2:
         return None
+    checks = getattr(ws.cfg.agent, "checks", None)
+    limit = getattr(checks, "same_values", None) or SAME_FEATURE
     deleted = {e["name"] for e in session.ledger if e.get("deleted")}
     for folder in _runs(ws):
         stored = folder / "values"
@@ -205,7 +221,7 @@ def same_feature(session: "Session", name: str, values: np.ndarray) -> str | Non
             if len(both) < 50 or both["b"].nunique() < 2:
                 continue
             rho = both["a"].rank().corr(both["b"].rank())
-            if abs(rho) >= SAME_FEATURE:
+            if abs(rho) >= limit:
                 where = "this run" if folder.name == session.run_id else f"run {folder.name}"
                 return (f"identical to `{path.stem}` from {where} (rank correlation {rho:+.3f} "
                         f"on the screen rows)")

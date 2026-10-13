@@ -33,10 +33,32 @@ around it:
 * Give each attempt to a different idea. Two features of one idea compete for
   the same signal.
 
+## The checks before the fit
+
+`screen_feature` checks a feature cheaply before it is fitted; the reply's
+`checks` says what each measured.
+
+* **C0 - seen before?** The same code as an earlier feature (only the names
+  changed) is refused. A name and description that read much like an earlier
+  feature's are refused until `differs` says what this one measures that it
+  does not. Identical values (rank correlation 0.99 or more) are refused after
+  the build. A refusal costs nothing.
+* **C1 - redundancy with the model?** `max_model_rho` is the largest |Spearman
+  rho| between the feature and any one model column; `nearest` is that column.
+  Above the limit it is a near-copy the model already has: build on other data,
+  not another window of the same column.
+* **C2 - new signal?** `residual_rho` is its rank correlation with what the
+  base model misses - information, not a gate: every feature that passes C0
+  and C1 is fitted. A clearly non-zero value is a good sign; a value near zero
+  says little on its own (the signal may be non-monotone, or need other
+  columns), so judge by the screen's gain.
+
 ## The contract
 
-`screen_feature(name, description, level, code)` runs your script on the
-screen rows and scores it. The script defines:
+`screen_feature(name, description, level, code, idea, differs)` runs your
+script on the screen rows, checks it and scores it. `idea` names the idea the
+feature tests; `differs` says what it measures that a look-alike earlier
+feature does not (only when the reply asks). The script defines:
 
 ```python
 def build(spark, sources, base):

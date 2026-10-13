@@ -11,7 +11,7 @@ The wording around them is in the templates beside this file.
     scope_notes   the analyst's notes on the data - the scopes and beyond them, verbatim
     quota         a mixed run's target, split across levels
     memory        what earlier directions proposed - not to be repeated
-    ideas         the ideas stage: the lenses, this run's focus, the L3 rule and scope list
+    ideas         the ideas stage: the engines, the lenses, the L3 rule and scope list
     current_data  the model columns and linked sources - what a challenge checks against
     columns       the columns a feature can read - base and the run's sources, described
 """
@@ -22,19 +22,79 @@ from typing import Any
 
 from agent.memory import open_raw_columns, prior_features, prior_requests, requested_columns
 from agent.session import Session
-from agent.tools.ideas import LENSES, MIN_FOCUS, MIN_LENSES, focus_lenses, ideas_in_round
+from agent.board import prompt_board
+from agent.engines import MIN_ENGINES, engines
+from agent.model_history import history_of
+from agent.tools.ideas import LENSES, MIN_FOCUS, MIN_LENSES, ideas_in_round
 
-__all__ = ["skills", "shot_list", "gates", "scopes", "scope_notes", "quota", "memory", "ideas", "current_data",
+__all__ = ["round_ideas", "targets_left", "skills", "shot_list", "gates", "scopes", "scope_notes", "quota", "memory", "ideas", "current_data",
            "columns"]
 
 # Base features listed in the brief, at most - catalog(query) finds the rest.
 COLUMNS_LISTED = 200
 
 
-def skills(session: Session) -> str:
-    """The run's skills, in full: their rules are binding."""
-    return "\n\n".join(f"## Skill: {name}\n{skill['body']}"
-                         for name, skill in session.skills.items())
+# Which stage of a direction reads each skill - the ideas stage writes ideas, the
+# proposal stage builds features and requests. A linkage job reads them all.
+SKILL_STAGES = {"ideas": {"ideas"}, "data_sourcing": {"ideas", "propose"},
+                "feature": {"propose"}, "evaluate": {"propose"}}
+# Sections that go elsewhere than their skill: (skill, heading start) -> stages.
+SECTION_STAGES = {("ideas", "Then, per feature"): {"propose"},
+                  ("feature", "Levels"): {"ideas", "propose"},
+                  ("data_sourcing", "Linkage"): {"propose"}}
+
+
+def _needs_linkage(session: Session) -> bool:
+    """A source the run may use has data but no confirmed linkage yet: the agent
+    may have to write one."""
+    sources = session.ws.sources()
+    return any(s in sources and sources[s].usable and not session.ws.linkage_path(s).exists()
+               for s in session.params.sources)
+
+
+# Sections that apply only to some runs: (skill, heading start) -> whether this run needs it.
+SECTION_WHEN = {("data_sourcing", "Linkage"): _needs_linkage,
+                ("data_sourcing", "L3"): lambda session: "L3" in session.params.levels}
+
+
+def _split(body: str) -> list[tuple[str, str]]:
+    """A skill's body as (heading, text) parts - the part before the first ``##``
+    has no heading."""
+    import re
+
+    parts = re.split(r"^(## .*)$", body, flags=re.M)
+    out = [("", parts[0])]
+    out += [(parts[i][3:].strip(), parts[i] + parts[i + 1]) for i in range(1, len(parts), 2)]
+    return out
+
+
+def skills(session: Session, stage: str | None = None) -> str:
+    """The run's skills - their rules are binding. For a direction's stage, only the
+    skills and sections that stage uses, and only the sections this run can need
+    (Linkage while a source is unlinked, L3 when L3 is allowed). No stage: all."""
+    out = []
+    for name, skill in session.skills.items():
+        kept = []
+        for heading, text in _split(skill["body"]):
+            key = next((k for k in [*SECTION_STAGES, *SECTION_WHEN]
+                        if k[0] == name and heading.startswith(k[1])), None)
+            stages = SECTION_STAGES.get(key, SKILL_STAGES.get(name, {"ideas", "propose"}))
+            if stage and stage not in stages:
+                continue
+            if key in SECTION_WHEN and not SECTION_WHEN[key](session):
+                continue
+            kept.append(text.strip())
+        body = "\n\n".join(t for t in kept if t)
+        if body:
+            out.append(f"## Skill: {name}\n{body}")
+    return "\n\n".join(out)
+
+
+def ideas_pointer(session: Session) -> str:
+    """The proposal brief's word on ideas: they arrive with each round's message."""
+    return ("## Ideas\nEach round's ideas - hypotheses, each with its measures - come in the "
+            "round's message, in the order to work them. Build features (or requests) from "
+            "an idea's measures, and name the idea each one tests (idea=...).\n\n")
 
 
 def shot_list(ws: Any) -> str:
@@ -42,6 +102,52 @@ def shot_list(ws: Any) -> str:
 
     cats = categories(ws)
     return ", ".join(f"`{c.key}` ({c.name})" for c in cats) if cats else "none set up"
+
+
+def round_ideas(session: Session, order: list[str]) -> str:
+    """The round's ideas for the proposal message, in the order to work them: each
+    with its engine, level, standing, hypothesis, measures, data, what was built from
+    it so far - and, for one with no signal yet, why not."""
+    from agent.board import feature_evidence, idea_of, session_ideas
+
+    standing = {i["name"]: i for i in session_ideas(session)}
+    made = [e for e in [*session.ledger, *session.data_requests] if not e.get("deleted")]
+    blocks = []
+    for k, name in enumerate(order, 1):
+        i = standing.get(name)
+        if i is None:
+            continue
+        built = []
+        for e in made:
+            if (e.get("idea") or idea_of(e.get("name") or e.get("source_name") or "", session.ideas)) != name:
+                continue
+            label = e.get("name") or e.get("source_name")
+            evidence = feature_evidence(e)
+            reason = str(e.get("reason") or (e.get("challenge") or {}).get("reasoning") or "").splitlines()
+            built.append(f"{label} ✓" if evidence == "signal" else
+                         f"{label} ✗ {reason[0][:100] if reason else ''}".rstrip())
+        lines = [f"{k}. `{name}` - {i.get('engine') or '?'} · {i.get('level') or '?'} · "
+                 f"{i['status']} (P(useful) {i['p_useful']:.2f})",
+                 f"   Hypothesis: {i.get('description') or ''}"]
+        measures = i.get("measures") or []
+        if measures:
+            lines.append("   Measures:")
+            lines += [f"   - {m}" for m in measures]
+        if i.get("data"):
+            lines.append(f"   Data: {i['data']}")
+        lines.append(f"   Built so far: {'; '.join(built) or 'none'}")
+        if i["status"] == "low" and i.get("why"):
+            lines.append(f"   Why not yet: {i['why']} - change what made it fail.")
+        blocks.append("\n".join(lines))
+    return "\n\n".join(blocks) or "(no ideas passed the checks - work from the direction)"
+
+
+def targets_left(session: Session) -> str:
+    """What the run still wants, in words - by level in a mixed run."""
+    if len(session.quota) > 1:
+        return session.targets_left()
+    noun = "kept requests" if session.l3_only else "results"
+    return f"{session.wanted()} {noun}"
 
 
 def gates(session: Session) -> str:
@@ -96,11 +202,27 @@ def memory(session: Session, limit: int = 40) -> str:
     """The brief's section on earlier directions; empty when there are none."""
     feats = prior_features(session.ws, session.run_id)[-limit:]
     reqs = prior_requests(session.ws, session.run_id)[-limit:]
-    if not feats and not reqs:
+    board = prompt_board(session.ws, session.run_id)
+    history = history_of(session.ws)
+    if not feats and not reqs and not board and not history["variables"]:
         return ""
     lines = ["## Earlier directions - build on them, do not repeat them",
              "Read this before you give your ideas: it is what is already proposed. Plan "
              "them around it."]
+    if history["variables"]:
+        lines.append(f"Earlier model generations (the model now is "
+                     f"{history['current'] or 'the latest'}) - variables used, tried or "
+                     "dropped, and why. One that reads like these must say what differs; a "
+                     "dropped one comes back only with a change that answers why:")
+        lines += [f"* `{v['variable']}` ({v['generation'] or '?'}, {v['status'] or '?'}"
+                  + (f": {v['why']}" if v["why"] else "") + f") - {v['description'][:140]}"
+                  for v in history["variables"][-limit:]]
+    if board:
+        lines.append("Ideas on the board (✓ carried signal, · none yet) - with their engine, "
+                     "P(useful) and what their features showed. Deepen a ✓ idea by changing "
+                     "one axis; a · idea comes back only with a change that answers its "
+                     "'why not' - an idea like it starts from its record:")
+        lines += board
     if feats:
         lines.append("Features already proposed (✓ verified, ✗ not):")
         for f in feats:
@@ -136,23 +258,37 @@ def memory(session: Session, limit: int = 40) -> str:
 
 
 def ideas(session: Session) -> str:
-    """The brief's section on ideas: the lenses, and this run's focus."""
-    focus = focus_lenses(session)
-    lenses = "\n".join(f"* `{k}`{' (focus)' if k in focus else ''} - {v}" for k, v in LENSES.items())
+    """The brief's section on ideas: the engines, the lenses and the rules of a round."""
+    table = "\n".join(f"| `{k}` | {e.get('title', k)} | {e.get('question', '')} | "
+                      f"{e.get('direction', '')} |" for k, e in engines().items())
+    lenses = "\n".join(f"* `{k}` - {v}" for k, v in LENSES.items())
     n = ideas_in_round(session)
     return f"""## Ideas first - diverge, then choose
 The run works in rounds. Each opens with your ideas: look at the data you need,
-then answer with {n} to {session.params.ideas_per_round} ideas, each through one lens below, at least
-{min(MIN_LENSES, n)} different lenses in all. Each idea has a name, a level, a lens, a
-description (what it measures, why it should carry risk) and its data. This run
-leans on **{", ".join(focus)}**: at least {min(MIN_FOCUS, n)} ideas use them. The
-obvious idea is fine once; look for the angle earlier directions did not take.
-Then propose them, by their names, the most promising first. When a round's
-ideas are used and the target is not reached, the next round asks for new ideas -
-with what worked and what failed so far in front of you.
-{_l3_idea_rule(session)}
+then answer with {n} to {session.params.ideas_per_round} ideas. Each idea is made by one **engine** - a way
+of generating it - and looks through one **lens** - the kind of signal. A round
+uses at least {min(MIN_ENGINES, n)} different engines and {min(MIN_LENSES, n)} different lenses, and at least
+{min(MIN_FOCUS, n)} ideas come from the round's focus engines, named in the round's message
+(drawn by how well each engine's ideas have done). An idea is a hypothesis, not a
+feature: a concept name, a level, an engine, a lens, a description (the
+behaviour or mechanism, why it should carry risk, and - as the engine's guide
+asks - where it came from), 2 to 4 measures (different ways to measure it) and
+its data. The ideas skill is binding.
+
+The engines - call `engine` with a name for its full method (the theory
+library, the axes, the shapes worth borrowing, examples):
+
+| engine | name | core question | reasoning |
+| --- | --- | --- | --- |
+{table}
+
+The lenses:
 {lenses}
 
+Then propose them, by their names, in the order the round's message gives.
+When a round's ideas are used and the target is not reached, the next round
+asks for new ideas - with the board of what worked and what failed in front of you.
+{_l3_idea_rule(session)}
 """
 
 

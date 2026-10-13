@@ -1,4 +1,4 @@
-"""Build one feature on the screen rows and score it against base. One attempt.
+"""Build one feature on the screen rows, check it, and score it against base. One attempt.
 
 The feature's script runs out of process (``agent.execution``); its column is
 then handed to the discovery screen (``discovery.screen.Screener``), whose
@@ -7,9 +7,21 @@ base column) run before the fit. The analyst's gates decide what is verified:
 the Gini gain must clear ``min_gini_gain`` and, when set, the capture-rate gain
 must clear ``min_capture_gain``.
 
-A feature identical in values to one already screened - in this run or an
-earlier direction (``agent.memory``) - is refused before it is scored, and the
-attempt is given back.
+Before the fit, the cheap checks (``agent.checks``), each in milliseconds:
+
+* **C0 - seen before?** Before the script runs: the same code as an earlier
+  feature (names and comments aside) is refused, and one that means much the
+  same must say what differs. After it runs: identical values to an earlier
+  feature (``agent.memory``) are refused. A refusal gives the attempt back.
+* **C1 - redundancy with the model?** On the built values: a feature whose
+  |Spearman rho| with a model column passes the limit fails without the fit. **C2 - new signal?** is measured too
+  (its residual correlation) and recorded - information only, unless the config
+  makes it a gate (``agent.checks.min_residual_rho``).
+
+Every feature records what the checks measured (``checks``) and its idea, so
+the board (``agent.board``) shows it. An idea whose features carry no signal is
+not refused: each reply gives the round's ideas in a fresh Thompson-sampled
+order (``work_next``), where it now draws low and comes later.
 """
 
 from __future__ import annotations
@@ -21,8 +33,11 @@ from typing import Any
 
 import pandas as pd
 
+from agent.board import idea_for, idea_of, order_ideas, round_board, session_ideas  # noqa: F401 - idea_of, for callers
+from agent.checks import code_fingerprint, model_checks, nearest_meaning
 from agent.execution import check_code
-from agent.memory import save_values, same_feature
+from agent.memory import earlier_features, save_values, same_feature
+from agent.model_history import history_of
 from agent.session import FEATURE_LEVELS, Session
 from agent.tools.ideas import ideas_needed
 from agent.tools.linkage import ensure_linked
@@ -31,7 +46,7 @@ __all__ = ["screen_feature"]
 
 
 def screen_feature(session: Session, name: str, description: str, level: str,
-                   code: str) -> dict[str, Any]:
+                   code: str, differs: str = "", idea: str = "") -> dict[str, Any]:
     ws, p = session.ws, session.params
     if session.finished:
         return {"ok": False, "error": "the run is finished"}
@@ -44,15 +59,12 @@ def screen_feature(session: Session, name: str, description: str, level: str,
             "then screen again. Nothing was spent.")}
     if not re.fullmatch(r"[A-Za-z_][A-Za-z0-9_]{0,63}", name):
         return {"ok": False, "error": f"{name!r} is not a valid column name"}
-    idea = idea_of(name, session.ideas)
-    failed = [e for e in session.ledger if not e.get("verified") and idea_of(e["name"], session.ideas) == idea]
-    if len(failed) >= IDEA_FAILURES:
-        return {"ok": False, "error": (
-            f"the idea {idea!r} has failed {len(failed)} times "
-            f"({'; '.join(str(e.get('reason') or '').splitlines()[0][:80] for e in failed)}). "
-            "Move to a different idea - more fixes to the same one tend to repeat the "
-            "mistake. Nothing was spent.")}
-    if name in ws.base_features or any(e["name"] == name for e in session.ledger):
+    idea, problem = idea_for(session, idea, name)
+    if problem:
+        return {"ok": False, "error": problem}
+    # A name is taken by a base column or a feature that was built. A script that
+    # failed built nothing: its name is free for the fixed script.
+    if name in ws.base_features or any(e["name"] == name and _built(e) for e in session.ledger):
         return {"ok": False, "error": f"{name!r} is already taken; choose a new name"}
     allowed_levels = [lv for lv in FEATURE_LEVELS if lv in p.levels]
     if level not in allowed_levels:
@@ -75,12 +87,20 @@ def screen_feature(session: Session, name: str, description: str, level: str,
     if (problem := check_code(code)):
         return {"ok": False, "error": f"{problem}. Nothing was spent."}
 
+    # C0 - seen before? The code and the meaning, before anything runs.
+    seen, seen_note = _seen_before(session, name, description, code, differs)
+    if seen:
+        return {"ok": False, "error": seen + " Nothing was spent."}
+
     session.take_attempt()
     intent = f"I{session.attempts}"
     code_id, run = session.run(code, "feature", intent=intent, level=level, title=name,
                                sources={s: session.linked[s] for s in used})
     # `delta` is the Gini gain - the name the trace and the evaluation read.
+    record = next((i for i in session.ideas if i["name"] == idea), {})
     entry = {"intent": intent, "name": name, "description": description,
+             "idea": idea, "engine": record.get("engine", ""),
+             "differs": differs.strip(), "checks": {"passed": False, "seen_before": seen_note},
              "level": level, "code": code, "code_id": code_id, "sources": used,
              "delta": None, "base_score": None, "candidate_score": None,
              "capture_gain": None, "coverage": None, "verified": False, "reason": ""}
@@ -100,13 +120,20 @@ def screen_feature(session: Session, name: str, description: str, level: str,
                     "budget": session.budget()}
         save_values(session, name, values)
         entry["coverage"] = round(float(pd.notna(values).mean()), 4)
-        screened = ws.screener.evaluate_values(name, values)
-        entry.update(delta=screened.delta, base_score=screened.base_score,
-                     candidate_score=screened.candidate_score,
-                     capture_gain=screened.extras.get("capture_delta"))
-        entry["reason"] = (screened.error or "screen failed") if not screened.ok \
-            else _below_gates(entry, p)
-        entry["verified"] = screened.ok and not entry["reason"]
+        # C1 and C2 - on the built values, before the fit.
+        measured, failed = model_checks(ws.screener, values, ws.cfg.agent.checks)
+        entry["checks"].update(measured)
+        if failed:
+            entry["reason"] = failed
+        else:
+            entry["checks"]["passed"] = True
+            screened = ws.screener.evaluate_values(name, values)
+            entry.update(delta=screened.delta, base_score=screened.base_score,
+                         candidate_score=screened.candidate_score,
+                         capture_gain=screened.extras.get("capture_delta"))
+            entry["reason"] = (screened.error or "screen failed") if not screened.ok \
+                else _below_gates(entry, p)
+            entry["verified"] = screened.ok and not entry["reason"]
 
     session.ledger.append(entry)
     session.save_ledger()
@@ -122,6 +149,7 @@ def screen_feature(session: Session, name: str, description: str, level: str,
     reply = {"intent": intent, "name": name, "verified": entry["verified"],
              "gini_gain": entry["delta"], "capture_gain": entry["capture_gain"],
              "coverage": entry["coverage"], "reason": entry["reason"],
+             "checks": {k: v for k, v in entry["checks"].items() if v is not None},
              "gates": {"min_gini_gain": p.min_gini_gain, "min_capture_gain": p.min_capture_gain},
              "budget": session.budget()}
     if run.ok is False:
@@ -144,6 +172,14 @@ def screen_feature(session: Session, name: str, description: str, level: str,
                          "or move to a different idea.")
     if (learned := lessons(session.ledger)):
         reply["lessons"] = learned
+    if session.round_ideas:
+        # The board, as this round stands: each idea's standing after this feature.
+        reply["ideas"] = round_board(session)
+        # Which to work next: a fresh Thompson draw over the round's ideas - one whose
+        # features failed draws low and comes later, never shut out.
+        mine = {i["name"] for i in session.round_ideas}
+        reply["work_next"] = order_ideas([i for i in session_ideas(session) if i["name"] in mine],
+                                         seed=f"{session.run_id}:{intent}")
     if session.wanted() == 0:
         reply["next"] = f"the target of {session.K} is reached; call report_findings with a summary"
     elif session.attempts >= session.max_attempts:
@@ -155,10 +191,6 @@ def screen_feature(session: Session, name: str, description: str, level: str,
 
 # Failed scripts in a row before the next screen waits for a probe.
 FAILED_STREAK = 2
-# Failed attempts one idea may have; the next is refused - move on.
-IDEA_FAILURES = 2
-
-
 # A projection above this share of the evaluation time limit, or of the
 # machine's memory, is sent back to the agent.
 SCALE_WARN_SHARE = 0.5
@@ -201,16 +233,65 @@ def scale_note(session: Session, run: Any) -> str | None:
             "event-level frames.")
 
 
-def idea_of(name: str, ideas: list[dict[str, Any]]) -> str:
-    """The idea a feature belongs to: the idea it is named after, else its name
-    without a variant's suffix - `x_v2`, `x_final`, `x_fixed` are all `x`."""
-    named = [i["name"] for i in ideas if name == i["name"] or name.startswith(i["name"] + "_")]
-    if named:
-        return max(named, key=len)
-    stem = name
-    while (shorter := re.sub(r"_(v\d+|final\d*|fix(ed)?\d*|retry\d*|alt\d*|new\d*|\d+)$", "", stem)) != stem:
-        stem = shorter
-    return stem
+def _history_twin(name: str, description: str, past: list[dict[str, Any]],
+                  session: Session) -> dict[str, Any] | None:
+    """The model-history variable a feature reads like - the same name, or close in
+    words - or None."""
+    if not past:
+        return None
+    same = next((v for v in past if v["name"].lower() == name.lower()), None)
+    if same:
+        return same
+    limit = session.ws.cfg.agent.checks.same_meaning
+    near, overlap = nearest_meaning(f"{name} {description}", past)
+    return near if near is not None and limit is not None and overlap >= limit else None
+
+
+def _built(entry: dict[str, Any]) -> bool:
+    """Whether a ledger entry built a feature - a failed script or a wrong shape did not."""
+    return not re.match(r"script failed|build\(\) returned", str(entry.get("reason") or ""))
+
+
+def _seen_before(session: Session, name: str, description: str, code: str,
+                 differs: str) -> tuple[str | None, str]:
+    """C0 before the script runs, against earlier features and the model history:
+    the refusal (the same code; or the same meaning with no word on what differs) -
+    or None - and, either way, what it found, for the board."""
+    # A script that failed made no feature: there is nothing to have seen.
+    earlier = [e for e in earlier_features(session)
+               if not re.match(r"script failed|build\(\) returned", str(e.get("reason") or ""))]
+    past = [{"name": v["variable"], "description": v["description"], **v}
+            for v in history_of(session.ws)["variables"]]
+    found = []
+    if (twin := _history_twin(name, description, past, session)):
+        status = twin.get("status") or "used"
+        why = f" ({twin['why']})" if twin.get("why") else ""
+        if not differs.strip():
+            return (f"it reads like `{twin['name']}` of the model's {twin.get('generation') or 'history'} "
+                    f"- {status}{why}. Say in `differs` what this one measures or fixes that it did "
+                    "not, or propose something else."), ""
+        found.append(f"like `{twin['name']}` of the model's {twin.get('generation') or 'history'} "
+                     f"({status})")
+    mine = code_fingerprint(code, name)
+    if mine:
+        same = next((e for e in earlier if code_fingerprint(e.get("code") or "", e["name"]) == mine), None)
+        if same:
+            where = "this run" if same["run_id"] == session.run_id else f"run {same['run_id']}"
+            return (f"the same code as `{same['name']}` from {where} - only the names differ. "
+                    "Propose something that computes another thing."), ""
+    limit = session.ws.cfg.agent.checks.same_meaning
+    near, overlap = nearest_meaning(f"{name} {description}", earlier) if earlier else (None, 0.0)
+    if near is not None and limit is not None and overlap >= limit:
+        where = "this run" if near["run_id"] == session.run_id else f"run {near['run_id']}"
+        if not differs.strip():
+            return (f"it reads much like `{near['name']}` from {where} ({near.get('description', '')[:120]!r}, "
+                    f"overlap {overlap:.2f}). Say in `differs` what this one measures that it does "
+                    "not - another window, ratio, source or population - or propose something else."), ""
+        found.append(f"like `{near['name']}` ({where}, overlap {overlap:.2f})")
+    if found:
+        return None, "; ".join(found) + " - differs, as it says"
+    return None, (f"new - closest `{near['name']}`, overlap {overlap:.2f}" if near is not None
+                  else "new - nothing earlier")
 
 
 def lessons(ledger: list[dict[str, Any]]) -> list[str]:

@@ -131,7 +131,7 @@ already supply it?
    only beside new columns that add information.
 2. Its idea (the run's first stage) writes the scope variables it needs in
    `data`, spelled as `scope()` lists them.
-3. Call `screen_request(gap, sql, source_name)`:
+3. Call `screen_request(gap, sql, source_name, idea=<the idea it serves>)`:
    * `gap` - one paragraph: what is missing, why the direction needs it, and
      which features it would enable.
    * `sql` - SQL in the scope's dialect (the brief names it) over one scope's
@@ -148,7 +148,7 @@ calling and contact history, servicing and complaints, and more. Nobody here can
 describe all of it; the idea is what counts.
 1. Its idea is marked `beyond_scope`, and its `data` says what it needs and where
    it would come from.
-2. Call `propose_new_data(gap, source_name, data, features)` - no SQL. Be
+2. Call `propose_new_data(gap, source_name, data, features, idea=<the idea>)` - no SQL. Be
    specific: the behaviour it shows, the grain (per account, per call, per
    month), how far back, and why the model cannot see it now.
 

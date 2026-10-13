@@ -3,6 +3,9 @@
     PYTHONPATH=src python -m agent.server -c configs/synthetic_agent.yaml   # :49010
     cd web && npm run build      # served at /     (or: npm run dev, :5173)
 
+The model-call trace viewer (agent.trace_viewer) starts with it, on :49020 -
+``--trace-port`` moves it, ``--trace-port 0`` leaves it off.
+
 Work happens in background threads; every event is buffered and fanned out to
 SSE subscribers, and a client that connects late (or reconnects) gets the
 buffer replayed first. One agent job - a direction or a linkage - at a time.
@@ -43,6 +46,11 @@ The contract, page by page (``web/src/api.ts`` calls exactly these;
    DELETE /api/runs/<id>/intents/<name>       drop one feature from the pool
    DELETE /api/runs/<id>/requests/<intent>    drop one data request from the request set
    GET    /api/runs/<id>/requests.md          a data-request run's requests, to download
+   GET    /api/runs/<id>/llm_calls            every model call of a run: stage, round, tokens, time
+   GET    /api/llm_calls/<n>                  one call in full: system prompt, input, output
+   GET    /api/board                          the logging board: every idea, its features
+                                              and requests, their checks and code, and
+                                              whether each reached evaluation
 
 3. Evaluate
    GET    /api/features                       every verified feature of every run
@@ -76,6 +84,8 @@ from flask import Flask, Response, jsonify, request, send_from_directory
 from agent.evaluate import (Evaluation, EvaluationProcess, evaluation_results, feature_pool, list_evaluations,
                             removed_variants)
 from agent.events import EventLog, read_events
+from agent.board import board_rows
+from agent.llm_trace import store_for
 from agent.memory import request_set
 from agent.tools.data_pull import request_lines
 from agent.execution import spark_available
@@ -223,6 +233,7 @@ def create_app(config_path: str, static_dir: str | None = None,
     ctx: dict[str, Any] = {"cfg": cfg, "ws": ws, "active": None}
     hubs: dict[str, dict[str, Hub]] = {"direction": {}, "linkage": {}, "evaluation": {}}
     app = Flask(__name__, static_folder=None)
+    app.config["WORKSPACE"] = ctx              # the loaded config, for start_trace_viewer
     # Uploads are for small files; refuse anything bigger before reading it.
     app.config["MAX_CONTENT_LENGTH"] = UPLOAD_LIMIT + 2**20
 
@@ -341,6 +352,8 @@ def create_app(config_path: str, static_dir: str | None = None,
                         "engines": ["pandas", *(["spark"] if spark_available() else []), "sql"], "levels": list(LEVELS)},
             "active_run": busy_job() if busy_job() in hubs["direction"] else None,
             "active_linkage": busy_job() if busy_job() in hubs["linkage"] else None,
+            # The trace viewer started beside this server, if any (start_trace_viewer).
+            "trace_viewer": app.config.get("TRACE_VIEWER"),
         })
 
     @app.get("/api/setup")
@@ -560,7 +573,20 @@ def create_app(config_path: str, static_dir: str | None = None,
             return error(f"no run {run_id}", 404)
         shutil.rmtree(folder)
         hubs["direction"].pop(run_id, None)
+        if (store := store_for(ctx["cfg"])):
+            store.delete_run(run_id)                 # its model calls go with it
         return jsonify(ok=True)
+
+    @app.get("/api/runs/<run_id>/llm_calls")
+    def llm_calls(run_id: str):
+        store = store_for(ctx["cfg"])
+        return jsonify(store.calls(run_id) if store else [])
+
+    @app.get("/api/llm_calls/<int:call_id>")
+    def llm_call(call_id: int):
+        store = store_for(ctx["cfg"])
+        found = store.call(call_id) if store else None
+        return jsonify(found) if found else error(f"no model call {call_id}", 404)
 
     @app.get("/api/runs/<run_id>/requests.md")
     def requests_report(run_id: str):
@@ -587,6 +613,10 @@ def create_app(config_path: str, static_dir: str | None = None,
         if not hub.job.delete_request(intent):
             return error(f"no request {intent} in {run_id}", 404)
         return jsonify(ok=True)
+
+    @app.get("/api/board")
+    def board():
+        return jsonify(board_rows(ctx["ws"]))
 
     # ---------------------------------------------------------- 3. evaluate
     @app.get("/api/features")
@@ -710,6 +740,30 @@ def create_app(config_path: str, static_dir: str | None = None,
     return app
 
 
+def start_trace_viewer(app: Flask, host: str, port: int) -> str | None:
+    """Serve the model-call trace viewer (agent.trace_viewer) beside the app, on its
+    own port, in a daemon thread - it ends with the server. Its address goes to the
+    app (GET /api/workspace) so the UI can link to it. None when it cannot start:
+    the server runs on without it."""
+    from werkzeug.serving import make_server
+
+    from agent.llm_trace import trace_path
+    from agent.trace_viewer import create_viewer
+
+    cfg = app.config["WORKSPACE"]["cfg"]
+    try:
+        server = make_server(host, port, create_viewer(trace_path(cfg), cfg.agent.run_dir),
+                             threaded=True)
+    except (OSError, SystemExit) as err:         # the port is taken: werkzeug exits on it
+        print(f"trace viewer not started on port {port}: {err or 'address in use'}")
+        return None
+    threading.Thread(target=server.serve_forever, name="trace-viewer", daemon=True).start()
+    url = f"http://{host}:{server.server_port}"
+    app.config["TRACE_VIEWER"] = url
+    print(f"trace viewer on {url}")
+    return url
+
+
 def main(argv: list[str] | None = None) -> None:
     parser = argparse.ArgumentParser(description=__doc__,
                                      formatter_class=argparse.RawDescriptionHelpFormatter)
@@ -717,11 +771,15 @@ def main(argv: list[str] | None = None) -> None:
     parser.add_argument("--port", type=int, default=49010)
     parser.add_argument("--host", default="127.0.0.1")
     parser.add_argument("--static", default="web/dist")
+    parser.add_argument("--trace-port", type=int, default=49020,
+                        help="the model-call trace viewer's port; 0 = do not start it")
     args = parser.parse_args(argv)
     from agent import at_project_root
 
     config = at_project_root(args.config)
     app = create_app(config, args.static)
+    if args.trace_port:
+        start_trace_viewer(app, args.host, args.trace_port)
     app.run(host=args.host, port=args.port, threaded=True, debug=False)
 
 

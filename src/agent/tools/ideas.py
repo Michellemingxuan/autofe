@@ -1,35 +1,43 @@
-"""Diverge before converging: a spread of ideas, through different lenses, first.
+"""Diverge before converging: a spread of ideas, from different engines, first.
 
 Left to itself, an agent briefed the same way each run reaches for the same
-obvious move - the unused variable, aggregated the usual way. Two things push
+obvious move - the unused variable, aggregated the usual way. Three things push
 it wider:
 
 * **ideas** - the run opens with a stage of its own: the agent may look at the
   data, then answers with more ideas than it may spend on, as structured output
-  (``agent.tools.Ideas``) - each named, with a level and a *lens*: a
-  way of looking at behaviour (a trend, a recency, a concentration, an
-  interaction ...). Code checks the spread - enough ideas, enough distinct
-  lenses - and sends a short one back to fix; proposals come after.
-* **focus lenses** - each run is given a few lenses to lean on, rotated across
-  runs by a counter, so two runs on a similar direction start from different
-  angles. At least ``MIN_FOCUS`` ideas must use them.
+  (``agent.tools.Ideas``) - each named, with a level, the *engine* that made it
+  (``agent.engines``: mechanism, contrastive, analogy, morphological,
+  others) and a *lens*, the kind of signal (a trend, a recency, a
+  concentration ...). Code checks the spread - enough ideas, enough distinct
+  engines and lenses - and sends a short one back to fix; proposals come after.
+* **focus engines** - each round leans on a few engines, drawn by Thompson
+  sampling over every engine's yield across runs (``agent.engines.draw_focus``):
+  at least ``MIN_FOCUS`` ideas must come from them.
+* **the board** - an idea that says what an earlier one said is checked on the
+  way in (``agent.checks.similarity``): the same as another idea of this answer
+  is sent back; the same as an idea of an earlier run is kept, linked to it
+  (``same_as``), and starts from its record - so one whose features carried no
+  signal is drawn late (Thompson sampling), not refused.
 
-The earlier directions' features and requests are in the brief too
-(``agent.memory``), and identical ones are refused - so the agent cannot simply
-repeat itself, and is shown where it has not looked yet.
+The earlier directions' ideas and features are in the brief (``agent.board``,
+``agent.memory``), and identical features are refused - so the agent cannot
+simply repeat itself, and is shown where it has not looked yet.
 """
 
 from __future__ import annotations
 
 import json
 import re
-from pathlib import Path
 from typing import Any
 
+from agent.board import idea_records
+from agent.checks import similarity
+from agent.engines import ENGINES, MIN_ENGINES, draw_focus
 from agent.session import Session
 
-__all__ = ["LENSES", "FOCUS_SIZE", "MIN_FOCUS", "MIN_LENSES", "focus_lenses", "lenses_for_turn",
-           "next_turn", "record_ideas", "ideas_needed", "ideas_in_round"]
+__all__ = ["LENSES", "MIN_FOCUS", "MIN_LENSES", "MIN_ENGINES", "focus_engines",
+           "record_ideas", "ideas_needed", "ideas_in_round", "save_ideas"]
 
 # Ways of looking at a customer's behaviour - each a different kind of signal.
 LENSES: dict[str, str] = {
@@ -48,36 +56,26 @@ LENSES: dict[str, str] = {
     "peer": "against similar customers - segment, cohort",
     "consistency": "where two sources or two measures disagree",
 }
-FOCUS_SIZE = 3          # lenses a run is asked to lean on
-MIN_FOCUS = 2           # ideas that must use them
+MIN_FOCUS = 2           # ideas that must come from the round's focus engines
+MIN_MEASURES, MAX_MEASURES = 2, 5   # ways an idea can be measured: it is not one feature
+# An idea's name names a concept; a window or a version in it is a feature's name.
+FEATURE_LIKE = re.compile(r"_(\d+(d|w|m|mo|y|yr)|v\d+|\d+)(_|$)")
 MIN_LENSES = 4          # distinct lenses across the ideas
 
 
-def _counter(session: Session) -> Path:
-    return Path(session.ws.cfg.agent.run_dir) / "ideas" / "rotation.json"
-
-
-def lenses_for_turn(turn: int) -> list[str]:
-    """The focus lenses of the run that takes rotation turn `turn`."""
-    names = list(LENSES)
-    return [names[(turn * FOCUS_SIZE + i) % len(names)] for i in range(FOCUS_SIZE)]
-
-
-def next_turn(run_dir: str | Path) -> int:
-    """The rotation turn the next run will take - read, not advanced."""
-    path = Path(run_dir) / "ideas" / "rotation.json"
-    return json.loads(path.read_text())["next"] if path.exists() else 0
-
-
-def focus_lenses(session: Session) -> list[str]:
-    """This run's focus lenses: the next ones in the rotation, taken once per run."""
-    if getattr(session, "focus", None):
-        return session.focus
-    path = _counter(session)
-    turn = next_turn(session.ws.cfg.agent.run_dir)
-    path.parent.mkdir(parents=True, exist_ok=True)
-    path.write_text(json.dumps({"next": turn + 1}))
-    session.focus = lenses_for_turn(turn)
+def focus_engines(session: Session) -> list[str]:
+    """The upcoming round's focus engines: drawn once per round, by Thompson
+    sampling over every engine's yield on the board, and recorded."""
+    upcoming = session.round + 1
+    drawn = getattr(session, "focus_drawn", None)
+    if drawn is None:
+        drawn = session.focus_drawn = {}
+    if upcoming not in drawn:
+        draw = draw_focus(idea_records(session.ws), seed=f"{session.run_id}:{upcoming}")
+        drawn[upcoming] = draw["focus"]
+        session.emit("engines_drawn", round=upcoming, focus=draw["focus"], draws=draw["draws"],
+                     engine_yield=draw["yield"])
+    session.focus = drawn[upcoming]
     return session.focus
 
 
@@ -87,9 +85,10 @@ def ideas_in_round(session: Session) -> int:
     return max(3, min(session.params.ideas_per_round, session.wanted() + 2))
 
 
-def _floors(n: int) -> tuple[int, int]:
-    """The spread a round of n ideas must show: distinct lenses, ideas on the focus."""
-    return min(MIN_LENSES, n), min(MIN_FOCUS, n)
+def _floors(n: int) -> tuple[int, int, int]:
+    """The spread a round of n ideas must show: distinct lenses, distinct engines,
+    ideas from the focus engines."""
+    return min(MIN_LENSES, n), min(MIN_ENGINES, n), min(MIN_FOCUS, n)
 
 
 def ideas_needed(session: Session) -> dict[str, Any] | None:
@@ -98,6 +97,63 @@ def ideas_needed(session: Session) -> dict[str, Any] | None:
         return None
     return {"ok": False, "error": "no ideas recorded yet: the ideas come first. "
             "Nothing was spent."}
+
+
+def save_ideas(session: Session) -> None:
+    """The run's ideas, as recorded - the board reads them."""
+    (session.run_dir / "ideas.json").write_text(json.dumps(session.ideas, indent=2, default=str))
+
+
+def _fixes(clean: list[dict[str, Any]], focus: list[str], used: set[str], lenses: set[str],
+           min_engines: int, min_focus: int, on_focus: int, min_lenses: int,
+           bare: list[str], n: int, most: int) -> list[str]:
+    """What to change, concretely, for each rule an answer missed - one wrong move
+    at a time is how a small round gets stuck."""
+    out = []
+    if len(clean) < n or len(clean) > most:
+        out.append(f"give {n} to {most} ideas, no more")
+    if len(used) < min_engines:
+        spare = [e for e in ENGINES if e not in used]
+        out.append(f"change the engine of {min_engines - len(used)} idea(s) to one not used yet "
+                   f"- {', '.join(spare)}; keep {min_focus} on the focus engines {focus}")
+    if on_focus < min_focus:
+        out.append(f"make {min_focus - on_focus} more idea(s) come from the focus engines {focus}")
+    if len(lenses) < min_lenses:
+        spare = [k for k in LENSES if k not in lenses][:4]
+        out.append(f"give {min_lenses - len(lenses)} idea(s) another lens - e.g. {', '.join(spare)}")
+    if bare:
+        out.append(f"make one idea level {' and one level '.join(bare)}")
+    return out or ["keep what passes, change what is MISSING"]
+
+
+def _same_as(session: Session, clean: list[dict[str, Any]]) -> str | None:
+    """Check the ideas against each other and the board: an error, or None. A
+    match with an idea of an earlier run is linked on the idea (``same_as``), with
+    that idea's record (``inherited``)."""
+    limit = session.ws.cfg.agent.checks.same_meaning
+    if limit is None:
+        return None
+    text = lambda i: f"{i['name']} {i['description']}"           # noqa: E731
+    for a in range(len(clean)):
+        scores = similarity(text(clean[a]), [text(b) for b in clean[a + 1:]])
+        for b, score in enumerate(scores, a + 1):
+            if score >= limit:
+                return (f"ideas {clean[a]['name']!r} and {clean[b]['name']!r} say much the same "
+                        f"thing (overlap {score:.2f}) - merge them, or make one measure something "
+                        "else")
+    earlier = idea_records(session.ws, skip_run=session.run_id)
+    if not earlier:
+        return None
+    for idea in clean:
+        scores = similarity(text(idea), [text(e) for e in earlier])
+        best = max(range(len(scores)), key=scores.__getitem__)
+        if scores[best] < limit:
+            continue
+        twin = earlier[best]
+        idea["same_as"] = f"{twin['run_id']}:{twin['name']}"
+        idea["inherited"] = {"signal": twin["signal"], "none": twin["none"],
+                             "why": twin.get("why") or ""}
+    return None
 
 
 def _scope_variables(session: Session) -> list[str]:
@@ -114,9 +170,14 @@ def _names_in(text: str, variables: list[str]) -> list[str]:
     return [v for v in variables if re.search(rf"\b{re.escape(v)}\b", text, flags=re.I)]
 
 
-def record_ideas(session: Session, ideas: list[dict[str, Any]]) -> dict[str, Any]:
+def record_ideas(session: Session, ideas: list[dict[str, Any]],
+                 lenient: bool = False) -> dict[str, Any]:
     """Check the ideas - many, varied, each fitting its level - and record
-    them. The error, when there is one, goes back to the model to fix."""
+    them. The error, when there is one, goes back to the model to fix.
+
+    ``lenient`` is the last resort, when the answers kept missing the spread: the
+    ideas that are each valid are recorded anyway, with the rules they missed, so
+    the run - and the board - keep its ideas rather than going on without any."""
     if getattr(session, "explore", False) and session.round + 1 not in session.themes_drawn:
         return {"ok": False, "error": "this run explores without a direction: call draw_theme "
                                       "for this round's theme first, then give ideas about it"}
@@ -126,69 +187,108 @@ def record_ideas(session: Session, ideas: list[dict[str, Any]]) -> dict[str, Any
     scopes = ", ".join(session.ws.scopes) or "the scope"
     earlier = {i["name"] for i in session.ideas}            # earlier rounds' ideas
     first = len(session.ideas)                              # numbered across rounds
-    clean, names = [], set()
+    clean, names, skipped = [], set(), []
     for i, idea in enumerate(ideas or [], 1):
         name = str(idea.get("name", "")).strip()
         lens = str(idea.get("lens", "")).strip().lower()
+        engine = str(idea.get("engine", "")).strip().lower()
         description = str(idea.get("description") or idea.get("hypothesis") or "").strip()
         data = str(idea.get("data", "")).strip()
         level = str(idea.get("level", "")).strip().upper() or (levels[0] if len(levels) == 1 else "")
-        if not re.fullmatch(r"[a-z_][a-z0-9_]{0,63}", name) or name in names:
-            return {"ok": False, "error": f"idea {i}: give it a new snake_case name, got {name!r}"}
-        if name in earlier:
-            return {"ok": False, "error": f"idea {i}: {name!r} was an idea of an earlier round - "
-                                          "give a new one"}
-        if lens not in LENSES:
-            return {"ok": False, "error": f"idea {i}: lens {lens!r} is not one of {list(LENSES)}"}
-        if not description:
-            return {"ok": False, "error": f"idea {i}: say what it measures and why it should carry risk"}
-        if level not in levels:
-            return {"ok": False, "error": f"idea {i}: its level must be one of {levels}"}
-        named = _names_in(f"{description} {data}", in_scope)
+        measures = [str(m).strip() for m in (idea.get("measures") or []) if str(m).strip()]
+        named = _names_in(f"{description} {data} {' '.join(measures)}", in_scope)
         # beyond_cas: the field's name before scopes had keywords.
         beyond = level == "L3" and bool(idea.get("beyond_scope") or idea.get("beyond_cas"))
-        if beyond and len(data.split()) < 4:
-            return {"ok": False, "error": (
-                f"idea {i} ({name}): beyond scope, say in its data what data it needs "
-                "and where it would come from - the system or team, the grain.")}
-        if level == "L3" and not beyond and not named:
-            return {"ok": False, "error": (
+        problem = None
+        if not re.fullmatch(r"[a-z_][a-z0-9_]{0,63}", name) or name in names:
+            problem = f"idea {i}: give it a new snake_case name, got {name!r}"
+        elif name in earlier:
+            problem = f"idea {i}: {name!r} was an idea of an earlier round - give a new one"
+        elif FEATURE_LIKE.search(name):
+            problem = (f"idea {i}: {name!r} reads like a feature - a window or a version in "
+                       "the name. Name the concept (liquidity_buffer_depletion, not "
+                       "balance_std_6m); windows and statistics belong in its measures")
+        elif engine not in ENGINES:
+            problem = f"idea {i}: engine {engine!r} is not one of {list(ENGINES)}"
+        elif lens not in LENSES:
+            problem = f"idea {i}: lens {lens!r} is not one of {list(LENSES)}"
+        elif not description:
+            problem = f"idea {i}: say what it measures and why it should carry risk"
+        elif level not in levels:
+            problem = f"idea {i}: its level must be one of {levels}"
+        elif not MIN_MEASURES <= len(measures) <= MAX_MEASURES and not (lenient and measures):
+            problem = (f"idea {i} ({name}): give {MIN_MEASURES} to {MAX_MEASURES} measures - "
+                       "different ways to measure it, each a candidate feature or data in "
+                       "one line. An idea is a hypothesis several features can test")
+        elif beyond and len(data.split()) < 4:
+            problem = (f"idea {i} ({name}): beyond scope, say in its data what data it needs "
+                       "and where it would come from - the system or team, the grain.")
+        elif level == "L3" and not beyond and not named:
+            problem = (
                 f"idea {i} ({name}): names no scope variable. Within a scope ({scopes}), write "
                 "the variables it needs in its data exactly as named - e.g. "
                 + ", ".join(f"`{v}`" for v in in_scope[:6]) + " (the brief lists them). If the "
                 "data lies outside every scope - external, strategy (RLA), calling - mark it "
                 "beyond_scope. If the model database and the linked sources already carry it, "
-                "it is an L1/L2 idea, not a data request.")}
+                "it is an L1/L2 idea, not a data request.")
+        if problem:
+            if lenient:
+                skipped.append(problem)
+                continue
+            return {"ok": False, "error": problem}
         names.add(name)
-        clean.append({"n": first + i, "name": name, "lens": lens, "level": level,
-                      "description": description, "data": data,
+        clean.append({"n": first + i, "round": session.round + 1, "name": name,
+                      "engine": engine, "lens": lens, "level": level,
+                      "description": description, "measures": measures, "data": data,
                       **({"beyond_scope": True} if beyond else {}),
                       **({"variables": named} if named and not beyond else {})})
-    focus = focus_lenses(session)
+    focus = focus_engines(session)
     lenses = {c["lens"] for c in clean}
+    used = {c["engine"] for c in clean}
     n = ideas_in_round(session)
-    min_lenses, min_focus = _floors(n)
-    on_focus = sum(c["lens"] in focus for c in clean)
+    min_lenses, min_engines, min_focus = _floors(n)
+    on_focus = sum(c["engine"] in focus for c in clean)
     # Every requirement, met or not: fixing only the one named breaks another.
     most = session.params.ideas_per_round
     checks = [(n <= len(clean) <= most, f"{n} to {most} ideas (you gave {len(clean)})"),
+              (len(used) >= min_engines, f"at least {min_engines} different engines "
+                                         f"(you used {len(used)}: {sorted(used)})"),
+              (on_focus >= min_focus, f"at least {min_focus} from this round's focus engines "
+                                      f"{focus} (you have {on_focus})"),
               (len(lenses) >= min_lenses, f"at least {min_lenses} different lenses "
-                                          f"(you used {len(lenses)}: {sorted(lenses)})"),
-              (on_focus >= min_focus, f"at least {min_focus} on this run's focus {focus} "
-                                      f"(you have {on_focus})")]
+                                          f"(you used {len(lenses)}: {sorted(lenses)})")]
+    bare: list[str] = []
     if mixed:
         bare = [lv for lv in session.quota if session.wanted(lv) and
                 not any(c["level"] == lv for c in clean)]
         checks.append((not bare, "an idea for every level still wanted "
                                  f"({session.targets_left()})" + (f" - none for {bare}" if bare else "")))
-    if not all(ok for ok, _ in checks):
+    missed = [text for ok, text in checks if not ok]
+    if missed and not lenient:
         return {"ok": False, "error": "not yet a spread. An answer must meet ALL of these - keep "
                 "what already passes: " + "; ".join(f"[{'ok' if ok else 'MISSING'}] {text}"
-                                                    for ok, text in checks)}
+                                                    for ok, text in checks)
+                + ". To fix: " + "; ".join(_fixes(clean, focus, used, lenses, min_engines,
+                                                  min_focus, on_focus, min_lenses,
+                                                  bare if mixed else [], n, most))}
+    if lenient and not clean:
+        return {"ok": False, "error": "no idea in the answer was valid: " + "; ".join(skipped)}
+    if (problem := _same_as(session, clean)) and not lenient:
+        return {"ok": False, "error": problem}
     session.ideas = session.ideas + clean
+    save_ideas(session)
     session.round += 1
     session.round_ideas, session.round_attempts, session.round_spent = clean, 0, False
     session.emit("ideas_recorded", ideas=clean, focus=focus, round=session.round,
+                 **({"lenient": True, "missed": missed + skipped} if lenient else {}),
                  **({"theme": session.themes_drawn[session.round]}
                     if session.round in getattr(session, "themes_drawn", {}) else {}))
-    return {"ok": True, "ideas": len(clean), "lenses": sorted(lenses), "round": session.round}
+    linked = [{"idea": c["name"], "same_as": c["same_as"],
+               "p_useful": round((1 + c["inherited"]["signal"])
+                                 / (2 + c["inherited"]["signal"] + c["inherited"]["none"]), 3),
+               **({"why_not": c["inherited"]["why"]} if c["inherited"]["why"] else {})}
+              for c in clean if c.get("same_as")]
+    return {"ok": True, "ideas": len(clean), "engines": sorted(used), "lenses": sorted(lenses),
+            "round": session.round,
+            **({"linked": linked, "note": "these read like earlier ideas and start from their "
+                                          "record - a failed one is worked later"} if linked else {})}

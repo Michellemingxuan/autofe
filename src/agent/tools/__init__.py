@@ -3,13 +3,14 @@
     explore    catalog · scope · sample_rows · run_probe   look at the data
     shots      shots                                    labelled examples by category, rotated
     linkage    propose_linkage                          join a source, point in time
-    screen     screen_feature                           build + score one feature
+    screen     screen_feature                           build + check (C0-C2) + score one feature
     data_pull  screen_request · propose_new_data        L3: data within a scope (SQL) or beyond scope
     challenge  challenge_request                        L3: record a verdict, run its construction
     report     report_findings                          end the run with a summary
 
 The ideas are not a tool: the run's first stage (agent.agent) answers with them
-as structured output (:class:`Ideas`), checked by agent.tools.ideas.
+as structured output (:class:`Ideas`), checked by agent.tools.ideas. That stage
+reads an idea engine's method with ``engine`` (agent.engines).
 
 Each function owns its logic and its checks; :func:`for_agent` wraps them for
 the agents SDK, binding the session, so the model only sees the arguments it
@@ -47,17 +48,28 @@ TOOLSETS = {
     "l3": ("catalog", "scope", "sample_rows", "shots", "run_probe", "screen_request",
            "propose_new_data", "challenge_request", "report_findings"),
     # Before any of them: the ideas stage, which looks and answers with ideas.
-    "ideas": ("draw_theme", "catalog", "scope", "sample_rows", "shots", "run_probe"),
+    "ideas": ("draw_theme", "engine", "catalog", "scope", "sample_rows", "shots", "run_probe"),
 }
 END_TOOL = "report_findings"
 
 
 class Idea(BaseModel):
     """One idea - a feature to build (L1/L2) or data to request (L3)."""
-    name: str = Field(description="snake_case name of the feature, or of the data request")
+    name: str = Field(description="snake_case name of the IDEA - a concept, not a feature: "
+                                  "liquidity_buffer_depletion, not balance_std_6m. No window, "
+                                  "statistic or version in it")
     level: str = Field(description="L1, L2 or L3 - one of the levels this run allows")
+    engine: str = Field(description="the engine that made it: mechanism, contrastive, analogy, "
+                                    "morphological, or others for any other route")
     lens: str = Field(description="one of the brief's lenses")
-    description: str = Field(description="what it measures, and why it should carry default risk")
+    description: str = Field(description="the hypothesis: what behaviour or mechanism, and why "
+                                         "it should carry default risk the model misses - and "
+                                         "where it came from, as its engine's guide asks (the "
+                                         "theory, the contrast, the source field, the grid "
+                                         "cell, or for others the route). Not a formula")
+    measures: list[str] = Field(description="2 to 4 different ways to measure it - each a "
+                                            "candidate feature (or, at L3, data to request) "
+                                            "in one line: what, over what window, against what")
     data: str = Field(description="the columns and sources it uses. For L3 within a scope: "
                                   "the scope variables it needs, spelled exactly as scope() "
                                   "lists them. Beyond scope: the data and where it would "
@@ -150,19 +162,25 @@ def for_agent(session: Session, toolset: str | None = None) -> list[Any]:
         return _dump(propose_linkage(session, source, code, time_column, rule))
 
     @function_tool(name_override="screen_feature")
-    def _screen_feature(name: str, description: str, level: str, code: str) -> str:
-        """Build one feature on the screen rows and score it against base. One attempt.
+    def _screen_feature(name: str, description: str, level: str, code: str,
+                        idea: str = "", differs: str = "") -> str:
+        """Build one feature on the screen rows, check it (seen before? explained by the
+        model? new signal?) and score it against base. One attempt.
 
         Args:
             name: the new column's name.
             description: one sentence on what it measures and why it matters.
             level: L1 or L2.
             code: a script defining build(spark, sources, base).
+            idea: the idea this feature tests - one of the run's ideas, by name.
+            differs: when an earlier feature means much the same - what this one measures
+                that it does not (another window, ratio, source or population).
         """
-        return _dump(screen_feature(session, name, description, level, code))
+        return _dump(screen_feature(session, name, description, level, code, differs, idea))
 
     @function_tool(name_override="screen_request")
-    def _screen_request(gap: str, sql: str, source_name: str, features: str = "") -> str:
+    def _screen_request(gap: str, sql: str, source_name: str, features: str = "",
+                        idea: str = "") -> str:
         """L3: propose a data pull from a scope - the rationale and the SQL over its tables,
         in the scope's SQL dialect (the brief names it). The scope is the one its tables
         belong to.
@@ -172,11 +190,13 @@ def for_agent(session: Session, toolset: str | None = None) -> list[Any]:
             sql: the SQL; select only the key, the event date and the needed columns.
             source_name: snake_case name for the new source.
             features: the features this data would enable, one per line.
+            idea: the idea this request serves - one of the run's ideas, by name.
         """
-        return _dump(screen_request(session, gap, sql, source_name, features))
+        return _dump(screen_request(session, gap, sql, source_name, features, idea))
 
     @function_tool(name_override="propose_new_data")
-    def _propose_new_data(gap: str, source_name: str, data: str, features: str = "") -> str:
+    def _propose_new_data(gap: str, source_name: str, data: str, features: str = "",
+                          idea: str = "") -> str:
         """L3 beyond scope: propose data the bank or the market may hold outside every scope -
         external information, strategies applied (RLA), calling or contact history ... No SQL:
         the idea is the deliverable. It is challenged like any request.
@@ -187,8 +207,9 @@ def for_agent(session: Session, toolset: str | None = None) -> list[Any]:
             data: the data it needs and where it would come from - the system or team that
                 holds it, its grain, how far back it should go.
             features: the features this data would enable, one per line.
+            idea: the idea this request serves - one of the run's ideas, by name.
         """
-        return _dump(propose_new_data(session, gap, source_name, data, features))
+        return _dump(propose_new_data(session, gap, source_name, data, features, idea))
 
     @function_tool(name_override="challenge_request")
     def _challenge_request(intent: str, verdict: str, reasoning: str,
@@ -226,7 +247,20 @@ def for_agent(session: Session, toolset: str | None = None) -> list[Any]:
 
         return _dump(draw_theme(session))
 
-    tools = {"draw_theme": _draw_theme, "catalog": _catalog, "scope": _scope, "sample_rows": _sample_rows, "shots": _shots,
+    @function_tool(name_override="engine")
+    def _engine(name: str) -> str:
+        """An idea engine's full method: its core question, where its knowledge comes
+        from, how to run it, and examples - the theory library, the grid's axes, the
+        shapes worth borrowing.
+
+        Args:
+            name: mechanism, contrastive, analogy, morphological or others.
+        """
+        from agent.engines import engine_guide
+
+        return _dump(engine_guide(name))
+
+    tools = {"draw_theme": _draw_theme, "engine": _engine, "catalog": _catalog, "scope": _scope, "sample_rows": _sample_rows, "shots": _shots,
              "run_probe": _run_probe,
              "propose_linkage": _propose_linkage, "screen_feature": _screen_feature,
              "screen_request": _screen_request, "propose_new_data": _propose_new_data,

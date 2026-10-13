@@ -38,6 +38,7 @@ import json
 import re
 from typing import Any
 
+from agent.board import idea_for
 from agent.memory import same_request
 from agent.session import Session
 from agent.tools.ideas import ideas_needed
@@ -162,7 +163,7 @@ def _can_propose(session: Session, source_name: str) -> dict[str, Any] | None:
 
 
 def propose_new_data(session: Session, gap: str, source_name: str, data: str,
-                     features: str = "") -> dict[str, Any]:
+                     features: str = "", idea: str = "") -> dict[str, Any]:
     """Propose data beyond scope: why, what data and from where, what it
     enables. No SQL and nothing to screen - it goes straight to the challenge."""
     if (problem := _can_propose(session, source_name)):
@@ -171,13 +172,17 @@ def propose_new_data(session: Session, gap: str, source_name: str, data: str,
         return {"ok": False, "error": "say what data it needs and where it would come from - "
                                       "the system or team that holds it, the grain, the history. "
                                       "Nothing was spent."}
+    idea, problem = idea_for(session, idea, source_name)
+    if problem:
+        return {"ok": False, "error": problem}
     payload = {"scope": BEYOND, "gap": gap, "data": data.strip(), "sql": "",
-               "source_name": source_name, "features": features, "tables": [], "columns": []}
+               "source_name": source_name, "features": features, "tables": [], "columns": [],
+               **({"idea": idea} if idea else {})}
     return _propose(session, payload)
 
 
 def screen_request(session: Session, gap: str, sql: str, source_name: str,
-                      features: str = "") -> dict[str, Any]:
+                      features: str = "", idea: str = "") -> dict[str, Any]:
     """Propose a data pull within a scope: why, what it enables, and the SQL."""
     if (problem := _can_propose(session, source_name)):
         return problem
@@ -201,11 +206,14 @@ def screen_request(session: Session, gap: str, sql: str, source_name: str,
         return {"ok": False, "error": f"this asks for {twin}. Nothing was spent - ask for "
                                       "different data, or build on what is already requested."}
 
+    idea, problem = idea_for(session, idea, source_name)
+    if problem:
+        return {"ok": False, "error": problem}
     # No variable lists to place the tables: the first scope configured.
     scope = scopes[0] if scopes else next(iter(session.ws.scopes), "")
     payload = {"scope": scope, "gap": gap, "data": "", "sql": sql.strip(),
                "source_name": source_name, "features": features, "tables": tables,
-               "columns": sorted(sql_columns(sql))}
+               "columns": sorted(sql_columns(sql)), **({"idea": idea} if idea else {})}
     return _propose(session, payload)
 
 

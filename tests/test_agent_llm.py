@@ -150,7 +150,7 @@ def test_a_structured_answer_sent_twice_is_read_once():
     from agent.tools import Ideas
 
     schema = FirstAnswer(Ideas)
-    one = json.dumps({"ideas": [{"name": "a", "level": "L1", "lens": "trend",
+    one = json.dumps({"ideas": [{"name": "a", "level": "L1", "engine": "analogy", "lens": "trend", "measures": ["m1 measure it", "m2 measure it"],
                                  "description": "d", "data": "x", "beyond_scope": False}]})
     assert len(schema.validate_json(one + one).ideas) == 1
     assert len(schema.validate_json(one + "\n" + one).ideas) == 1

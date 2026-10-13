@@ -22,10 +22,12 @@ from agents.exceptions import ModelBehaviorError
 
 from agent import tools
 from agent.llm import build_model
+from agent.llm_trace import TraceHooks, store_for
 from agent.tools.linkage import ensure_linked
 from agent.composer import compose, message
 from agent.session import Session
-from agent.tools.ideas import record_ideas
+from agent.board import order_ideas, session_ideas
+from agent.tools.ideas import MIN_FOCUS, focus_engines, ideas_in_round, record_ideas
 
 __all__ = ["build_agent", "run_direction", "IDEAS_TRIES"]
 
@@ -82,7 +84,7 @@ def build_agent(session: Session, stage: str = "propose") -> Agent:
     which may look at the data and answers with its ideas as structured output, then
     the proposals, with every tool."""
     name = "linkage_writer" if session.kind == "linkage" else "feature_engineer"
-    instructions = compose(session)
+    instructions = compose(session, "ideas" if stage == "ideas" else "propose")
     if stage == "ideas":
         return Agent(
             name=name,
@@ -137,9 +139,11 @@ IDEAS_TRIES = 3
 async def _ideas_stage(session: Session, task: str) -> list[Any]:
     """The ideas stage: the agent may look, then answers with its ideas as
     structured output. The checks (agent.tools.ideas) send a short or one-sided
-    answer back, up to IDEAS_TRIES times. Returns the conversation so far."""
+    answer back, up to IDEAS_TRIES times - each time with the ideas it gave, so the
+    trace shows them. Returns the conversation so far."""
     agent = build_agent(session, "ideas")
     items: Any = task
+    last: list[dict[str, Any]] = []
     for attempt in range(1, IDEAS_TRIES + 1):
         try:
             stream = await _run(session, items, agent)
@@ -148,26 +152,32 @@ async def _ideas_stage(session: Session, task: str) -> list[Any]:
             # checks - the run does not end on it.
             problem = ("your answer was not one valid JSON object of the ideas schema "
                        f"({str(error)[:160]}...). Answer once, with one JSON object")
-            session.emit("ideas_sent_back", attempt=attempt, error=problem)
+            session.emit("ideas_sent_back", attempt=attempt, error=problem, ideas=[])
             items = (items if isinstance(items, list) else [{"role": "user", "content": items}]) \
                 + [{"role": "user", "content": message("sent_back", error=problem)}]
             continue
         if session.cancelled:
             return stream.to_input_list()
         answer = stream.final_output
-        result = (record_ideas(session, [i.model_dump() for i in answer.ideas])
-                  if isinstance(answer, tools.Ideas)
+        given = [i.model_dump() for i in answer.ideas] if isinstance(answer, tools.Ideas) else []
+        last = given or last
+        result = (record_ideas(session, given) if isinstance(answer, tools.Ideas)
                   else {"ok": False, "error": "answer with your ideas in the structured form"})
         if result["ok"]:
             return stream.to_input_list()
-        session.emit("ideas_sent_back", attempt=attempt, error=result["error"])
+        session.emit("ideas_sent_back", attempt=attempt, error=result["error"], ideas=given)
         items = stream.to_input_list() + [{"role": "user",
                                            "content": message("sent_back", error=result["error"])}]
-    # No spread that passes: the run goes on rather than ending empty - proposals
-    # are no longer held for ideas, and no new round is asked for after this one.
+    items = items if isinstance(items, list) else [{"role": "user", "content": items}]
+    # Still no spread: the last answer's valid ideas are recorded anyway, with the rules
+    # they missed, so the run and the board keep its ideas.
+    if last and record_ideas(session, last, lenient=True)["ok"]:
+        return items
+    # Nothing valid at all: the run goes on rather than ending empty - proposals are no
+    # longer held for ideas, and no new round is asked for after this one.
     session.ideas_required = False
     session.round_ideas = []
-    return items if isinstance(items, list) else [{"role": "user", "content": items}]
+    return items
 
 
 async def _direction(session: Session) -> None:
@@ -176,20 +186,45 @@ async def _direction(session: Session) -> None:
     worked - until the report."""
     start = (message("explore") if session.explore
              else message("direction", direction=session.direction))
-    items = await _ideas_stage(session, start + "\n\n" + message("ideas"))
+    items = await _ideas_stage(session, start + "\n\n" + message("ideas", **_focus(session)))
     while not session.cancelled:
-        names = ", ".join(i["name"] for i in session.round_ideas) or "none passed the checks"
         items = await _run_stage(session, items + [{"role": "user",
-                                                    "content": message("propose", names=names)}])
+                                                    "content": _propose(session)}])
         if _stage_done(session) or not session.round_spent:
             return
         session.round_spent = False
         items = await _ideas_stage(session, items + [{"role": "user", "content": _next_round(session)}])
 
 
+def _focus(session: Session) -> dict[str, Any]:
+    """The upcoming round's focus engines, for its message."""
+    return {"focus": ", ".join(focus_engines(session)),
+            "min_focus": min(MIN_FOCUS, ideas_in_round(session))}
+
+
+def _propose(session: Session) -> str:
+    """The proposal message of a round: its ideas in the order to work them, with
+    their hypotheses, measures and records - and how each attempt goes."""
+    from agent.composer import sections
+
+    return message("propose", round=session.round, budget=session.budget(),
+                   targets_left=sections.targets_left(session),
+                   round_ideas=sections.round_ideas(session, _work_order(session)),
+                   gates=sections.gates(session))
+
+
+def _work_order(session: Session) -> list[str]:
+    """This round's ideas in the order to work them: Thompson sampling over their
+    records (agent.board.order_ideas), recorded."""
+    mine = {i["name"] for i in session.round_ideas}
+    order = order_ideas([i for i in session_ideas(session) if i["name"] in mine],
+                        seed=f"{session.run_id}:order:{session.round}")
+    session.emit("ideas_ordered", round=session.round, order=order)
+    return order
+
+
 def _next_round(session: Session) -> str:
     """The next round's request: where the run stands, what worked, what failed."""
-    from agent.tools.ideas import ideas_in_round
 
     worked = ([f"{e['name']} ({e['level']})" for e in session.ledger
                if e.get("verified") and not e.get("deleted")]
@@ -201,7 +236,7 @@ def _next_round(session: Session) -> str:
     text = message("next_round", round=session.round + 1, budget=session.budget(),
                    worked=", ".join(worked) or "nothing yet",
                    failed="; ".join(failed[-8:]) or "nothing", n=ideas_in_round(session),
-                   most=session.params.ideas_per_round)
+                   most=session.params.ideas_per_round, **_focus(session))
     if session.explore:
         text += "\nThis round's theme first: call draw_theme, then give ideas about it."
     return text
@@ -227,11 +262,24 @@ def _trim_old_outputs(data: CallModelData[Any]) -> ModelInputData:
     return ModelInputData(input=items, instructions=data.model_data.instructions)
 
 
+def _hooks(session: Session, agent: Agent) -> TraceHooks:
+    """The trace hooks for one runner: every model call it makes, recorded with the
+    run, the stage and the round (agent.llm_trace)."""
+    if session.kind == "linkage":
+        stage, rnd = "linkage", None
+    elif agent.output_type is not None:            # the ideas stage answers with ideas
+        stage, rnd = "ideas", session.round + 1
+    else:
+        stage, rnd = "propose", session.round
+    return TraceHooks(store_for(session.ws.cfg), session.run_id, stage, kind=session.kind, round=rnd)
+
+
 async def _run(session: Session, task: Any, agent: Agent | None = None) -> Any:
     agent = agent or build_agent(session)
     stream = Runner.run_streamed(
         agent,
         input=task,
+        hooks=_hooks(session, agent),
         run_config=RunConfig(call_model_input_filter=_trim_old_outputs),
         max_turns=40 if session.kind == "linkage" else session.ws.cfg.agent.max_turns)
     started: dict[str, str] = {}
@@ -296,6 +344,8 @@ def run_direction(session: Session) -> Session:
                 ensure_linked(session, source)
     # The run keeps the brief it was given - the prompt, as the model read it.
     (session.run_dir / "brief.md").write_text(compose(session))
+    if session.kind == "direction":
+        (session.run_dir / "brief_ideas.md").write_text(compose(session, "ideas"))
     try:
         if session.kind == "linkage":
             asyncio.run(_run_stage(session, message("linkage", source=session.source)))

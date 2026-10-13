@@ -133,6 +133,10 @@ class Screener:
         self._base_score, self._base_also = self._fit_and_score(
             self.sample[self.base_features], self.base_features
         )
+        # The baseline's predictions on the held-out rows, kept from that same fit:
+        # y minus them is what the base model misses, the residual a new feature
+        # must carry signal on (agent.checks).
+        self.base_predictions = self._last_predictions
 
     @staticmethod
     def _measurable(params: Mapping[str, Any]) -> dict[str, Any]:
@@ -156,6 +160,15 @@ class Screener:
     @property
     def base_score(self) -> float:
         return self._base_score
+
+    @property
+    def eval_rows(self) -> np.ndarray:
+        """Positions in ``sample`` of the held-out rows the screen scores on."""
+        return self._eval_rows
+
+    @property
+    def y(self) -> np.ndarray:
+        return self._y
 
     def _fit_and_score(self, matrix: pd.DataFrame,
                        names: Sequence[str]) -> tuple[float, dict[str, float]]:
@@ -185,6 +198,7 @@ class Screener:
             num_boost_round=self.num_boost_round,
             nthread=self.nthread,
         )
+        self._last_predictions = np.asarray(fitted.predictions["eval"], dtype=float)
         scored = pd.DataFrame(
             {"y": self._y[self._eval_rows], "p": fitted.predictions["eval"]}
         )

@@ -51,13 +51,16 @@ def _language(engine: str) -> str:
     return "PySpark" if engine == "spark" else "pandas"
 
 
-def compose(session: Any) -> str:
-    """The run's brief: its template, filled in."""
+def compose(session: Any, stage: str = "propose") -> str:
+    """The run's brief: its template, filled in - for a direction, the brief of one
+    stage: ``ideas`` (writing a round of ideas) or ``propose`` (building features and
+    requests from them). Each is fixed for the run, so its prefix stays cached."""
     ws, cfg, p = session.ws, session.ws.cfg, session.params
     name = template_for(session)
     fields: dict[str, Any] = {
         "id_col": ws.id_col, "id_format": cfg.data.id_format or "(not specified)",
-        "skills": sections.skills(session), "data_size": sections.data_size(session),
+        "skills": sections.skills(session, None if name == "linkage_writer" else stage),
+        "data_size": sections.data_size(session) if stage == "propose" else "",
     }
     if name == "linkage_writer":
         src = ws.sources()[session.source]
@@ -74,7 +77,8 @@ def compose(session: Any) -> str:
         task_context=ws.task_context.strip(), target=ws.target, n_base=len(ws.base_features),
         shot_list=sections.shot_list(ws), scope_notes=sections.scope_notes(ws),
         scopes=sections.scopes(ws),
-        memory=sections.memory(session), ideas=sections.ideas(session),
+        memory=sections.memory(session),
+        ideas=sections.ideas(session) if stage == "ideas" else sections.ideas_pointer(session),
         columns=sections.columns(session))
     if name == "data_scout":
         fields.update(

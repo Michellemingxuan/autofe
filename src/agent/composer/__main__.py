@@ -23,12 +23,13 @@ def main(argv: list[str] | None = None) -> None:
     parser.add_argument("--levels", nargs="+", default=None, help="e.g. L1 L2, or L3")
     parser.add_argument("-k", "--max-intents", type=int, default=None)
     parser.add_argument("--linkage", metavar="SOURCE", help="the brief of a linkage job instead")
+    parser.add_argument("--stage", choices=["ideas", "propose"], default="propose",
+                        help="a direction's brief for its ideas stage or its proposals")
     args = parser.parse_args(argv)
 
     from agent import at_project_root
     from agent.composer import compose, message, template_for
     from agent.session import RunParams, Session
-    from agent.tools.ideas import lenses_for_turn, next_turn
     from agent.workspace import Workspace
     from validation.config import load_config
 
@@ -41,10 +42,10 @@ def main(argv: list[str] | None = None) -> None:
                           source=args.linkage,
                           params=RunParams(K=args.max_intents, levels=args.levels))
         cfg.agent.run_dir = real_runs                 # earlier runs, for the memory section
-        session.focus = lenses_for_turn(next_turn(real_runs))   # peeked, not taken
-        brief = compose(session)
+        brief = compose(session, args.stage)
     first = (message("linkage", source=args.linkage) if args.linkage
-             else message("direction", direction=args.direction) + "\n\n" + message("ideas"))
+             else message("direction", direction=args.direction) + "\n\n"
+             + message("ideas", focus="(two engines, drawn when the round starts)", min_focus=2))
     print(f"# brief (templates/{template_for(session)}.md) - the system instructions\n")
     print(brief)
     print("\n# first message - the user turn\n")

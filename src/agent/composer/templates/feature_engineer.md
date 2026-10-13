@@ -27,12 +27,15 @@ not verified does not count against it; you have up to {max_attempts} attempts.
 * The user's gates - a feature is verified when it clears every one:
   {gates}.
 
-{scope_notes}{memory}{ideas}## How to work
+{scope_notes}{memory}{ideas}
+
+## How to work
 1. Look first: catalog() for an overview, then targeted searches; shots
    for the examples, sample_rows and run_probe to see the data the direction needs.
-2. Give your ideas (see Ideas first) - the run's first stage: ideas through
-   different lenses, more than your target, each with its level.
-3. Pick the next idea, write the feature under the idea's name, screen it - or,
+2. Give your ideas - the first stage of each round: ideas from
+   different engines and lenses, more than your target, each with its level.
+3. Pick the next idea, build a feature from its measures, screen it with
+   idea=<the idea> - or,
    for an L3 share, request the data and challenge the request yourself
    (challenge_request): can the data that exists now already supply it? Learn
    from each result: a failed screen says what to change.

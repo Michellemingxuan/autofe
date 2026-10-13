@@ -51,6 +51,12 @@ agent:
   max_intents: 5
   min_gini_gain: 0.0          # analyst gates on the screen; min_capture_gain: off unless set
   run_dir: outputs/agent
+  checks:                                   # the cheap checks before the screen's fit
+    same_values: 0.99                       # C0: refuse a feature this rank-correlated with an earlier one
+    same_meaning: 0.6                       # C0: this close in words to an earlier one -> must say what differs (null: off)
+    max_model_rho: 0.9                      # C1: max |Spearman rho| with a model column above this -> redundant (null: off)
+    keep_if_residual_rho: 0.05              # C1's exception: fitted anyway when |rho residual| reaches this
+    min_residual_rho: null                  # C2: information only; a number makes it a gate
   llm:
     backend: openai
     model: gpt-4.1

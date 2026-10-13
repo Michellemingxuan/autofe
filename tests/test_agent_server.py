@@ -215,6 +215,13 @@ def test_direction_then_evaluation_then_deletes(env):
     assert events[0]["params"]["levels"] == ["L1"]
     listed = {r["run_id"]: r for r in client.get("/api/runs").get_json()}
     assert listed[run]["verified"] == 2
+    # The logging board: every feature with its code, what the checks measured, and
+    # whether it reached the feature set - from the run's records.
+    board = {r["name"]: r for r in client.get("/api/board").get_json() if r["run_id"] == run}
+    assert {"income_to_limit", "n_payments"} <= set(board)
+    row = board["income_to_limit"]
+    assert "def build" in row["code"] and row["max_model_rho"] is not None
+    assert row["residual_rho"] is not None and row["sent"] == "not evaluated"
     # The process log, in the output folder: the run as an account, and its
     # attempts in the cross-run log.
     assert "## What worked" in (runs / run / "process.md").read_text()
@@ -577,3 +584,18 @@ def test_an_empty_direction_starts_an_open_exploration(env):
     summary = {r["run_id"]: r for r in client.get("/api/runs").get_json()}[run]
     assert summary["explore"] is True
     assert client.post("/api/themes").status_code == 202        # made again on request
+
+
+def test_the_trace_viewer_starts_beside_the_server(env):
+    import urllib.request
+
+    from agent.server import start_trace_viewer
+
+    client, _, _ = env
+    app = client.application
+    url = start_trace_viewer(app, "127.0.0.1", 0)              # any free port
+    assert url and client.get("/api/workspace").get_json()["trace_viewer"] == url
+    assert urllib.request.urlopen(f"{url}/").status == 200
+    # A port already taken: the server runs on, without a viewer.
+    port = int(url.rsplit(":", 1)[1])
+    assert start_trace_viewer(app, "127.0.0.1", port) is None

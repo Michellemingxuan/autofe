@@ -37,6 +37,8 @@ CATEGORIES = {
     "approved": "approved by the analyst",
     "below_gate": "screened, but the gain did not clear the gates",
     "redundant": "redundant with a base column",
+    "explained": "C1 - redundant: a near-copy of a model column",
+    "no_signal": "C2 - no signal on the base model's residual",
     "spike": "a spike - an epsilon-guarded division blew up",
     "non_finite": "infinite or not-a-number values",
     "script_error": "the script failed",
@@ -46,6 +48,7 @@ CATEGORIES = {
     "rejected": "rejected by the analyst",
     # sent back by a check, nothing spent
     "duplicate": "the same as an earlier feature or request",
+    "seen_before": "C0 - the same code, or the same meaning with no word on what differs",
     "sql": "SQL that does not fit the scope's columns",
     "unknown_source": "a source that does not exist (a requested pull is not data)",
     "no_linkage": "a source with no confirmed linkage",
@@ -66,6 +69,8 @@ def outcome_of_feature(e: dict[str, Any]) -> str:
         return "verified"
     reason = str(e.get("reason") or "")
     for pattern, category in ((r"^script failed", "script_error"), (r"^build\(\) returned", "contract"),
+                              (r"^explained by the model", "explained"),
+                              (r"^no new signal", "no_signal"),
                               (r"redundant", "redundant"), (r"spikes", "spike"),
                               (r"not finite|infinite|NaN|inf\b", "non_finite"),
                               (r"is not above", "below_gate")):
@@ -78,6 +83,7 @@ def outcome_of_refusal(error: str) -> str:
     """The category of a proposal a check sent back, from its message."""
     for pattern, category in (
             (r"identical to|the same data as", "duplicate"),
+            (r"the same code as|reads much like", "seen_before"),
             (r"look before the next attempt", "probe_gate"),
             (r"no ideas recorded", "ideas_first"),
             (r"target .*is met|target of \d+ is met", "target_met"),

@@ -35,7 +35,7 @@ or beyond scope - a rationale and the data it needs, no SQL
    use - and scope(query=...) for the direction's terms. catalog() gives the
    overview; shots, sample_rows and run_probe show what the existing data
    already carries.
-2. Give your ideas (see Ideas first) - the run's first stage. Every idea in this
+2. Give your ideas - the first stage of each round. Every idea in this
    run is L3: within a scope it writes the scope variables it needs in
    `data`; beyond scope (`beyond_scope`) the data and its source. An idea built only
    from the model database and the linked sources is an L1/L2 idea and is sent

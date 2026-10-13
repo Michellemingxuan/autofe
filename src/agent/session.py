@@ -42,7 +42,7 @@ LEVELS = (*FEATURE_LEVELS, "L3")
 # Runs saved before the levels were renamed still open.
 _RENAMED = {"L1a": "L1", "L1b": "L1", "L2c": "L2"}
 # The skills each kind of run is briefed with.
-SKILLS_FOR = {"direction": ("data_sourcing", "feature", "evaluate"),
+SKILLS_FOR = {"direction": ("ideas", "data_sourcing", "feature", "evaluate"),
               "linkage": ("data_sourcing",)}
 
 
@@ -195,6 +195,9 @@ class Session:
         session.ledger = json.loads(ledger.read_text()) if ledger.exists() else []
         requests = folder / "data_requests.json"
         session.data_requests = json.loads(requests.read_text()) if requests.exists() else []
+        from agent.board import run_ideas
+
+        session.ideas = run_ideas(folder)
         session.quota = started.get("quota") or session.quota
         session.attempts = len(session.ledger) + len(session.data_requests)
         session.finished = any(e["event"] == "run_done" for e in log.events)
@@ -212,7 +215,7 @@ class Session:
         if not self.base_path.exists():
             self.ws.write_base(self.base_path)
         everything = load_skills()
-        wanted = ("data_sourcing",) if self.l3_only else SKILLS_FOR[self.kind]
+        wanted = ("ideas", "data_sourcing") if self.l3_only else SKILLS_FOR[self.kind]
         self.skills = {n: everything[n] for n in wanted if n in everything}
         self.ledger: list[dict[str, Any]] = []
         self.data_requests: list[dict[str, Any]] = []
@@ -228,7 +231,8 @@ class Session:
         self.quota: dict[str, int] = (level_quota(self.ws, self.params, self.run_id)
                                       if self.kind == "direction" else {})
         self.ideas_required = False
-        self.focus: list[str] = []
+        self.focus: list[str] = []            # the upcoming round's focus engines
+        self.focus_drawn: dict[int, list[str]] = {}   # per round, as drawn (agent.engines)
         self.report_refusals = 0              # early reports sent back (agent.tools.report)
         self.gated = False                    # the runner's checks on reports (agent.tools.report)
         # Ideas in rounds (agent.tools.ideas): this round's ideas, the attempts made
@@ -397,7 +401,9 @@ class Session:
 
     def delete_intent(self, name: str) -> bool:
         """Drop one intent from the pool. The trace keeps it, marked deleted."""
-        entry = next((e for e in self.ledger if e["name"] == name and not e.get("deleted")), None)
+        # A name can recur in a run (a failed script, then its fix): the verified one first.
+        live = [e for e in self.ledger if e["name"] == name and not e.get("deleted")]
+        entry = next((e for e in live if e.get("verified")), live[-1] if live else None)
         if entry is None:
             return False
         entry["deleted"] = True
