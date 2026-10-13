@@ -189,6 +189,9 @@ class ModelConfig:
     # (combo__<name>): e.g. {pay_and_recency: [pay_to_spend_90d, days_since_pay]}.
     combinations: Dict[str, List[str]] = field(default_factory=dict)
     save_models: bool = True
+    # Keep the base variant here, and reuse it while its data and settings are
+    # unchanged (validation.stages.base_cache) - the agent's evaluations set it.
+    base_cache_dir: Optional[str] = None
     threads_per_model: Optional[int] = None  # None -> divide cores across variants
     tuning: TuningConfig = field(default_factory=TuningConfig)
 
@@ -453,6 +456,37 @@ class TimeoutsConfig:
 
 
 @dataclass
+class ChecksConfig:
+    """The model agent's cheap checks on a feature, before the screen's fit
+    (agent.checks). Each is read off the screen rows in milliseconds, so a feature
+    the model already has, or one with no new signal, is told so without a fit.
+    None turns a check off."""
+    # C0 - seen before: a feature whose values rank-correlate at least this much
+    # with an earlier one, on the screen rows they share, is refused. High on
+    # purpose: a 30-day and a 90-day sum of the same events can correlate above
+    # 0.95 and are still different features.
+    same_values: float = 0.99
+    # C0 - a description this close (word-overlap cosine, 0-1) to an earlier
+    # feature's must say what differs before it is built.
+    same_meaning: Optional[float] = 0.6
+    # C1 - redundancy with the model: the largest |Spearman rho| between the
+    # feature and any one model column. Above this it is a near-copy.
+    max_model_rho: Optional[float] = 0.9
+    # ... unless C2 says otherwise: a feature the model columns explain but whose
+    # residual correlation reaches this is still fitted. The model has the
+    # columns, not the shape - a ratio of two of them, say, is monotone in both
+    # yet can carry what the model misses.
+    keep_if_residual_rho: Optional[float] = 0.05
+    # C2 - new signal: the rank correlation, on the screen's held-out rows, with
+    # the base model's residual (y minus its prediction) - not with y. Information
+    # only by default (None): it is recorded and shown, and every feature still gets
+    # the screen's fit. On a few thousand held-out rows its noise is about
+    # 1/sqrt(rows) (±0.02 on 2,000), and it only sees monotone signal, so as a gate
+    # it threw away features the fit would have verified. A number makes it a gate.
+    min_residual_rho: Optional[float] = None
+
+
+@dataclass
 class AgentConfig:
     """The model agent: what only it uses - how its code runs, what a direction
     aims for, its screen gates, its model and its time limits.
@@ -489,6 +523,15 @@ class AgentConfig:
     min_capture_gain: Optional[float] = None
     # The time limits on its scripts; the model calls' are in llm.
     timeouts: "TimeoutsConfig" = field(default_factory=lambda: TimeoutsConfig())
+    # The cheap checks on a feature (C0-C2), before the screen's fit.
+    checks: "ChecksConfig" = field(default_factory=lambda: ChecksConfig())
+    # The model's history: a markdown document of the variables earlier
+    # generations used, tried or dropped, and why (agent.model_history). C0 checks
+    # new features against it; the brief lists it.
+    model_history: Optional[str] = None
+    # Every model call - its input, output, tokens and time - in one SQLite file
+    # (agent.llm_trace). None: <run_dir>/llm_traces.db.
+    trace_db: Optional[str] = None
     max_turns: int = 200              # model calls per run, a backstop
     run_dir: str = "outputs/agent"
     llm: LLMConfig = field(default_factory=LLMConfig)
@@ -500,6 +543,8 @@ class AgentConfig:
             self.llm = _subset(LLMConfig, self.llm)
         if isinstance(self.timeouts, dict):
             self.timeouts = _subset(TimeoutsConfig, self.timeouts)
+        if isinstance(self.checks, dict):
+            self.checks = _subset(ChecksConfig, self.checks)
 
 
 @dataclass

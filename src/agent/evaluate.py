@@ -6,7 +6,9 @@ once over every model row - train, valid and test - through the same confirmed
 linkage, and has the validation pipeline judge them: ``leave_one_in`` against
 base for each, plus ``combo__<name>`` (base + the group) for each combination
 the user builds. Test is the out-of-time hold-out; this is the first time
-anything touches it.
+anything touches it. The base model is the same in every evaluation on the same
+data, so it is trained once and kept (``<run_dir>/base_model``); a later
+evaluation reuses it - its tuning and SHAP too - and trains only the challengers.
 
 Features are named ``<run_id>:<name>``. Two runs can both have found a
 ``spend_90d``; when both are evaluated together the columns become
@@ -302,6 +304,9 @@ class Evaluation:
             # The SHAP gate reads each feature's own model: there is no all-together one.
             cfg.verdict.shap_variant = "leave_one_in"
             cfg.model.save_models = True
+            # Base is the same in every evaluation on the same data: trained, tuned and
+            # explained once, then reused (validation.stages.base_cache).
+            cfg.model.base_cache_dir = str(Path(self.ws.cfg.agent.run_dir) / "base_model")
             cfg.model.combinations = {n: [self.column[k] for k in ks]
                                       for n, ks in self.combinations.items()}
             percents = sorted(set(cfg.analysis.capture_rate_percents or CAPTURE_PERCENTS),

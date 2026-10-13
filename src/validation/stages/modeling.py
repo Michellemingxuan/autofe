@@ -84,6 +84,9 @@ class ModelResult:
     params: Dict[str, Any] = field(default_factory=dict)
     tuned: bool = False
     error: Optional[str] = None
+    # Where a kept base lives (validation.stages.base_cache); its SHAP is kept there too.
+    cache_entry: Optional[str] = None
+    reused: bool = False
 
 
 # --------------------------------------------------------------------------- #
@@ -359,22 +362,44 @@ def run_modeling(
     params.update(cfg.model.params or {})
     params.setdefault("seed", cfg.run.seed)
 
-    tuning_log = pd.DataFrame()
-    if cfg.model.tuning.enabled:
-        params_by_variant, tuning_log = run_tuning(
-            variants, cfg, matrices, targets, weights, column_index, params)
-    else:
-        params_by_variant = {spec.name: dict(params) for spec in variants}
+    # A base kept from an earlier run with the same data and settings is reused.
+    from validation.stages import base_cache
 
-    nthread = cfg.model.threads_per_model or threads_per_worker(cfg.run.n_jobs, len(variants))
+    keep = cfg.model.base_cache_dir if any(v.name == "base" for v in variants) else None
+    key, kept = None, None
+    if keep:
+        key = base_cache.fingerprint(dataset.base_features, matrices, targets, weights,
+                                     column_index, params, cfg)
+        kept = base_cache.load(keep, key, str(model_dir) if (model_dir and cfg.model.save_models)
+                               else None)
+        if kept:
+            kept[0].reused = True
+            logger.info("base: reusing the kept model %s - same data and settings", key)
+    to_train = [v for v in variants if not (kept and v.name == "base")]
+
+    tuning_log = pd.DataFrame()
+    tuning = cfg.model.tuning
+    shared_target = (tuning.tune_on if any(v.name == tuning.tune_on for v in variants)
+                     else variants[0].name)
+    if tuning.enabled and kept and tuning.mode == "shared" and shared_target == "base":
+        # The tuning would have been base's: its winner is kept with it.
+        params_by_variant = {spec.name: dict(kept[1]) for spec in to_train}
+        logger.info("tuning: base's kept parameters go to every variant, as before")
+    elif tuning.enabled and to_train:
+        params_by_variant, tuning_log = run_tuning(
+            to_train, cfg, matrices, targets, weights, column_index, params)
+    else:
+        params_by_variant = {spec.name: dict(params) for spec in to_train}
+
+    nthread = cfg.model.threads_per_model or threads_per_worker(cfg.run.n_jobs, max(len(to_train), 1))
     logger.info(
         "training %d variant(s) on %d worker(s), %d xgboost thread(s) each",
-        len(variants), min(resolve_n_jobs(cfg.run.n_jobs), len(variants)), nthread,
+        len(to_train), min(resolve_n_jobs(cfg.run.n_jobs), max(len(to_train), 1)), nthread,
     )
 
     with timed(logger, "model training"):
-        results = parallel_map(
-            _train_variant, variants,
+        trained = parallel_map(
+            _train_variant, to_train,
             n_jobs=cfg.run.n_jobs, backend=cfg.run.backend, desc="variant", log_progress=True,
             matrices=matrices, targets=targets, weights=weights, column_index=column_index,
             params_by_variant=params_by_variant, num_boost_round=cfg.model.num_boost_round,
@@ -382,7 +407,14 @@ def run_modeling(
             verbose_eval=cfg.model.verbose_eval, nthread=nthread,
             model_dir=str(model_dir) if (model_dir and cfg.model.save_models) else None,
             tuned=cfg.model.tuning.enabled,
-        )
+        ) if to_train else []
+
+    by_name = {r.name: r for r in trained}
+    if kept:
+        by_name["base"] = kept[0]
+    elif keep and "base" in by_name and not by_name["base"].error:
+        base_cache.save(keep, key, by_name["base"], params_by_variant["base"])
+    results = [by_name[v.name] for v in variants]
 
     failed = [r.name for r in results if r.error]
     if failed:

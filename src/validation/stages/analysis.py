@@ -362,15 +362,23 @@ def _run_shap(
             random_state=cfg.run.seed,
         )
 
-    explainable = [r for r in results if r.model_path]
-    if len(explainable) < len(results):
+    # A kept base (validation.stages.base_cache) keeps its SHAP too.
+    from validation.stages import base_cache
+
+    shap_key = base_cache.shap_key(split, len(dataset.split(split)), cfg)
+    kept = {r.name: f for r in results if r.cache_entry
+            and (f := base_cache.load_shap(r.cache_entry, shap_key)) is not None}
+    if kept:
+        logger.info("shap: reusing the kept ranking for %s", ", ".join(kept))
+    explainable = [r for r in results if r.model_path and r.name not in kept]
+    if len(explainable) + len(kept) < len(results):
         logger.warning(
             "shap skipped for %d variant(s) without a saved model "
             "(set model.save_models: true)",
             len(results) - len(explainable),
         )
     if not explainable:
-        return pd.DataFrame()
+        return pd.concat(kept.values(), ignore_index=True) if kept else pd.DataFrame()
 
     # Optional settings. Defaults are intentionally conservative for a
     # memory-constrained laptop. They can be added to config later without
@@ -408,7 +416,10 @@ def _run_shap(
             chunk_size=chunk_size,
         )
 
-    frames = [f for f in frames if len(f)]
+    for result, computed in zip(explainable, frames):
+        if result.cache_entry and len(computed):
+            base_cache.save_shap(result.cache_entry, shap_key, computed)
+    frames = [f for f in [*kept.values(), *frames] if len(f)]
     return (
         pd.concat(frames, ignore_index=True)
         if frames
