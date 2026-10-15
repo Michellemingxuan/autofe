@@ -21,6 +21,16 @@ const size = (bytes: number | null) =>
   bytes == null ? '' : bytes > 1e9 ? `${(bytes / 1e9).toFixed(1)} GB`
     : bytes > 1e6 ? `${(bytes / 1e6).toFixed(1)} MB` : `${Math.max(1, Math.round(bytes / 1e3))} KB`
 
+/** A name inside the folder as a full path; absolute names and no folder stay as they are. */
+export const inFolder = (folder: string, name: string) =>
+  !name || name.startsWith('/') || !folder ? name : `${folder.replace(/\/$/, '')}/${name}`
+
+/** A path as a name inside the folder, when it is in it. */
+export const relTo = (folder: string, path: string) => {
+  const f = folder.replace(/\/$/, '')
+  return f && path.startsWith(f + '/') ? path.slice(f.length + 1) : path
+}
+
 /** A ✓ or ✗ beside a path, with the file's size when it is there. */
 export function Tick({ path, checks }: { path: string; checks: PathCheck }) {
   if (!path) return <span className={s.tickEmpty} />
@@ -107,9 +117,11 @@ export function PathOrUpload({ field, value, onChange, checks, dirty }: {
   )
 }
 
-/** A list of small files: each by path or upload, removable. */
-export function FilesList({ field, value, onChange, checks, dirty }: {
+/** A list of small files: each by path or upload, removable. With a folder,
+ * a typed path may be relative to it. */
+export function FilesList({ field, value, onChange, checks, dirty, folder = '' }: {
   field: SetupField; value: string[]; onChange: (v: string[]) => void; checks: PathCheck; dirty: boolean
+  folder?: string
 }) {
   const [adding, setAdding] = useState('')
   const add = (path: string) => {
@@ -123,17 +135,19 @@ export function FilesList({ field, value, onChange, checks, dirty }: {
       {value.map((p) => (
         <div key={p} className={s.listItem}>
           <span className={s.listPath} title={p}>{p.split('/').pop()}</span>
-          <span className={s.listDir} title={p}>{p}</span>
+          <span className={s.listDir} title={p}>{relTo(folder, p)}</span>
           <Tick path={p} checks={checks} />
           <button className={s.remove} onClick={() => onChange(value.filter((x) => x !== p))}
                   title="remove from the list (the file stays)">×</button>
         </div>
       ))}
       <div className={s.inputRow}>
-        <input className={s.mono} value={adding} placeholder="add a path…"
+        <input className={s.mono} value={adding}
+               placeholder={folder ? 'add a path in the folder, or from / …' : 'add a path…'}
                onChange={(e) => setAdding(e.target.value)}
-               onKeyDown={(e) => { if (e.key === 'Enter') add(adding.trim()) }} />
-        <button className={s.secondary} disabled={!adding.trim()} onClick={() => add(adding.trim())}>Add</button>
+               onKeyDown={(e) => { if (e.key === 'Enter') add(inFolder(folder, adding.trim())) }} />
+        <button className={s.secondary} disabled={!adding.trim()}
+                onClick={() => add(inFolder(folder, adding.trim()))}>Add</button>
         {field.upload && <UploadButton kind={field.upload} onUploaded={add} />}
       </div>
     </div>

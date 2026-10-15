@@ -5,7 +5,7 @@ import type { PathCheck, SetupField, Source } from '../types'
 import { SOURCE_STATE } from './Rail'
 import { Trace } from './Trace'
 import { ConfirmButton } from './ConfirmButton'
-import { Tick, UploadButton, usePathCheck } from './SetupFields'
+import { Tick, UploadButton, inFolder, usePathCheck } from './SetupFields'
 import s from './SetupPage.module.css'
 
 // Additional data: a source's row (state, columns, linkage), adding one by
@@ -64,11 +64,15 @@ export function SourceRow({ source, busy, onPropose, onRemove }: {
   )
 }
 
-export function AddSource({ checks, onAdded }: { checks: PathCheck; onAdded: () => void }) {
+/** Register a source by path - relative to the additional materials folder, or from /. */
+export function AddSource({ checks, folder, onAdded }: { checks: PathCheck; folder: string; onAdded: () => void }) {
   const [open, setOpen] = useState(false)
   const [form, setForm] = useState({ name: '', schema: '', data: '' })
   const [error, setError] = useState<string | null>(null)
-  const extra = usePathCheck([form.schema, form.data])
+  const [uploaded, setUploaded] = useState('')            // an upload's path is already whole
+  const schema = form.schema === uploaded ? uploaded : inFolder(folder, form.schema.trim())
+  const data = inFolder(folder, form.data.trim())
+  const extra = usePathCheck([schema, data])
   const all = { ...checks, ...extra }
   if (!open) return <button className={s.link} onClick={() => setOpen(true)}>+ Add a source</button>
   const schemaField = { label: 'Description (sample JSON)', help: '{column: [description, [sample values]]}' } as SetupField
@@ -79,28 +83,31 @@ export function AddSource({ checks, onAdded }: { checks: PathCheck; onAdded: () 
       <div className={s.field}>
         <span className={s.fieldLabel}>{schemaField.label}</span>
         <div className={s.inputRow}>
-          <input className={s.mono} value={form.schema} placeholder="path, or upload →"
+          <input className={s.mono} value={form.schema}
+                 placeholder={folder ? 'bureau.json - in the folder, or upload →' : 'path, or upload →'}
                  onChange={(e) => setForm({ ...form, schema: e.target.value })} />
-          <UploadButton kind="source_schema" onUploaded={(p) => setForm((f) => ({ ...f, schema: p }))} />
-          <Tick path={form.schema} checks={all} />
+          <UploadButton kind="source_schema" onUploaded={(p) => { setUploaded(p); setForm((f) => ({ ...f, schema: p })) }} />
+          <Tick path={schema} checks={all} />
         </div>
         <span className={s.fieldHelp}>{schemaField.help}</span>
       </div>
       <div className={s.field}>
         <span className={s.fieldLabel}>Data (parquet or csv)</span>
         <div className={s.inputRow}>
-          <input className={s.mono} value={form.data} placeholder="/path/bureau.parquet - optional"
+          <input className={s.mono} value={form.data}
+                 placeholder={folder ? 'bureau.parquet - in the folder, optional' : '/path/bureau.parquet - optional'}
                  onChange={(e) => setForm({ ...form, data: e.target.value })} />
-          <Tick path={form.data} checks={all} />
+          <Tick path={data} checks={all} />
         </div>
-        <span className={s.fieldHelp}>Big files are registered where they lie - by path, never uploaded or copied.</span>
+        <span className={s.fieldHelp}>Big files are registered where they lie - by path, never uploaded or copied.
+          {folder && <> Names are inside <code>{folder}</code>; start one with / to point elsewhere.</>}</span>
       </div>
       {error && <div className={s.error}>{error}</div>}
       <div className={s.actions}>
         <button className={s.secondary} onClick={() => { setOpen(false); setError(null) }}>Cancel</button>
         <button className={s.primary} disabled={!form.name || !form.schema} onClick={async () => {
           try {
-            await api.addSource(form.name.trim(), form.schema.trim(), form.data.trim())
+            await api.addSource(form.name.trim(), schema, data)
             setForm({ name: '', schema: '', data: '' })
             setOpen(false)
             onAdded()

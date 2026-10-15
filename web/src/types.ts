@@ -38,7 +38,7 @@ export type SetupField = {
 }
 
 export type SetupBlock = {
-  key: 'model' | 'context' | 'shots' | 'evaluation' | 'additional' | 'scope'
+  key: 'task' | 'model' | 'shots' | 'context' | 'folder' | 'additional' | 'scope' | 'evaluation'
   title: string
   help: string
   folder: boolean
@@ -133,7 +133,7 @@ export type CodeCard = {
   level: string | null
   title: string
   code: string
-  state: 'running' | 'ok' | 'error'
+  state: 'running' | 'ok' | 'error' | 'stopped'
   stdout?: string
   error?: string | null
   result?: { n_rows: number; columns: Record<string, string>; head: string } | null
@@ -352,7 +352,7 @@ export type EvalSummary = {
 export type EvalStage = {
   key: string
   label: string
-  status: 'pending' | 'running' | 'passed' | 'warning' | 'skipped' | 'failed'
+  status: 'pending' | 'running' | 'passed' | 'warning' | 'skipped' | 'failed' | 'stopped' | 'not_run'
   detail: string
   elapsed_seconds: number | null
   error: string | null
@@ -377,6 +377,21 @@ export type EvalView = {
   featureStats: Record<string, FeatureStats>
   error?: string
   outputDir?: string
+}
+
+/** The base model, as the latest finished evaluation trained it. */
+export type BaseModelCard = {
+  eval_id: string
+  evaluated: number
+  target: string
+  n_features: number
+  best_iteration: number | null
+  splits: string[]
+  gini: Record<string, number | null>
+  capture: Record<string, Record<string, number | null>>
+  data: Record<string, { rows: number; default_rate: number }>
+  drivers: { feature: string; share: number }[]
+  params: { max_depth: number | null; eta: number | null; num_boost_round: number | null }
 }
 
 /** One evaluated variant - base + a feature, or base + a combination - from one evaluation. */

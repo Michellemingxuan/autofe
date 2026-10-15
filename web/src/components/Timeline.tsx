@@ -106,7 +106,7 @@ export function Timeline({ view, inView, onSelect }: {
                   {l3 && step.kind === 'l3' ? (step.request?.challenge
                       ? `${step.request.challenge.verdict} → ${step.request.status}`
                       : step.request?.refunded ? 'dropped · not counted'
-                      : !step.request ? (live ? 'screening…' : 'did not pass the screen')
+                      : !step.request ? (live && !step.refused?.length ? 'screening…' : refusedLabel(step))
                       : L3_STATUS[step.status] ?? STATUS_LABEL[step.status])
                     : step.row?.deleted ? 'removed from pool'
                     : step.kind === 'challenge' && step.request?.challenge
@@ -204,4 +204,11 @@ function FeatureProgress({ step }: { step: Step }) {
 
 const PIP: Record<Pip, string> = {
   pending: '', on: s.pipOn, run: `${s.pipOn} ${s.pipRun}`, fail: s.pipFail, keep: s.pipKeep, drop: s.pipDrop,
+}
+
+/** Why a request never got recorded - every refusal is free, so it says so. */
+function refusedLabel(step: Step): string {
+  const last = step.refused?.[step.refused.length - 1]?.error ?? ''
+  const same = last.match(/same data as `([^`]+)`/)
+  return same ? `same data as ${same[1]} · not counted` : 'sent back by the screen · not counted'
 }

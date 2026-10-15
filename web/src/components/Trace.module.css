@@ -167,6 +167,7 @@
 .sqlBlock { border: 1px solid #5a47a0; border-radius: 8px; overflow: hidden; background: var(--j-sys-box); }
 .sqlBlock .sqlHead { border-top: none; background: #241d3f; color: #c9b8f2; font-weight: 600; }
 .sqlBlock .src { border-top: 1px solid #3a2f63; white-space: pre-wrap; word-break: break-word; }
+.needText { padding: 8px 11px; border-top: 1px solid #3a2f63; color: var(--j-sys-text-strong); line-height: 1.55; white-space: pre-wrap; overflow-wrap: anywhere; }
 .keptHead { display: flex; justify-content: space-between; align-items: center; font-size: var(--j-fs-sm); font-weight: 700; color: #c9b8f2; margin-top: 4px; }
 .refusedTry { border-left: 3px solid #b44a4a; background: #2a1717; color: #f2c0c0; padding: 7px 10px; border-radius: 0 6px 6px 0; font-size: var(--j-fs-sm); line-height: 1.5; }
 .refusedTry summary { cursor: pointer; color: #d99; font-size: var(--j-fs-meta); margin-top: 4px; }

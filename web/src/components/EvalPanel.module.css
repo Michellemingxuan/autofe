@@ -54,6 +54,8 @@
 .row_passed .stepNum { background: var(--j-good-soft); color: var(--j-good-ink); }
 .row_warning .stepNum { background: var(--j-warn-bg); color: var(--j-warn-ink); }
 .row_failed .stepNum { background: var(--j-danger-soft); color: var(--j-danger); }
+.row_stopped .stepNum { background: var(--j-chip); color: var(--j-ink-3); outline: 1px solid var(--j-border-strong); }
+.row_not_run { opacity: 0.5; }
 .row_running .stepNum { background: var(--j-accent); color: white; animation: pulse 1s infinite; }
 .stepMain { display: flex; flex-direction: column; gap: 3px; min-width: 0; }
 .stepTop { display: flex; flex-wrap: wrap; justify-content: space-between; align-items: baseline; gap: 2px 10px; }
@@ -69,6 +71,7 @@
 .dot.running { background: var(--j-accent); animation: pulse 1s infinite; }
 .dot.ok { background: var(--j-live); }
 .dot.error { background: var(--j-danger); }
+.dot.stopped { background: var(--j-ink-mute); }
 .logToggle { border: none; background: transparent; text-align: left; padding: 0; font-size: var(--j-fs-meta); color: var(--j-ink-4); }
 .log { background: var(--j-sys-box); border-radius: 8px; padding: 8px 10px; max-height: 220px; overflow-y: auto; font-family: var(--j-font-mono); font-size: 10.5px; line-height: 1.55; color: var(--j-sys-text); }
 .logLine { white-space: pre-wrap; word-break: break-word; }

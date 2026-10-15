@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
 import type {
-  BoardRow, EvalResult, LlmCall, LlmCallFull, EvalSummary, Ev, Params, PathCheck, PoolFeature, RequestItem, RunSummary, SetupView, Source,
+  BaseModelCard, BoardRow, EvalResult, LlmCall, LlmCallFull, EvalSummary, Ev, Params, PathCheck, PoolFeature, RequestItem, RunSummary, SetupView, Source,
   ThemePool, Workspace,
 } from './types'
 
@@ -86,6 +86,7 @@ export const api = {
   requestSetUrl: '/api/requests.md',
   evaluations: () => call<EvalSummary[]>('/api/evaluations'),
   results: () => call<EvalResult[]>('/api/results'),
+  baseModel: () => call<BaseModelCard | null>('/api/base_model'),
   clearResults: () => del('/api/results'),
   evaluate: (features: string[], combinations: Record<string, string[]>) =>
     post<{ eval_id: string }>('/api/evaluations', { features, combinations }),

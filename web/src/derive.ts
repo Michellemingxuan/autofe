@@ -418,6 +418,14 @@ export function deriveEval(events: Ev[]): EvalView {
         break
     }
   }
+  // Stopped or failed: the step it was on ends there, and the later ones never ran.
+  if (view.status === 'stopped' || view.status === 'error') {
+    const halted = view.status === 'stopped' ? 'stopped' : 'failed'
+    view.stages = view.stages.map((st) => (
+      st.status === 'running' ? { ...st, status: halted }
+        : st.status === 'pending' ? { ...st, status: 'not_run' } : st))
+    for (const c of view.codes) if (c.state === 'running') c.state = view.status === 'stopped' ? 'stopped' : 'error'
+  }
   view.codes = view.codes.map((c) => ({ ...c }))
   return view
 }
@@ -445,7 +453,7 @@ export function deriveL3(events: Ev[]): RunView {
   const byIntent = new Map<string, Step>()
   const calls = new Map<string, { use: ToolUse; step: Step | null; args: any }>()
   const codes = new Map<string, CodeCard>()
-  const refusedBySource = new Map<string, { tries: RefusedTry[]; uses: ToolUse[] }>()
+  const refusedBySource = new Map<string, { tries: RefusedTry[]; uses: ToolUse[]; ts: number }>()
   let explore: Step | null = null
   let summary: Step | null = null
   let ideasStep: Step | null = null
@@ -576,7 +584,7 @@ export function deriveL3(events: Ev[]): RunView {
         call.use.ok = !(out.ok === false || (out.error && !out.recorded))
         if (!call.step && isRequest(call.use.tool)) {
           const name = call.args.source_name ?? '?'
-          const entry = refusedBySource.get(name) ?? { tries: [], uses: [] }
+          const entry = refusedBySource.get(name) ?? { tries: [], uses: [], ts: e.ts }
           entry.tries.push({ sql: call.args.sql ?? '', error: String(out.error ?? e.output) })
           entry.uses.push(call.use)
           refusedBySource.set(name, entry)
@@ -638,13 +646,17 @@ export function deriveL3(events: Ev[]): RunView {
     }
   }
 
-  // Tries refused and never fixed are steps of their own.
+  // Tries refused and never fixed are steps of their own - where they happened,
+  // not after everything else.
   for (const [name, entry] of refusedBySource) {
     const step = push('l3', name)
-    step.refused = entry.tries
+    view.steps.pop()
+    Object.assign(step, { refused: entry.tries, status: 'sent_back', startTs: entry.ts, endTs: entry.ts })
     step.tools!.push(...entry.uses)
-    step.status = 'sent_back'
+    const at = view.steps.findIndex((st) => st.startTs > entry.ts)
+    view.steps.splice(at < 0 ? view.steps.length : at, 0, step)
   }
+  view.steps.forEach((st, i) => { st.id = i })
   if (words.length) exploreStep()
   // The summary ends the run, whatever came after it (runs from the two-stage design
   // reported once per stage).

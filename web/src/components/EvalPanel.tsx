@@ -214,9 +214,11 @@ function Progress({ view }: { view: EvalView }) {
   }, [view.logs.length, showLog])
 
   const scriptsDone = view.codes.filter((c) => c.state !== 'running').length
-  const scriptState = !view.codes.length ? (view.status === 'running' ? 'running' : 'pending')
+  const halted = view.status === 'stopped' || view.status === 'error'
+  const scriptState = !view.codes.length ? (view.status === 'running' ? 'running' : halted ? 'not_run' : 'pending')
     : view.codes.some((c) => c.state === 'error') ? 'failed'
-    : scriptsDone < view.codes.length || !view.stages.length ? 'running' : 'passed'
+    : view.codes.some((c) => c.state === 'stopped') ? 'stopped'
+    : scriptsDone < view.codes.length || !view.stages.length ? (halted ? 'stopped' : 'running') : 'passed'
   // The gates a verdict could not apply - no evidence for them in an evaluation.
   const notApplied = [...new Set(view.verdicts.flatMap((v) =>
     Object.entries(v).filter(([, x]) => x === 'not evaluable').map(([k]) => k)))]
@@ -245,7 +247,8 @@ function Progress({ view }: { view: EvalView }) {
                 <div className={s.stepTop}>
                   <span className={s.stepTitle}>{text.title}</span>
                   <span className={s.stepResult}>
-                    {st.status === 'running' ? 'running…' : st.status === 'pending' ? 'waiting' : st.detail}
+                    {st.status === 'running' ? 'running…' : st.status === 'pending' ? 'waiting'
+                      : st.status === 'stopped' ? 'stopped here' : st.status === 'not_run' ? 'not run' : st.detail}
                     {st.elapsed_seconds != null && <span className={s.dim}> · {st.elapsed_seconds.toFixed(1)}s</span>}
                   </span>
                 </div>

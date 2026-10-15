@@ -296,9 +296,9 @@ function L3Summary({ step, requests }: { step: Step; requests: DataRequest[] }) 
         <>
           <div className={s.keptHead}><span>Beyond scope · {beyond.length} kept idea{beyond.length > 1 ? 's' : ''}, the data each needs</span></div>
           {beyond.map((r) => (
-            <div key={r.intent} className={s.field}>
-              <span className={s.fieldLabel}>{r.intent} · {r.source_name}</span>
-              <div className={s.fieldText}>{r.data}</div>
+            <div key={r.intent} className={s.sqlBlock}>
+              <div className={s.sqlHead}><span>{r.intent} · {r.source_name}</span></div>
+              <div className={s.needText}>{r.data}</div>
             </div>
           ))}
         </>

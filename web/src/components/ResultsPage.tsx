@@ -1,7 +1,7 @@
 import { useMemo, useState } from 'react'
 import { api, usePolled } from '../api'
 import { navigate } from '../App'
-import type { EvalResult } from '../types'
+import type { BaseModelCard, EvalResult } from '../types'
 import { ConfirmButton } from './ConfirmButton'
 import { EvalPanel, pct, signed } from './EvalPanel'
 import s from './ResultsPage.module.css'
@@ -33,7 +33,8 @@ export const selection = (id: string | null) => {
  */
 export function ResultsPage({ selected }: { selected: string | null }) {
   const [results, refreshResults] = usePolled(api.results, [], 15000)
-  const [evaluations] = usePolled(api.evaluations, [], 3000)
+  const [evaluations, refreshEvaluations] = usePolled(api.evaluations, [], 3000)
+  const [base] = usePolled(api.baseModel, [], 15000)
   const pick = selection(selected)
   const select = (evalId: string, variant: string | null) =>
     navigate('results', variant ? `${evalId}.${variant}` : evalId)
@@ -129,6 +130,8 @@ export function ResultsPage({ selected }: { selected: string | null }) {
       </header>
 
       <div className={`${s.body} ${pick ? s.withPanel : ''}`}>
+      <div className={s.main}>
+      <ModelCard card={base ?? null} />
       <section className={s.card}>
         <div className={s.toolbar}>
           <input className={s.search} value={query} placeholder="Filter by feature, combination or direction"
@@ -148,12 +151,21 @@ export function ResultsPage({ selected }: { selected: string | null }) {
         {unfinished.length > 0 && (
           <div className={s.unfinished}>
             {unfinished.map((e) => (
-              <button key={e.eval_id} className={`${s.pending} ${s[e.status]}`}
-                      onClick={() => select(e.eval_id, null)}>
-                <span className={s.pendingDot} />
-                {e.status === 'running' ? 'Evaluating' : e.status === 'stopped' ? 'Stopped' : 'Failed'}: {e.features.map((f) => f.column).join(', ')}
-                {Object.keys(e.combinations).length > 0 && ` · ⊕ ${Object.keys(e.combinations).join(', ⊕ ')}`}
-              </button>
+              <span key={e.eval_id} className={`${s.pending} ${s[e.status]}`}>
+                <button className={s.pendingOpen} onClick={() => select(e.eval_id, null)}>
+                  <span className={s.pendingDot} />
+                  {e.status === 'running' ? 'Evaluating' : e.status === 'stopped' ? 'Stopped' : 'Failed'}: {e.features.map((f) => f.column).join(', ')}
+                  {Object.keys(e.combinations).length > 0 && ` · ⊕ ${Object.keys(e.combinations).join(', ⊕ ')}`}
+                </button>
+                {e.status !== 'running' && (
+                  <button className={s.pendingRemove} title="Remove this evaluation"
+                          aria-label="Remove this evaluation" onClick={async () => {
+                            await api.deleteEvaluation(e.eval_id)
+                            if (pick?.evalId === e.eval_id) navigate('results')
+                            refreshEvaluations()
+                          }}>×</button>
+                )}
+              </span>
             ))}
           </div>
         )}
@@ -272,14 +284,8 @@ export function ResultsPage({ selected }: { selected: string | null }) {
             </div>
           </div>
         )}
-        <div className={s.hint}>
-          Gains are against base on test, the out-of-time hold-out. Screen Δ Gini is the gain the
-          feature showed in discovery, on the screen rows. Capture = share of defaults in the top x%
-          of scores. Missing is the share of rows with no value, over every split; Max |corr| is
-          the largest |Spearman| with a base feature, on train. Combinations have no verdict: the
-          gates judge single features.
-        </div>
       </section>
+      </div>
       {pick && (
         <EvalPanel key={pick.evalId} evalId={pick.evalId} variant={pick.variant}
                    onSelect={(v) => select(pick.evalId, v)}
@@ -300,4 +306,68 @@ function memberRanks(r: EvalResult) {
     .map((feature) => ({ feature, rank: ranked.get(feature)?.rank ?? null,
                          of: ranked.get(feature)?.of ?? null, share: ranked.get(feature)?.share ?? null }))
     .sort((a, b) => (a.rank ?? Infinity) - (b.rank ?? Infinity))
+}
+
+/** The base model every row is measured against: how it scores, on what, and what drives it. */
+function ModelCard({ card }: { card: BaseModelCard | null }) {
+  const [open, setOpen] = useState(true)
+  if (!card) {
+    return (
+      <section className={s.model}>
+        <div className={s.modelHead}><span className={s.modelTitle}>Base model</span>
+          <span className={s.meta}>Trained with the first evaluation - its card shows here then.</span></div>
+      </section>
+    )
+  }
+  const { splits } = card
+  const top = card.drivers[0]?.share || 1
+  const pctOf = (x: number | null | undefined) => (x == null ? '–' : `${(x * 100).toFixed(1)}%`)
+  const rows: { label: string; values: (string)[] }[] = [
+    { label: 'Gini', values: splits.map((sp) => card.gini[sp]?.toFixed(4) ?? '–') },
+    ...Object.entries(card.capture).map(([k, by]) => ({
+      label: `Capture top ${k.slice(3)}%`, values: splits.map((sp) => pctOf(by[sp])) })),
+    { label: 'Rows', values: splits.map((sp) => card.data[sp]?.rows.toLocaleString() ?? '–') },
+    { label: `Default rate`, values: splits.map((sp) => pctOf(card.data[sp]?.default_rate)) },
+  ]
+  return (
+    <section className={s.model}>
+      <button className={s.modelHead} onClick={() => setOpen(!open)} aria-expanded={open}>
+        <span className={s.chev}>{open ? '▾' : '▸'}</span>
+        <span className={s.modelTitle}>Base model</span>
+        <span className={s.modelFacts}>
+          XGBoost · <b>{card.n_features.toLocaleString()}</b> features · test Gini <b>{card.gini.test?.toFixed(4) ?? '–'}</b>
+        </span>
+        <span className={s.meta}>target <code>{card.target}</code> · from the evaluation of {when(card.evaluated)}</span>
+      </button>
+      {open && (
+        <div className={s.modelBody}>
+          <table className={s.modelTable}>
+            <thead>
+              <tr><th />{splits.map((sp) => <th key={sp} className={`${s.num} ${sp === 'test' ? s.testCol : ''}`}>{sp}</th>)}</tr>
+            </thead>
+            <tbody>
+              {rows.map((r) => (
+                <tr key={r.label}>
+                  <td>{r.label}</td>
+                  {r.values.map((v, i) => (
+                    <td key={splits[i]} className={`${s.num} ${splits[i] === 'test' ? s.testCol : ''}`}>{v}</td>
+                  ))}
+                </tr>
+              ))}
+            </tbody>
+          </table>
+          <div className={s.drivers}>
+            <span className={s.driversTitle}>Top {card.drivers.length} of {card.n_features.toLocaleString()} features · SHAP share on test</span>
+            {card.drivers.map((d) => (
+              <div key={d.feature} className={s.driver}>
+                <span className={s.driverName}>{d.feature}</span>
+                <span className={s.driverBar}><i style={{ width: `${(d.share / top) * 100}%` }} /></span>
+                <span className={s.driverPct}>{pctOf(d.share)}</span>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+    </section>
+  )
 }

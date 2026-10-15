@@ -56,10 +56,18 @@ export function ShotsBody({ block, values, set, checks, workspace, onApplied }: 
         <h3 className={s.partTitle}>Your own categories</h3>
         <p className={s.partLead}>
           A group of example rows with a story - what they are and why they matter. Read after
-          the clustering shots, in order. What is loaded is listed on the right.
+          the clustering shots, in order.
         </p>
         <AddCategory onAdded={onApplied} />
       </section>
+
+      {cats.length > 0 && (
+        <section className={s.part}>
+          <h3 className={s.partTitle}>Loaded</h3>
+          <LoadedShots cats={cats} target={workspace?.target ?? 'target'}
+                       onRemove={async (c) => { await removeShot(c, block); onApplied() }} />
+        </section>
+      )}
     </>
   )
 }
@@ -165,12 +173,11 @@ const KIND_LABEL: Record<ShotCategory['kind'], string> = {
   clustering: 'clustering', ids: 'ids', table: 'table', error: 'error',
 }
 
-/** Every category: its rows, class mix and rotation, then the totals. */
-export function ShotOverview({ cats, target, onRemove }: {
+/** Every loaded category: its rows, class mix and rotation, then the totals. */
+function LoadedShots({ cats, target, onRemove }: {
   cats: ShotCategory[]; target: string; onRemove: (c: ShotCategory) => Promise<void>
 }) {
   const [open, setOpen] = useState<string | null>(null)
-  if (!cats.length) return <p className={s.ovEmpty}>No shots yet.</p>
   const classes = [...new Set(cats.flatMap((c) => Object.keys(c.classes)))].sort()
   const total = cats.reduce((n, c) => n + c.found, 0)
   const totals = Object.fromEntries(classes.map((k) => [k, cats.reduce((n, c) => n + (c.classes[k] ?? 0), 0)]))

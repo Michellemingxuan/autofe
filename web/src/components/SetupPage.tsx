@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from 'react'
+import { Fragment, useEffect, useMemo, useRef, useState } from 'react'
 import { api, usePolled } from '../api'
 import type { PathCheck, SetupBlock, SetupField, Workspace } from '../types'
 import { ConfirmButton } from './ConfirmButton'
@@ -6,16 +6,29 @@ import {
   DefaultHint, FieldLabel, FilesList, PathOrUpload, PlainField, Tick, TypedField, normalise,
   usePathCheck,
 } from './SetupFields'
-import { ShotOverview, ShotsBody, removeShot } from './SetupShots'
+import { ShotsBody } from './SetupShots'
 import { AddSource, LinkageJob, SourceRow } from './SetupSources'
 import s from './SetupPage.module.css'
 
 type Values = Record<string, unknown>
 type Readiness = 'ready' | 'attention' | 'edited'
 
-// The order data reaches the agent: the model rows, what they mean, examples,
-// extra data and where it may come from - then how features are judged.
-const ORDER: SetupBlock['key'][] = ['model', 'context', 'shots', 'additional', 'scope', 'evaluation']
+// The order the agent meets things: the task, the model materials, extra data
+// and where more may come from - then how features are judged.
+const ORDER: SetupBlock['key'][] = ['task', 'model', 'shots', 'context', 'folder', 'additional', 'scope', 'evaluation']
+// The sections, each a heading over its blocks - lettered when there are several.
+const SECTIONS: { title: string; keys: SetupBlock['key'][] }[] = [
+  { title: 'Overview', keys: ['task'] },
+  { title: 'Model materials', keys: ['model', 'shots', 'context'] },
+  { title: 'Additional materials', keys: ['folder', 'additional', 'scope'] },
+  { title: 'Evaluation', keys: ['evaluation'] },
+]
+const sectionOf = (key: SetupBlock['key']) => SECTIONS.find((g) => g.keys.includes(key))
+const letterOf = (key: SetupBlock['key']) => {
+  if (key === 'folder') return null                     // the section's folder, ahead of its blocks
+  const keys = (sectionOf(key)?.keys ?? []).filter((k) => k !== 'folder')
+  return keys.length > 1 ? 'abcdefgh'[keys.indexOf(key)] : null
+}
 const READINESS_LABEL: Record<Readiness, string> = {
   ready: 'Ready', attention: 'Needs attention', edited: 'Edits not applied',
 }
@@ -26,7 +39,7 @@ const isDirty = (f: SetupField, v: unknown) =>
 
 /**
  * Step 1. The data the agent works from, as a spine of blocks in the order
- * the data reaches it. Each block shows a readout of what is loaded now,
+ * the agent meets it. Each block shows a readout of what is loaded now,
  * prefills from the config file, and is applied on its own - saved only if
  * the workspace it describes loads.
  */
@@ -51,6 +64,7 @@ export function SetupPage({ workspace, onChange }: { workspace: Workspace | null
             [workspace?.active_linkage])
 
   const set = (key: string, v: unknown) => setValues((old) => ({ ...old, [key]: v }))
+  const extraFolder = asText(values['discovery.additional_data.dir'])
   const applied = () => { refreshSetup(); onChange() }
 
   // Every path on screen, checked as it is typed.
@@ -75,7 +89,6 @@ export function SetupPage({ workspace, onChange }: { workspace: Workspace | null
       <header className={s.header}>
         <div className={s.headText}>
           <h1 className={s.title}>Setup</h1>
-          <p className={s.subtitle}>The data the agent works from, and how its features will be judged.</p>
         </div>
         <span className={s.mapCount}><b>{readyCount}</b> of {blocks.length} ready</span>
         <ConfirmButton label="Reset to config file" confirm="Drop every saved change?"
@@ -88,12 +101,15 @@ export function SetupPage({ workspace, onChange }: { workspace: Workspace | null
       <div className={s.split}>
       <div className={s.scroller}>
         <ol className={s.spine}>
-          {blocks.map((b) => (
-            <li key={b.key} ref={(el) => { sections.current[b.key] = el }}
-                className={`${s.stop} ${flash === b.key ? s.flash : ''}`}>
+          {blocks.map((b, i) => (
+            <Fragment key={b.key}>
+            {startsSection(blocks, i) && <li className={s.groupHead}>{sectionOf(b.key)?.title}</li>}
+            <li ref={(el) => { sections.current[b.key] = el }}
+                className={`${s.stop} ${s.inGroup} ${flash === b.key ? s.flash : ''}`}>
               <span className={`${s.node} ${s['node_' + state(b)]}`} aria-hidden />
               <Block block={b} values={values} state={state(b)} onApplied={applied}>
                 {b.key === 'model' && <ModelFields block={b} values={values} set={set} checks={checks} />}
+                {b.key === 'task' && <Fields block={b} values={values} set={set} checks={checks} />}
                 {b.key === 'context' && (
                   <>
                     <Fields block={b} values={values} set={set} checks={checks} />
@@ -105,9 +121,9 @@ export function SetupPage({ workspace, onChange }: { workspace: Workspace | null
                              workspace={workspace} onApplied={applied} />
                 )}
                 {b.key === 'evaluation' && <EvaluationFields block={b} values={values} set={set} />}
+                {b.key === 'folder' && <Fields block={b} values={values} set={set} checks={checks} />}
                 {b.key === 'additional' && (
                   <>
-                    <Fields block={b} values={values} set={set} checks={checks} />
                     <section className={s.part}>
                       <h3 className={s.partTitle}>Sources</h3>
                       <div className={s.sources}>
@@ -125,14 +141,15 @@ export function SetupPage({ workspace, onChange }: { workspace: Workspace | null
                                      onRemove={async () => { await api.removeSource(src.name); onChange() }} />
                         ))}
                       </div>
-                      <AddSource checks={checks} onAdded={onChange} />
+                      <AddSource checks={checks} folder={extraFolder} onAdded={onChange} />
                     </section>
                     {jobId && <LinkageJob jobId={jobId} onClose={() => { setJobId(null); onChange() }} />}
                   </>
                 )}
-                {b.key === 'scope' && <ScopeFields block={b} values={values} set={set} checks={checks} />}
+                {b.key === 'scope' && <ScopeFields block={b} values={values} set={set} checks={checks} folder={extraFolder} />}
               </Block>
             </li>
+            </Fragment>
           ))}
         </ol>
       </div>
@@ -140,25 +157,42 @@ export function SetupPage({ workspace, onChange }: { workspace: Workspace | null
       <aside className={s.overview} aria-label="What the agent has now">
         <div className={s.ovHead}>
           <span className={s.ovTitle}>What the agent has now</span>
-          <span className={s.ovSub}>Live from the loaded setup. Click a section to edit it.</span>
         </div>
-        {blocks.map((b) => (
-          <section key={b.key} className={s.ovSection}>
-            <button className={s.ovSectionHead} onClick={() => jump(b.key)} title={READINESS_LABEL[state(b)]}>
-              <span className={s.ovName}>{b.title}</span>
-              <span className={`${s.ovState} ${s['state_' + state(b)]}`}>{READINESS_LABEL[state(b)]}</span>
-            </button>
-            {b.key === 'shots'
-              ? <ShotOverview cats={workspace?.shots ?? []} target={workspace?.target ?? 'target'}
-                              onRemove={async (c) => { await removeShot(c, b); applied() }} />
-              : <Readout block={b} workspace={workspace} values={values} checks={checks} />}
-          </section>
-        ))}
+        {SECTIONS.map((sec) => {
+          const own = blocks.filter((b) => sec.keys.includes(b.key))
+          if (!own.length) return null
+          const done = own.filter((b) => state(b) === 'ready').length
+          return (
+            <section key={sec.title} className={s.ovGroup}>
+              <header className={s.ovGroupHead}>
+                <span>{sec.title}</span>
+                <span className={done === own.length ? s.ovCountDone : s.ovCount}>{done}/{own.length} ready</span>
+              </header>
+              {own.map((b) => (
+                <button key={b.key} className={s.ovItem} onClick={() => jump(b.key)}>
+                  <span className={s.ovItemHead}>
+                    <span className={`${s.ovDot} ${s['ovDot_' + state(b)]}`} aria-hidden />
+                    <span className={s.ovName}>{titleOf(b)}</span>
+                    {state(b) !== 'ready' && (
+                      <span className={`${s.ovState} ${s['state_' + state(b)]}`}>{READINESS_LABEL[state(b)]}</span>
+                    )}
+                  </span>
+                  <Readout block={b} workspace={workspace} values={values} checks={checks} />
+                </button>
+              ))}
+            </section>
+          )
+        })}
       </aside>
       </div>
     </div>
   )
 }
+
+// A section's heading goes before the first of its blocks the page has.
+const startsSection = (blocks: SetupBlock[], i: number) =>
+  i === 0 || sectionOf(blocks[i].key) !== sectionOf(blocks[i - 1].key)
+const titleOf = (b: SetupBlock) => (letterOf(b.key) ? `${letterOf(b.key)}. ${b.title}` : b.title)
 
 /** Whether a block has what the agent needs, judged from what is loaded. */
 function ready(b: SetupBlock, w: Workspace | null, values: Values, checks: PathCheck): Readiness {
@@ -170,11 +204,16 @@ function ready(b: SetupBlock, w: Workspace | null, values: Values, checks: PathC
   switch (b.key) {
     case 'model':
       return b.fields.filter((f) => f.kind === 'path').every((f) => exists(f.key)) ? 'ready' : 'attention'
+    case 'task':
+      return asText(values['discovery.task_description']).trim() ? 'ready' : 'attention'
     case 'context':
-      return asText(values['discovery.task_description']).trim() && exists('discovery.task_context_path')
+      return exists('discovery.task_context_path') && exists('discovery.column_descriptions_path')
         ? 'ready' : 'attention'
     case 'shots':
       return w.shots.some((c) => c.found > 0 && c.kind !== 'error') ? 'ready' : 'attention'
+    case 'folder':
+      return asText(values['discovery.additional_data.dir']) && exists('discovery.additional_data.dir')
+        ? 'ready' : 'attention'
     case 'additional':
       return w.sources.some((x) => x.state === 'needs_linkage') ? 'attention' : 'ready'
     case 'scope':
@@ -211,11 +250,11 @@ function Block({ block, values, state, onApplied, children }: {
     <article className={`${s.block} ${s['block_' + block.key]}`}>
       <header className={s.blockHead}>
         <div className={s.blockTitleRow}>
-          <h2 className={s.blockTitle}>{block.title}</h2>
+          <h2 className={s.blockTitle}>{titleOf(block)}</h2>
           <span className={`${s.state} ${s['state_' + state]}`}>{READINESS_LABEL[state]}</span>
           {changed > 0 && <span className={s.changedNote}>{changed} setting{changed > 1 ? 's' : ''} differ from the config file</span>}
         </div>
-        <p className={s.blockHelp}>{block.help}</p>
+        {block.help && <p className={s.blockHelp}>{block.help}</p>}
       </header>
       <div className={s.blockBody}>{children}</div>
       {block.fields.length > 0 && (
@@ -236,113 +275,105 @@ function Block({ block, values, state, onApplied, children }: {
 
 // ------------------------------------------------------------------ readouts
 
+type Row = { label: string; value: React.ReactNode; warn?: boolean }
+
+/** A block's facts as label - value rows; every block reads the same way. */
+function Rows({ rows }: { rows: Row[] }) {
+  return (
+    <dl className={s.ovRows}>
+      {rows.map((r, i) => (
+        <div key={i}><dt>{r.label}</dt><dd className={r.warn ? s.warnText : undefined}>{r.value}</dd></div>
+      ))}
+    </dl>
+  )
+}
+
 /** The block's state in one glance, drawn from what is loaded now. */
 function Readout({ block, workspace: w, values, checks }: {
   block: SetupBlock; workspace: Workspace | null; values: Values; checks: PathCheck
 }) {
   if (!w) return null
+  const v = (k: string) => values[k]
+  const file = (k: string): Row['value'] => {
+    const p = asText(v(k))
+    if (!p) return 'none'
+    return checks[p]?.exists === false ? 'not found' : <code title={p}>{p.split('/').pop()}</code>
+  }
+  const missing = (k: string) => checks[asText(v(k))]?.exists === false
   switch (block.key) {
-    case 'model': {
-      const files = block.fields.filter((f) => f.kind === 'path').map((f) => {
-        const c = checks[asText(values[f.key])]
-        return { label: f.label.replace(/ \(.*\)$/, ''), bytes: c?.bytes ?? 0, ok: c?.exists !== false }
-      })
-      const total = files.reduce((n, f) => n + f.bytes, 0) || 1
-      return (
-        <div className={s.rdModel}>
-          <div className={s.sizeBar}>
-            {files.map((f, i) => (
-              <span key={f.label} className={`${s.sizePart} ${s['tone' + i]} ${f.ok ? '' : s.sizeMissing}`}
-                    style={{ flex: Math.max(f.bytes / total, 0.04) }} title={`${f.label}: ${fmtBytes(f.bytes)}`} />
-            ))}
-          </div>
-          <ul className={s.legend}>
-            {files.map((f, i) => (
-              <li key={f.label}><i className={s['tone' + i]} />{f.label}
-                <span className={f.ok ? undefined : s.warnText}>{f.ok ? fmtBytes(f.bytes) : 'missing'}</span></li>
-            ))}
-          </ul>
-          <dl className={s.facts}>
-            <div><dt>Base features</dt><dd>{w.base_features}</dd></div>
-            <div><dt>Target</dt><dd><code>{w.target}</code></dd></div>
-            <div><dt>Screen fit</dt><dd>{w.screen_rows.fit.toLocaleString()} rows</dd></div>
-            <div><dt>Screen score</dt><dd>{w.screen_rows.scored.toLocaleString()} rows</dd></div>
-          </dl>
-        </div>
-      )
-    }
-    case 'context': {
-      const task = asText(values['discovery.task_description']).trim()
+    case 'task': {
+      const task = asText(v('discovery.task_description')).trim()
       return task
-        ? <blockquote className={s.quote}>{task.length > 220 ? task.slice(0, 220) + '…' : task}</blockquote>
-        : <p className={s.rdLine}>No task description yet - the agent needs to know what to improve.</p>
+        ? <p className={s.ovQuote}>{task}</p>
+        : <p className={s.ovEmpty}>Not described yet - the agent needs to know what to improve.</p>
     }
-    case 'shots': {
-      const rows = w.shots.reduce((n, c) => n + c.found, 0)
-      return (
-        <p className={s.rdLine}>
-          {w.shots.length
-            ? <><b>{w.shots.length}</b> categor{w.shots.length === 1 ? 'y' : 'ies'}, <b>{rows}</b> example rows:{' '}
-                {w.shots.map((c) => c.name).join(', ')}.</>
-            : 'No examples yet. The agent can still sample rows, but curated shots steer it better.'}
-        </p>
-      )
+    case 'model': {
+      const size = (k: string) => (missing(k) ? 'missing' : fmtBytes(checks[asText(v(k))]?.bytes ?? 0))
+      const splits = ['data.paths.train', 'data.paths.valid', 'data.paths.test']
+      const screen = ['discovery.screen_paths.train', 'discovery.screen_paths.valid']
+      return <Rows rows={[
+        { label: 'Target', value: <code>{w.target}</code> },
+        { label: 'Base features', value: w.base_features },
+        { label: 'Train · valid · test', value: splits.map(size).join(' · '), warn: splits.some(missing) },
+        { label: 'Screen fit · score',
+          value: `${w.screen_rows.fit.toLocaleString()} · ${w.screen_rows.scored.toLocaleString()} rows`,
+          warn: screen.some(missing) },
+      ]} />
+    }
+    case 'shots':
+      return w.shots.length
+        ? <Rows rows={w.shots.map((c) => ({
+            label: c.name,
+            value: c.kind === 'error' ? 'not loaded'
+              : `${c.found} rows · ${c.rotate ? `1 of ${c.batches} batches a run` : 'all every run'}`,
+            warn: c.kind === 'error',
+          }))} />
+        : <p className={s.ovEmpty}>No examples yet.</p>
+    case 'context':
+      return <Rows rows={[
+        { label: 'Model and data description', value: file('discovery.task_context_path'), warn: missing('discovery.task_context_path') },
+        { label: 'Column description', value: file('discovery.column_descriptions_path'),
+          warn: missing('discovery.column_descriptions_path') },
+      ]} />
+    case 'folder': {
+      const dir = asText(v('discovery.additional_data.dir'))
+      return dir
+        ? <Rows rows={[{ label: 'Path', value: <code title={dir}>{dir}</code>, warn: missing('discovery.additional_data.dir') }]} />
+        : <p className={s.ovEmpty}>Not set - sources and scope files need full paths.</p>
     }
     case 'additional':
-      return w.sources.length ? (
-        <div className={s.chips}>
-          {w.sources.map((x) => (
-            <span key={x.name} className={`${s.srcChip} ${s['src_' + x.state]}`}>
-              {x.name}<i>{x.state === 'linked' ? 'linked' : x.state === 'needs_linkage' ? 'needs linkage' : 'schema only'}</i>
-            </span>
-          ))}
-        </div>
-      ) : <p className={s.rdLine}>No sources found in the folder.</p>
+      return w.sources.length
+        ? <Rows rows={w.sources.map((x) => ({
+            label: x.name,
+            value: x.state === 'linked' ? 'linked' : x.state === 'needs_linkage' ? 'needs linkage' : 'schema only',
+            warn: x.state === 'needs_linkage',
+          }))} />
+        : <p className={s.ovEmpty}>No sources yet.</p>
     case 'scope': {
       const scopes = Object.entries(w.scopes ?? {})
-      if (!scopes.length) return <p className={s.rdLine}>No scope is set up: only requests beyond scope are possible.</p>
-      return (
-        <>
-          {scopes.map(([name, counts]) => {
-            const used = counts.in_model ?? 0, quiet = counts.in_model_unused ?? 0, raw = counts.unused_raw ?? 0
-            if (!(used + quiet + raw)) return <p key={name} className={s.rdLine}><b>{name}</b>: no variable lists found.</p>
-            return (
-              <div key={name} className={s.rdScope}>
-                <div className={s.scopeBar}>
-                  <span style={{ flex: used }} className={s.scopeUsed} />
-                  {quiet > 0 && <span style={{ flex: quiet }} className={s.scopeQuiet} />}
-                  <span style={{ flex: raw }} className={s.scopeRaw} />
-                </div>
-                <p className={s.rdLine}>
-                  <b>{name}</b>: <b>{used.toLocaleString()}</b> variables already in the model
-                  {quiet > 0 && <>, <b>{quiet.toLocaleString()}</b> in it without importance</>},{' '}
-                  <b>{raw.toLocaleString()}</b> raw and unused - the room the agent has.
-                </p>
-              </div>
-            )
-          })}
-          {w.scope_notes.length > 0 && (
-            <p className={s.rdLine}>Your notes: {w.scope_notes.map((n) => n.name).join(', ')}.</p>
-          )}
-        </>
-      )
+      if (!scopes.length) return <p className={s.ovEmpty}>None set: only requests beyond scope.</p>
+      return <Rows rows={[
+        ...scopes.map(([name, c]) => {
+          const used = (c.in_model ?? 0) + (c.in_model_unused ?? 0), raw = c.unused_raw ?? 0
+          return { label: name, value: used + raw ? `${used.toLocaleString()} in model · ${raw.toLocaleString()} unused`
+                                                  : 'no variable lists', warn: !(used + raw) }
+        }),
+        ...(w.scope_notes.length ? [{ label: 'Notes', value: w.scope_notes.map((n) => n.name).join(', ') }] : []),
+      ]} />
     }
     case 'evaluation': {
-      const v = (k: string) => values[k]
       const pct = (normalise({ kind: 'numbers' } as SetupField, v('analysis.capture_rate_percents')) as number[])
         .map((p) => `${+(p * 100).toFixed(2)}%`)
-      return (
-        <p className={s.rdSentence}>
-          Each feature joins base in an XGBoost model - depth {String(v('model.params.max_depth'))},
-          learning rate {String(v('model.params.eta'))}, up to {String(v('model.num_boost_round'))} rounds
-          {v('model.tuning.enabled') === true ? ', tuned first' : ''}. Reported on test: Gini gain
-          {pct.length ? <> and capture at the top {pct.join(', ')}</> : null}
-          {v('analysis.shap.enabled') === true ? ', with SHAP ranks' : ''}. A feature passes with a Gini
-          gain of at least {String(v('verdict.min_gini_gain'))}; gates are {String(v('run.gates'))}.
-        </p>
-      )
+      return <Rows rows={[
+        { label: 'Model', value: `XGBoost · depth ${v('model.params.max_depth')} · eta ${v('model.params.eta')}`
+            + ` · ≤${v('model.num_boost_round')} rounds${v('model.tuning.enabled') === true ? ' · tuned' : ''}` },
+        { label: 'Reported', value: ['Gini gain', pct.length ? `capture ${pct.join(', ')}` : '',
+                                     v('analysis.shap.enabled') === true ? 'SHAP' : ''].filter(Boolean).join(' · ') },
+        { label: 'Passes at', value: `Gini gain ≥ ${v('verdict.min_gini_gain')} · gates ${v('run.gates')}` },
+      ]} />
     }
   }
+  return null
 }
 
 const fmtBytes = (b: number) =>
@@ -368,7 +399,7 @@ function ThemePoolPart() {
         explored first. They are made from the task description, context, columns, sources and
         scopes - again whenever those change.
       </p>
-      {!pool.ready && <p className={s.empty}>Describe the task above first.</p>}
+      {!pool.ready && <p className={s.empty}>Describe the task in the Overview first.</p>}
       {pool.generating && <p className={s.empty}>Making the themes…</p>}
       {pool.stale && !pool.generating && <p className={s.empty}>Made for an earlier task description.</p>}
       {(pool.error || error) && <p className={s.error}>{pool.error || error}</p>}
@@ -391,8 +422,8 @@ function ThemePoolPart() {
 }
 
 /** One section per scope, under its keyword - the same three settings each. */
-function ScopeFields({ block, values, set, checks }: {
-  block: SetupBlock; values: Values; set: (k: string, v: unknown) => void; checks: PathCheck
+function ScopeFields({ block, values, set, checks, folder }: {
+  block: SetupBlock; values: Values; set: (k: string, v: unknown) => void; checks: PathCheck; folder: string
 }) {
   const scopes = [...new Set(block.fields.map((f) => f.section ?? 'Scope'))]
   if (!scopes.length) {
@@ -405,15 +436,15 @@ function ScopeFields({ block, values, set, checks }: {
         <section key={name} className={s.part}>
           <h3 className={s.partTitle}>{name}</h3>
           <Fields block={{ ...block, fields: block.fields.filter((f) => (f.section ?? 'Scope') === name) }}
-                  values={values} set={set} checks={checks} />
+                  values={values} set={set} checks={checks} folder={folder} />
         </section>
       ))}
     </>
   )
 }
 
-function Fields({ block, values, set, checks }: {
-  block: SetupBlock; values: Values; set: (k: string, v: unknown) => void; checks: PathCheck
+function Fields({ block, values, set, checks, folder }: {
+  block: SetupBlock; values: Values; set: (k: string, v: unknown) => void; checks: PathCheck; folder?: string
 }) {
   return (
     <div className={s.fieldStack}>
@@ -421,7 +452,7 @@ function Fields({ block, values, set, checks }: {
         const dirty = isDirty(f, values[f.key])
         if (f.kind === 'files') {
           return <FilesList key={f.key} field={f} value={(values[f.key] as string[]) ?? []}
-                            onChange={(v) => set(f.key, v)} checks={checks} dirty={dirty} />
+                            onChange={(v) => set(f.key, v)} checks={checks} dirty={dirty} folder={folder} />
         }
         if (f.kind === 'file') {
           return <PathOrUpload key={f.key} field={f} value={asText(values[f.key])}

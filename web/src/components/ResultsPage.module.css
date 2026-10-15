@@ -3,7 +3,7 @@
 .eyebrow { color: var(--j-label); }
 .title { font-size: var(--j-fs-h1); font-weight: 600; }
 
-.body { flex: 1; min-height: 0; display: grid; grid-template-columns: minmax(0, 1fr); gap: 14px; padding: 14px; }
+.body { flex: 1; min-height: 0; display: grid; grid-template-columns: minmax(0, 1fr); grid-template-rows: minmax(0, 1fr); gap: 14px; padding: 14px; }
 .body.withPanel { grid-template-columns: minmax(0, 1fr) minmax(360px, 440px); }
 .card {
   min-height: 0; display: flex; flex-direction: column; gap: 10px; padding: 14px;
@@ -51,6 +51,9 @@
 .pending { display: inline-flex; align-items: center; gap: 6px; border: 1px solid var(--j-accent-line); background: var(--j-accent-soft); color: var(--j-accent-deep); border-radius: var(--j-radius-pill); padding: 4px 11px; font-size: var(--j-fs-meta); font-family: var(--j-font-mono); }
 .pending.error { border-color: #f2b8b8; background: var(--j-danger-soft); color: var(--j-danger); }
 .pending.stopped { border-color: var(--j-border-strong); background: var(--j-chip); color: var(--j-ink-3); }
+.pendingOpen { display: inline-flex; align-items: center; gap: 6px; border: none; background: transparent; padding: 0; color: inherit; font: inherit; cursor: pointer; }
+.pendingRemove { border: none; background: transparent; color: inherit; padding: 0 0 0 4px; font-size: 14px; line-height: 1; cursor: pointer; opacity: 0.6; }
+.pendingRemove:hover { opacity: 1; }
 .pendingDot { width: 7px; height: 7px; border-radius: 50%; background: currentColor; }
 .pending.running .pendingDot { animation: pulse 1s infinite; }
 /* The confirm opens over the row, to the left - the columns never move. */
@@ -58,3 +61,38 @@
 .removeAt { position: absolute; top: 6px; right: 6px; white-space: nowrap; background: var(--j-surface); padding-left: 8px; border-radius: 8px; z-index: 1; }
 .table tbody tr:hover .removeAt { background: var(--j-surface-soft); }
 .table tbody tr.on .removeAt { background: var(--j-accent-soft); }
+
+/* The base model card, above the results. */
+.main { min-height: 0; display: flex; flex-direction: column; gap: 14px; }
+.main > .card { flex: 1; min-height: 160px; }
+.model {
+  background: var(--j-surface); border: 1px solid var(--j-border);
+  border-radius: var(--j-radius-card); box-shadow: var(--j-shadow-card); flex-shrink: 0;
+}
+.modelHead {
+  display: flex; align-items: baseline; gap: 10px; flex-wrap: wrap; width: 100%; padding: 10px 14px;
+  border: none; background: transparent; text-align: left; color: var(--j-ink); font: inherit;
+}
+.modelHead:focus-visible { outline: 2px solid var(--j-accent); outline-offset: -2px; border-radius: var(--j-radius-card); }
+.modelHead .meta code { font-family: var(--j-font-mono); }
+.chev { color: var(--j-ink-4); width: 10px; }
+.modelTitle { font-weight: 650; }
+.modelFacts { font-size: var(--j-fs-sm); color: var(--j-ink-3); }
+.modelFacts b { color: var(--j-ink); }
+.modelBody {
+  display: grid; grid-template-columns: minmax(260px, 420px) minmax(220px, 1fr); gap: 28px;
+  padding: 2px 14px 14px 34px;
+}
+.modelTable { border-collapse: collapse; font-size: var(--j-fs-sm); align-self: start; }
+.modelTable th { font-size: var(--j-fs-meta); color: var(--j-label); font-weight: 600; padding: 4px 10px; border-bottom: 1px solid var(--j-border); text-transform: capitalize; }
+.modelTable td { padding: 4px 10px; border-bottom: 1px solid var(--j-border-soft); }
+.modelTable td:first-child { color: var(--j-ink-3); padding-left: 0; }
+.testCol { background: var(--j-accent-soft); color: var(--j-ink); font-weight: 600; }
+.drivers { display: flex; flex-direction: column; gap: 4px; min-width: 0; }
+.driversTitle { font-size: var(--j-fs-meta); color: var(--j-label); font-weight: 600; margin-bottom: 2px; }
+.driver { display: grid; grid-template-columns: minmax(0, 160px) minmax(60px, 1fr) 48px; gap: 10px; align-items: center; font-size: var(--j-fs-meta); }
+.driverName { font-family: var(--j-font-mono); color: var(--j-ink-2); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.driverBar { height: 7px; background: var(--j-border-soft); border-radius: 4px; overflow: hidden; }
+.driverBar i { display: block; height: 100%; background: var(--j-accent); border-radius: 4px; }
+.driverPct { text-align: right; font-family: var(--j-font-mono); color: var(--j-ink-3); }
+@media (max-width: 900px) { .modelBody { grid-template-columns: minmax(0, 1fr); padding-left: 14px; } }

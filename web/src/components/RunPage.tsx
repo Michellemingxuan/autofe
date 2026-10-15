@@ -92,8 +92,6 @@ export function RunPage({ runId, onChange, onDeleted, onRerun }: {
             <span className={s.of}>{view.maxAttempts ? `/ ${view.maxAttempts} ` : ''}attempts</span>
           </div>
           <div className={s.actions}>
-            <button className={s.action} onClick={() => setCalls(true)}
-                    title="Every model call of this run: what went in, what came out, tokens and time">Model calls</button>
             {live && <button className={s.stop} onClick={() => api.cancel('runs', runId)}>Stop</button>}
             {l3 && view.requests.length > 0 && (
               <a className={s.action} href={api.requestsUrl(runId)} download
@@ -115,8 +113,13 @@ export function RunPage({ runId, onChange, onDeleted, onRerun }: {
       </header>
 
       <div className={s.body}>
-        <Trace jobKind="runs" jobId={runId} view={view} jumpTo={jumpTo} onInView={setInView}
-               onDeleteIntent={async (name) => { await api.deleteIntent(runId, name); onChange() }} />
+        <div className={s.traceWrap}>
+          <Trace jobKind="runs" jobId={runId} view={view} jumpTo={jumpTo} onInView={setInView}
+                 onDeleteIntent={async (name) => { await api.deleteIntent(runId, name); onChange() }} />
+          {/* For development and demos, not the user's work - kept out of the way. */}
+          <button className={s.callsLink} onClick={() => setCalls(true)}
+                  title="Every model call of this run: what went in, what came out, tokens and time">model calls</button>
+        </div>
         <Timeline view={view} inView={inView}
                   onSelect={(id) => setJumpTo({ id, n: Date.now() })} />
       </div>
