@@ -166,6 +166,17 @@ def _scope_variables(session: Session) -> list[str]:
     return [v for v in scope["variable"].astype(str) if v not in keys and not v.endswith("pkey")]
 
 
+def _taken_variables(session: Session) -> dict[str, list[str]]:
+    """Scope variables a request of this run or an earlier one asks for already -
+    variable -> the requests."""
+    from agent.memory import requested_columns
+
+    out: dict[str, list[str]] = {}
+    for (_table, column), by in requested_columns(session).items():
+        out.setdefault(column, []).extend(by)
+    return out
+
+
 def _names_in(text: str, variables: list[str]) -> list[str]:
     return [v for v in variables if re.search(rf"\b{re.escape(v)}\b", text, flags=re.I)]
 
@@ -185,6 +196,7 @@ def record_ideas(session: Session, ideas: list[dict[str, Any]],
     mixed = len(session.quota) > 1
     in_scope = _scope_variables(session)
     scopes = ", ".join(session.ws.scopes) or "the scope"
+    taken = _taken_variables(session) if "L3" in levels else {}
     earlier = {i["name"] for i in session.ideas}            # earlier rounds' ideas
     first = len(session.ideas)                              # numbered across rounds
     clean, names, skipped = [], set(), []
@@ -231,6 +243,15 @@ def record_ideas(session: Session, ideas: list[dict[str, Any]],
                 "data lies outside every scope - external, strategy (RLA), calling - mark it "
                 "beyond_scope. If the model database and the linked sources already carry it, "
                 "it is an L1/L2 idea, not a data request.")
+        elif level == "L3" and not beyond and all(v.lower() in taken for v in named):
+            # Its request would ask for data already asked for, and be refused as such:
+            # a new angle on the same columns is a feature, not a data request.
+            by = sorted({b for v in named for b in taken[v.lower()]})
+            problem = (
+                f"idea {i} ({name}): its scope variables ({', '.join(named)}) are requested "
+                f"already - by {'; '.join(by[:3])}. A request for them again is the same data. "
+                "Name a scope variable not yet requested (with them or alone), or go "
+                "beyond_scope.")
         if problem:
             if lenient:
                 skipped.append(problem)
@@ -279,6 +300,7 @@ def record_ideas(session: Session, ideas: list[dict[str, Any]],
     save_ideas(session)
     session.round += 1
     session.round_ideas, session.round_attempts, session.round_spent = clean, 0, False
+    session.round_results, session.report_refusals = session.results(), 0
     session.emit("ideas_recorded", ideas=clean, focus=focus, round=session.round,
                  **({"lenient": True, "missed": missed + skipped} if lenient else {}),
                  **({"theme": session.themes_drawn[session.round]}

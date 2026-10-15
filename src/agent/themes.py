@@ -30,7 +30,7 @@ from agent.workspace import Workspace
 
 __all__ = ["OPEN", "POOL_SIZE", "context_of", "draw_theme", "generate", "pick", "pool", "save"]
 
-POOL_SIZE = 30
+POOL_SIZE = 10
 OPEN = "Open exploration"                 # the direction of a run the user left empty
 
 

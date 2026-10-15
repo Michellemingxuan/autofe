@@ -17,32 +17,42 @@ __all__ = ["report_findings", "validated_sql"]
 
 def report_findings(session: Session, summary: str) -> dict[str, Any]:
     """End the run. A data-request run ends only when every proposal is challenged,
-    and its summary carries the validated SQL of the kept ones, copied by the code."""
+    and its summary carries the validated SQL of the kept ones, copied by the code.
+    Short of the target, a report is sent back; if the agent insists in a round that
+    found something, the next round of ideas is asked for instead."""
     if session.data_requests:
         undecided = [r["intent"] for r in session.data_requests if r.get("status") == "proposed"]
         if undecided:
             # The verdicts are the run's output; a report in prose is not one.
             return {"ok": False, "error": f"challenge {undecided} with challenge_request "
                                           "first, then report"}
-    if session.gated and session.report_refusals < REPORT_REFUSALS:
-        # A report short of the target ends the direction early - unless the agent
-        # insists. Like ideas first, the runner asks for this; tools called directly
-        # do not.
-        left = _results_wanted(session)
-        if left:
-            session.report_refusals += 1
-            return {"ok": False, "error": (
-                f"{left} more result(s) wanted ({session.budget()}). Propose from your ideas "
-                "before you report - screen_feature for an L1/L2 idea; for an L3 one, "
-                "screen_request within a scope or propose_new_data beyond scope. If the "
-                "direction is truly exhausted, call report_findings again and say why. "
-                "Nothing was spent.")}
+    left = _results_wanted(session) if session.gated else 0
+    if left and session.report_refusals < REPORT_REFUSALS:
+        # A report short of the target is sent back. Like ideas first, the runner
+        # asks for this; tools called directly do not.
+        session.report_refusals += 1
+        return {"ok": False, "error": (
+            f"{left} more result(s) wanted ({session.budget()}). Propose from your ideas "
+            "before you report - screen_feature for an L1/L2 idea; for an L3 one, "
+            "screen_request within a scope or propose_new_data beyond scope. If the "
+            "direction is truly exhausted, call report_findings again and say why. "
+            "Nothing was spent.")}
+    if left and session.ideas_required and session.results() > session.round_results:
+        # The agent insists, but this round still found something: the direction is
+        # not exhausted, only these ideas are. A new round of ideas comes next; the
+        # run ends early only on a round that finds nothing.
+        session.round_spent = True
+        return {"ok": False, "error": (
+            f"Not yet: {left} more result(s) wanted ({session.budget()}), and this round "
+            "still found some. This round is closed - a new round of ideas comes next, "
+            "with what worked and what failed in front of you.")}
     if session.data_requests:
         summary = summary.strip() + "\n\n" + validated_sql(session)
     return session.end(summary)
 
 
-# How often a report short of the target is sent back before it is accepted.
+# How often a report short of the target is sent back, in a round, before the
+# agent may insist.
 REPORT_REFUSALS = 2
 
 

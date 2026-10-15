@@ -833,6 +833,21 @@ def test_an_l3_idea_must_name_cas_data(no_history):
     assert not from_sources["ok"] and "L1/L2 idea" in from_sources["error"]
 
 
+def test_an_l3_idea_on_variables_requested_already_is_sent_back(no_history):
+    from agent.tools.ideas import record_ideas
+
+    session = _session(no_history, "x", params=RunParams(K=2, levels=["L3"]))
+    session.data_requests = [{"intent": "R1", "source_name": "cas_declines", "status": "kept",
+                              "tables": ["wwcas_synthetic"],
+                              "columns": ["customer_id", "trans_dt", "auth_decline_cnt_30d"]}]
+    again = record_ideas(session, [{"name": "decline_streaks", "engine": "mechanism", "lens": "trend",
+                                    "level": "L3", "measures": ["streak of months with declines",
+                                                                "longest run of declines"],
+                                    "description": "runs of months with declines",
+                                    "data": "auth_decline_cnt_30d"}])
+    assert not again["ok"] and "requested already" in again["error"] and "cas_declines" in again["error"]
+
+
 def test_a_mixed_run_splits_its_target_by_level(workspace):
     from collections import Counter
 
@@ -952,6 +967,25 @@ def test_a_report_with_feature_intents_left_is_sent_back(workspace):
     assert not report_findings(session, "still early")["ok"]
     assert report_findings(session, "exhausted, because ...")["ok"]       # it may insist
     assert session.finished
+
+
+def test_insisting_on_an_early_report_after_a_round_that_found_something_asks_for_a_new_round(no_history):
+    from agent.tools import report_findings
+
+    session = Session(no_history, "x", params=RunParams(K=10, levels=["L3"]))
+    session.gated, session.ideas_required = True, True      # as the runner sets them
+    session.data_requests = [{"intent": f"R{i}", "status": "kept", "source_name": "t"}
+                             for i in range(8)]              # this round kept 8
+    for _ in range(2):
+        assert not report_findings(session, "exhausted")["ok"]
+    insisted = report_findings(session, "exhausted, because ...")
+    assert not insisted["ok"] and "new round of ideas" in insisted["error"]
+    assert session.round_spent and not session.finished
+    # A round that finds nothing may end the run.
+    session.round_results, session.report_refusals, session.round_spent = 8, 0, False
+    for _ in range(2):
+        assert not report_findings(session, "exhausted")["ok"]
+    assert report_findings(session, "exhausted, because ...")["ok"] and session.finished
 
 
 def test_a_dropped_request_is_not_a_result_and_another_is_proposed(no_history):

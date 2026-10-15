@@ -61,6 +61,7 @@ The contract, page by page (``web/src/api.ts`` calls exactly these;
    DELETE /api/evaluations/<id>
    DELETE /api/evaluations/<id>/variants/<variant>   one row off the results
    GET    /api/results                       every evaluated variant, every evaluation
+   GET    /api/base_model                    the base model's card, from the latest evaluation
    DELETE /api/results                       clear them all: every finished evaluation
    GET    /api/evaluations/<id>/stream        SSE
    POST   /api/evaluations/<id>/cancel        stop it: its process, scripts and workers
@@ -81,8 +82,8 @@ from typing import Any, Callable
 
 from flask import Flask, Response, jsonify, request, send_from_directory
 
-from agent.evaluate import (Evaluation, EvaluationProcess, evaluation_results, feature_pool, list_evaluations,
-                            removed_variants)
+from agent.evaluate import (Evaluation, EvaluationProcess, base_model_card, evaluation_results, feature_pool,
+                            list_evaluations, removed_variants)
 from agent.events import EventLog, read_events
 from agent.board import board_rows
 from agent.llm_trace import store_for
@@ -651,6 +652,10 @@ def create_app(config_path: str, static_dir: str | None = None,
     @app.get("/api/results")
     def results():
         return jsonify(evaluation_results(ctx["ws"]))
+
+    @app.get("/api/base_model")
+    def base_model():
+        return jsonify(base_model_card(ctx["ws"]))
 
     @app.delete("/api/results")
     def clear_results():

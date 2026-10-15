@@ -154,7 +154,7 @@ def test_every_event_the_views_fold_is_streamed_to_them():
 def test_setup_validates_before_it_saves(env):
     client, root, _ = env
     view = client.get("/api/setup").get_json()
-    assert [b["key"] for b in view["blocks"]] == ["model", "context", "shots", "evaluation", "additional", "scope"]
+    assert [b["key"] for b in view["blocks"]] == ["task", "model", "shots", "context", "folder", "additional", "scope", "evaluation"]
     fields = {f["key"]: f for b in view["blocks"] for f in b["fields"]}
     assert fields["data.target"]["value"] == "default"
 

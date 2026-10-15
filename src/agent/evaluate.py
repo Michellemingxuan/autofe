@@ -51,7 +51,8 @@ from validation.data import read_frame
 from validation.pipeline import Pipeline
 from validation.stages.analysis import _pct_label
 
-__all__ = ["Evaluation", "EvaluationProcess", "feature_pool", "list_evaluations", "evaluation_results", "removed_variants",
+__all__ = ["Evaluation", "EvaluationProcess", "base_model_card", "feature_pool", "list_evaluations",
+           "evaluation_results", "removed_variants",
            "run_linkage",
            "CAPTURE_PERCENTS"]
 
@@ -143,6 +144,47 @@ def list_evaluations(ws: Workspace) -> list[dict[str, Any]]:
 def removed_variants(events: list[dict[str, Any]]) -> set[str]:
     """The variants the user took off the results - the evaluation keeps its record."""
     return {e["variant"] for e in events if e["event"] == "variant_removed"}
+
+
+def base_model_card(ws: Workspace, top: int = 5) -> dict[str, Any] | None:
+    """The base model as the latest finished evaluation trained it - every evaluation
+    trains the same one (validation.stages.base_cache): its Gini and capture rates
+    per split, its rows and default rate, its features and what drives it."""
+    for summary in list_evaluations(ws):
+        if summary["status"] != "done":
+            continue
+        events = read_events(Path(ws.cfg.agent.run_dir) / "evaluations" / summary["eval_id"]
+                             / "events.jsonl")
+        done = next(e for e in reversed(events) if e["event"] == "eval_done")
+        base = next((r for r in done.get("comparison") or [] if r["variant"] == "base"), None)
+        if base is None:
+            continue
+        percents = done.get("capture_percents") or []
+        splits = [s for s in ("train", "valid", "test") if f"adj_gini_{s}" in base]
+        out_dir = Path(done.get("output_dir") or "")
+        rows: dict[str, Any] = {}
+        if (out_dir / "metrics_by_variant_split.csv").exists():
+            metrics = pd.read_csv(out_dir / "metrics_by_variant_split.csv")
+            for r in metrics[metrics["variant"] == "base"].to_dict("records"):
+                rows[r["split"]] = {"rows": int(r["n_rows"]), "default_rate": float(r["actual_mean"])}
+        drivers: list[dict[str, Any]] = []
+        if (out_dir / "shap_ranking.csv").exists():
+            shap = pd.read_csv(out_dir / "shap_ranking.csv")
+            shap = shap[shap["variant"] == "base"].sort_values("shap_rank").head(top)
+            drivers = [{"feature": r["feature"], "share": float(r["shap_share"])}
+                       for r in shap.to_dict("records")]
+        return finite({
+            "eval_id": summary["eval_id"], "evaluated": summary["started"],
+            "target": ws.target, "n_features": base.get("n_features"),
+            "best_iteration": base.get("best_iteration"), "splits": splits,
+            "gini": {s: base.get(f"adj_gini_{s}") for s in splits},
+            "capture": {p: {s: base.get(f"capture_{p}_{s}") for s in splits} for p in percents},
+            "data": rows, "drivers": drivers,
+            "params": {"max_depth": ws.cfg.model.params.get("max_depth"),
+                       "eta": ws.cfg.model.params.get("eta"),
+                       "num_boost_round": ws.cfg.model.num_boost_round},
+        })
+    return None
 
 
 def evaluation_results(ws: Workspace) -> list[dict[str, Any]]:

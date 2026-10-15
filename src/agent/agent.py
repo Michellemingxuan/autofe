@@ -235,6 +235,12 @@ def _next_round(session: Session) -> str:
                    worked=", ".join(worked) or "nothing yet",
                    failed="; ".join(failed[-8:]) or "nothing", n=ideas_in_round(session),
                    most=session.params.ideas_per_round, **_focus(session))
+    if "L3" in session.quota or session.l3_only:
+        from agent.tools.ideas import _taken_variables
+
+        if taken := sorted(_taken_variables(session)):
+            text += ("\nScope variables requested already - an idea on them alone is not a new "
+                     "request: " + ", ".join(f"`{v}`" for v in taken) + ".")
     if session.explore:
         text += "\nThis round's theme first: call draw_theme, then give ideas about it."
     return text

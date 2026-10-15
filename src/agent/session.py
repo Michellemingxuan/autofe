@@ -242,6 +242,7 @@ class Session:
         self.round_ideas: list[dict[str, Any]] = []
         self.round_attempts = 0
         self.round_spent = False
+        self.round_results = 0                # results when this round began
         self.failed_streak = 0                # feature scripts failed in a row (agent.tools.screen)
 
     @property

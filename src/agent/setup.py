@@ -5,8 +5,8 @@ page is kept as dotted-key overrides in ``<agent.run_dir>/workspace_overrides.js
 and applied on top of the YAML - so the YAML stays the reviewed default, a
 restart keeps the user's choices, and "reset" is deleting one file.
 
-The page is in blocks - model database, context, shots, evaluation, additional
-data, scope -
+The page is in blocks - the task, the model materials (dataset, shots,
+context), the additional materials (folder, datasets, scope), evaluation -
 each applied on its own. A change is applied only if the workspace it
 describes actually loads: the screen files are read, every other file must
 exist (the splits are not read - they may be tens of GB).
@@ -48,8 +48,12 @@ UPLOAD_KINDS = {
 # kind: path - a big file, pointed at; file - a small file, path or upload;
 # files - a list of small files; text / longtext - a value.
 BLOCKS: list[dict[str, Any]] = [
-    {"key": "model", "title": "Model database", "folder": True,
-     "help": "The split files, usually in one folder - set the folder once, then file names.",
+    {"key": "task", "title": "Task description", "folder": False, "help": "",
+     "fields": {
+         "discovery.task_description": {"label": "Task description", "kind": "longtext",
+                                        "help": "What the features should improve"},
+     }},
+    {"key": "model", "title": "Model dataset", "folder": True, "help": "",
      "fields": {
          "data.paths.train": {"label": "Train", "kind": "path",
                               "help": "Rows the final models fit on"},
@@ -68,22 +72,10 @@ BLOCKS: list[dict[str, Any]] = [
          "data.id_format": {"label": "Id format", "kind": "text",
                              "help": "How the id encodes the join keys and the as-of date"},
      }},
-    {"key": "context", "title": "Context for the agent", "folder": False,
-     "help": "What the data means and what to improve. Small files: point at them or upload.",
-     "fields": {
-         "discovery.task_description": {"label": "Task description", "kind": "longtext",
-                                        "help": "What the features should improve"},
-         "discovery.task_context_path": {"label": "Task context", "kind": "file",
-                                         "upload": "context",
-                                         "help": "Background on the model and its use (.md)"},
-         "discovery.column_descriptions_path": {"label": "Column descriptions", "kind": "file",
-                                                "upload": "context",
-                                                "help": "JSON of {column: meaning}"},
-     }},
     {"key": "shots", "title": "Shots", "folder": False,
-     "help": "Labelled example rows the agent reads, by category - the clustering shots "
-             "first, then your own - each rotated by batch across discovery runs or shown "
-             "whole.",
+     "help": "Example rows that show the agent what the data values look like, to inform "
+             "feature generation - the clustering shots first, then your own categories "
+             "for additional information, such as contrastive examples.",
      "fields": {
          "discovery.few_shot_path": {"label": "Clustering shots", "kind": "file",
                                      "upload": "context",
@@ -93,9 +85,31 @@ BLOCKS: list[dict[str, Any]] = [
                                    "upload": "shot_spec",
                                    "help": "One markdown spec per category, appended in order"},
      }},
-    {"key": "evaluation", "title": "Evaluation", "folder": False,
-     "help": "How chosen features are judged on the full splits: the model each variant "
-             "trains, what is reported, and the bar a feature must clear.",
+    {"key": "context", "title": "Context", "folder": False, "help": "",
+     "fields": {
+         "discovery.task_context_path": {"label": "Model and data description", "kind": "file",
+                                         "upload": "context",
+                                         "help": "Background on the model, its use and its data (.md)"},
+         "discovery.column_descriptions_path": {"label": "Column descriptions", "kind": "file",
+                                                "upload": "context",
+                                                "help": "JSON of {column: meaning}"},
+     }},
+    {"key": "folder", "title": "Folder", "folder": True,
+     "help": "Paths below - sources and scope files - may be given relative to this folder.",
+     "fields": {
+         "discovery.additional_data.dir": {"label": "Additional materials folder", "kind": "path",
+                                       "help": "Holds the sources and, by default, the scopes' variable lists"},
+     }},
+    {"key": "additional", "title": "Additional datasets", "folder": False,
+     "help": "Sources: data + sample JSON in the folder, or registered by path.",
+     "fields": {}},
+    {"key": "scope", "title": "Scope", "folder": False,
+     "help": "Beyond the model dataset and additional data, the agent writes data pull "
+             "queries for tables within these scopes - CAS, say - or proposes a data request "
+             "beyond them. Each scope's variables are flagged by whether the model uses them, "
+             "with your notes on how to use them.",
+     "fields": {}},                      # one section per configured scope: _scope_fields
+    {"key": "evaluation", "title": "Evaluation pipeline", "folder": False, "help": "",
      "fields": {
          "model.num_boost_round": {"label": "Boosting rounds", "kind": "number", "int": True,
                                    "section": "Model", "help": "Upper bound; early stopping ends sooner"},
@@ -130,17 +144,6 @@ BLOCKS: list[dict[str, Any]] = [
                        "section": "Verdict",
                        "help": "open: measure every feature; enforce: drop failures before modelling"},
      }},
-    {"key": "additional", "title": "Additional data", "folder": False,
-     "help": "Sources: data + sample JSON in this folder, or registered by path.",
-     "fields": {
-         "discovery.additional_data.dir": {"label": "Additional data folder", "kind": "path",
-                                       "help": "Holds the sources and, by default, the scopes' variable lists"},
-     }},
-    {"key": "scope", "title": "Scope", "folder": False,
-     "help": "The tables the agent may request data from, by scope - CAS, say - each "
-             "flagged by whether the model uses its variables, with your notes on how to "
-             "use them. A request outside every scope is 'beyond scope'.",
-     "fields": {}},                      # one section per configured scope: _scope_fields
 ]
 # Keys that moved out of the agent section: overrides saved before still load.
 MOVED = {"agent.id_format": "data.id_format",
