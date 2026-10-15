@@ -105,7 +105,7 @@ def shot_list(ws: Any) -> str:
 
 
 def round_ideas(session: Session, order: list[str]) -> str:
-    """The round's ideas for the proposal message, in the order to work them: each
+    """The run's ideas, every round's, for the proposal message, in the order to work them: each
     with its engine, level, standing, hypothesis, measures, data, what was built from
     it so far - and, for one with no signal yet, why not."""
     from agent.board import feature_evidence, idea_of, session_ideas
@@ -126,7 +126,8 @@ def round_ideas(session: Session, order: list[str]) -> str:
             reason = str(e.get("reason") or (e.get("challenge") or {}).get("reasoning") or "").splitlines()
             built.append(f"{label} ✓" if evidence == "signal" else
                          f"{label} ✗ {reason[0][:100] if reason else ''}".rstrip())
-        lines = [f"{k}. `{name}` - {i.get('engine') or '?'} · {i.get('level') or '?'} · "
+        earlier = f" · round {i['round']}" if i.get("round") and i["round"] != session.round else ""
+        lines = [f"{k}. `{name}` - {i.get('engine') or '?'} · {i.get('level') or '?'}{earlier} · "
                  f"{i['status']} (P(useful) {i['p_useful']:.2f})",
                  f"   Hypothesis: {i.get('description') or ''}"]
         measures = i.get("measures") or []

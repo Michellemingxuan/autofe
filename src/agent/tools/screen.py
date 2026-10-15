@@ -173,13 +173,12 @@ def screen_feature(session: Session, name: str, description: str, level: str,
     if (learned := lessons(session.ledger)):
         reply["lessons"] = learned
     if session.round_ideas:
-        # The board, as this round stands: each idea's standing after this feature.
+        # The board, as the run stands: each idea's standing after this feature.
         reply["ideas"] = round_board(session)
-        # Which to work next: a fresh Thompson draw over the round's ideas - one whose
-        # features failed draws low and comes later, never shut out.
-        mine = {i["name"] for i in session.round_ideas}
-        reply["work_next"] = order_ideas([i for i in session_ideas(session) if i["name"] in mine],
-                                         seed=f"{session.run_id}:{intent}")
+        # Which to work next: a fresh Thompson draw over every round's ideas - one whose
+        # features failed draws low and comes later, never shut out; an earlier round's
+        # that carried signal stays in front.
+        reply["work_next"] = order_ideas(session_ideas(session), seed=f"{session.run_id}:{intent}")
     if session.wanted() == 0:
         reply["next"] = f"the target of {session.K} is reached; call report_findings with a summary"
     elif session.attempts >= session.max_attempts:

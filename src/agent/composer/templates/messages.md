@@ -16,8 +16,8 @@ Stage 1 of 2 - ideas. This round leans on the engines **{focus}**: at least {min
 ## propose
 Round {round} - proposals. {budget}. Still wanted: {targets_left}.
 
-### This round's ideas, in the order to work them
-Drawn by Thompson sampling from each idea's record: a fresh idea and a strong one come early; one whose features carried no signal comes later - never left out. Each screen reply gives a fresh order (`work_next`).
+### The ideas, in the order to work them
+This round's new ideas and the earlier rounds' together. Drawn by Thompson sampling from each idea's record: a fresh idea and a strong one come early - an earlier round's that carried signal too; one whose features carried no signal comes later - never left out. Each screen reply gives a fresh order (`work_next`).
 
 {round_ideas}
 

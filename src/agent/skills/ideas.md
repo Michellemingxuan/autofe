@@ -94,7 +94,8 @@ Build from an idea's measures, and say which idea each proposal tests:
 `screen_feature(..., idea="minsky_stage_shift")` - the same for
 `screen_request` and `propose_new_data`. Name the feature for what it
 computes (`full_pay_share_6m`), not after the idea; one idea can have several
-features. Each screen reply shows the round's ideas with their standing and
-`work_next`: the order to work them in, drawn by Thompson sampling from each
-idea's record. An idea whose features carried no signal draws low and moves
+features. Each screen reply shows the run's ideas - every round's - with their
+standing and `work_next`: the order to work them in, drawn by Thompson sampling
+from each idea's record. An earlier round's idea that carried signal stays in
+the order: its next measure is often worth more than a new idea's first. An idea whose features carried no signal draws low and moves
 back; follow the order unless you have a reason not to, and say the reason.

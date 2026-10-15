@@ -25,7 +25,8 @@ An idea's standing comes from its features (and, at L3, its requests):
 From those, each idea keeps a Beta(1 + signal, 1 + none): ``p_useful`` is its
 mean, and the status is ``explore`` (nothing measured yet), ``active`` (some
 signal) or ``low`` (measured, no signal yet). Nothing is refused: the order the
-ideas are worked in is a Thompson draw from each Beta (:func:`order_ideas`), so
+ideas are worked in is a Thompson draw from each Beta (:func:`order_ideas`) -
+over every round's ideas of the run, not only the latest round's - so
 an idea whose features failed is drawn later and later - deprioritised, never
 shut out, and back in front the moment one of its features carries signal. An
 idea linked to an earlier run's (``same_as``) starts from that idea's record.
@@ -181,11 +182,10 @@ def order_ideas(standings: list[dict[str, Any]], seed: str) -> list[str]:
 
 
 def round_board(session: "Session") -> list[dict[str, Any]]:
-    """This round's ideas as the screen reply shows them: standing and order."""
-    standings = {i["name"]: i for i in session_ideas(session)}
-    names = [i["name"] for i in session.round_ideas]
-    return [{k: standings[n][k] for k in ("name", "engine", "status", "p_useful", "made")}
-            for n in names if n in standings]
+    """This run's ideas, every round's, as the screen reply shows them: standing and
+    order. An earlier round's idea that carried signal is still worth working."""
+    return [{k: i.get(k) for k in ("name", "round", "engine", "status", "p_useful", "made")}
+            for i in session_ideas(session)]
 
 
 # --------------------------------------------------------------- the board

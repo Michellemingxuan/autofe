@@ -1,0 +1,10 @@
+run_id,round,direction,proposed,new,repeated,cumulative_new
+20261015_010916_8ffb,1,temporal patterns of payment and spending history,5,5,0,5
+20261015_010916_8ffb,2,temporal patterns of payment and spending history,5,5,0,10
+20261015_010916_8ffb,3,temporal patterns of payment and spending history,5,5,0,15
+20261015_010916_8ffb,4,temporal patterns of payment and spending history,5,5,0,20
+20261015_010916_8ffb,5,temporal patterns of payment and spending history,3,3,0,23
+20261015_010916_8ffb,6,temporal patterns of payment and spending history,3,3,0,26
+20261015_015351_401c,1,Look for early signs of cash-flow stress in the recent balance trajectory.,5,5,0,31
+20261015_015351_401c,2,Look for early signs of cash-flow stress in the recent balance trajectory.,5,5,0,36
+20261015_015351_401c,3,Look for early signs of cash-flow stress in the recent balance trajectory.,5,5,0,41

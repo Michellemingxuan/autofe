@@ -214,11 +214,9 @@ def _propose(session: Session) -> str:
 
 
 def _work_order(session: Session) -> list[str]:
-    """This round's ideas in the order to work them: Thompson sampling over their
-    records (agent.board.order_ideas), recorded."""
-    mine = {i["name"] for i in session.round_ideas}
-    order = order_ideas([i for i in session_ideas(session) if i["name"] in mine],
-                        seed=f"{session.run_id}:order:{session.round}")
+    """The run's ideas, every round's, in the order to work them: Thompson sampling
+    over their records (agent.board.order_ideas), recorded."""
+    order = order_ideas(session_ideas(session), seed=f"{session.run_id}:order:{session.round}")
     session.emit("ideas_ordered", round=session.round, order=order)
     return order
 

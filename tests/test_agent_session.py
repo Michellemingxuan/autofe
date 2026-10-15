@@ -232,6 +232,18 @@ def test_a_running_script_is_stopped_at_once_and_a_slow_one_times_out(tmp_path):
     assert slow.error.startswith("timed out after 1s - vectorise")
 
 
+def test_an_earlier_rounds_idea_stays_in_the_order(workspace):
+    from agent.agent import _work_order
+    from agent.board import round_board
+
+    session = _session(workspace, "x", params=RunParams(K=3))
+    session.ideas = [{"name": "pay_gap", "engine": "analogy", "round": 1},
+                     {"name": "tenure_curve", "engine": "mechanism", "round": 2}]
+    session.round_ideas, session.round = session.ideas[1:], 2
+    assert set(_work_order(session)) == {"pay_gap", "tenure_curve"}
+    assert {i["name"]: i["round"] for i in round_board(session)} == {"pay_gap": 1, "tenure_curve": 2}
+
+
 def test_an_idea_whose_features_carry_no_signal_is_worked_later_not_refused(workspace):
     from agent.board import idea_standing, order_ideas
     from agent.tools.screen import idea_of
