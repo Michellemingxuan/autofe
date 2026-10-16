@@ -1,0 +1,472 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1640 985"
+     font-family="ui-sans-serif, -apple-system, 'Segoe UI', system-ui, Helvetica, sans-serif">
+  <defs>
+    <filter id="shadow" x="-20%" y="-20%" width="140%" height="140%">
+      <feGaussianBlur in="SourceAlpha" stdDeviation="1.2"/>
+      <feOffset dy="1.5"/>
+      <feComponentTransfer><feFuncA type="linear" slope="0.14"/></feComponentTransfer>
+      <feMerge><feMergeNode/><feMergeNode in="SourceGraphic"/></feMerge>
+    </filter>
+    <marker id="ar-purple" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse">
+      <path d="M0,1 L10,5 L0,9 Z" fill="#7A5AA8"/>
+    </marker>
+    <marker id="ar-blue" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse">
+      <path d="M0,1 L10,5 L0,9 Z" fill="#3D6BA8"/>
+    </marker>
+    <marker id="ar-green" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse">
+      <path d="M0,1 L10,5 L0,9 Z" fill="#3F7D5A"/>
+    </marker>
+    <marker id="ar-amber" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse">
+      <path d="M0,1 L10,5 L0,9 Z" fill="#A0782E"/>
+    </marker>
+    <marker id="ar-gray" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse">
+      <path d="M0,1 L10,5 L0,9 Z" fill="#8A8275"/>
+    </marker>
+  </defs>
+
+  <rect width="1640" height="985" fill="#FAF9F5"/>
+
+  <!-- ===== HEADER ===== -->
+  <text x="30" y="36" font-size="21" font-weight="700" fill="#2D2D2D" letter-spacing="-0.3">Modeling Agent · the agentic workflow</text>
+  <text x="30" y="56" font-size="11" fill="#7A7569" font-style="italic">An LLM agent discovers features, evaluates them, and shows their effect on the cases you care about; every result is logged and reshapes which ideas come next. People set the direction and decide at the gates.</text>
+  <line x1="30" y1="68" x2="1610" y2="68" stroke="#E5E0D2"/>
+
+  <g transform="translate(0,22)">
+  <!-- ============================================================ -->
+  <!-- KNOWLEDGE BASE (beside the inputs, informs the analyst)       -->
+  <!-- ============================================================ -->
+  <g transform="translate(0,30)">
+  <g filter="url(#shadow)">
+    <rect x="30" y="42" width="220" height="70" rx="10" fill="#EDE9F3" stroke="#C3B6D8" stroke-width="1.2" stroke-dasharray="6,4"/>
+  </g>
+  <text x="140" y="62" font-size="11.5" font-weight="700" fill="#4A3B69" text-anchor="middle">🧠 Knowledge base &amp; memory</text>
+  <text x="140" y="79" font-size="9" fill="#5C4B7A" text-anchor="middle">model history · theory library</text>
+  <text x="140" y="93" font-size="9" fill="#5C4B7A" text-anchor="middle">earlier runs: ideas, features, verdicts</text>
+  <text x="140" y="106" font-size="8.5" fill="#7A7569" text-anchor="middle" font-style="italic">informs the analyst's direction</text>
+
+  <!-- ============================================================ -->
+  <!-- INPUTS                                                       -->
+  <!-- ============================================================ -->
+  <rect x="20" y="124" width="240" height="488" rx="14" fill="#F1EEE6" stroke="#E2DCCB"/>
+  <text x="34" y="146" font-size="10" font-weight="700" fill="#8A7B5C" letter-spacing="2">INPUTS</text>
+
+  <!-- analyst -->
+  <g filter="url(#shadow)">
+    <rect x="30" y="156" width="220" height="80" rx="12" fill="#DCE7F4" stroke="#3D6BA8" stroke-width="1.4"/>
+  </g>
+  <text x="140" y="178" font-size="12.5" font-weight="700" fill="#1F3A5F" text-anchor="middle">👤 Analyst</text>
+  <text x="140" y="196" font-size="9.5" fill="#1F3A5F" text-anchor="middle">sets the direction, in plain words</text>
+  <text x="140" y="212" font-size="8.5" fill="#4F6B8C" text-anchor="middle" font-style="italic">“find customers drifting out of pattern”</text>
+  <text x="140" y="228" font-size="9" fill="#4F6B8C" text-anchor="middle" font-style="italic">and decides at every 👤 gate</text>
+  <line x1="180" y1="112" x2="180" y2="154" stroke="#7A5AA8" stroke-width="1.6" stroke-dasharray="4,3" marker-end="url(#ar-purple)"/>
+
+  <!-- materials -->
+  <rect x="30" y="250" width="220" height="352" rx="12" fill="#E7F0EA" stroke="#B9D3C2" stroke-width="1"/>
+  <text x="44" y="267" font-size="9" font-weight="700" fill="#3F7D5A" letter-spacing="1.5">MATERIALS</text>
+  <g filter="url(#shadow)">
+    <rect x="42" y="276" width="196" height="56" rx="8" fill="#FFFFFF" stroke="#3F7D5A" stroke-width="1"/>
+    <rect x="42" y="340" width="196" height="56" rx="8" fill="#FFFFFF" stroke="#3F7D5A" stroke-width="1"/>
+    <rect x="42" y="404" width="196" height="56" rx="8" fill="#FFFFFF" stroke="#3F7D5A" stroke-width="1"/>
+    <rect x="42" y="468" width="196" height="56" rx="8" fill="#FFFFFF" stroke="#3F7D5A" stroke-width="1"/>
+    <rect x="42" y="532" width="196" height="60" rx="8" fill="#FFFFFF" stroke="#3F7D5A" stroke-width="1.6"/>
+  </g>
+  <g text-anchor="middle">
+    <text x="140" y="298" font-size="10.5" font-weight="700" fill="#2C5B41">Task &amp; context</text>
+    <text x="140" y="315" font-size="9" fill="#3F7D5A">target, horizon, column descriptions</text>
+    <text x="140" y="362" font-size="10.5" font-weight="700" fill="#2C5B41">Base model &amp; its data</text>
+    <text x="140" y="379" font-size="9" fill="#3F7D5A">base features · a screening sample</text>
+    <text x="140" y="426" font-size="10.5" font-weight="700" fill="#2C5B41">Additional sources</text>
+    <text x="140" y="443" font-size="9" fill="#3F7D5A">linked to customers, point-in-time</text>
+    <text x="140" y="490" font-size="10.5" font-weight="700" fill="#2C5B41">Data-pull scope</text>
+    <text x="140" y="507" font-size="9" fill="#3F7D5A">warehouse variables not yet used</text>
+    <text x="140" y="553" font-size="10.5" font-weight="700" fill="#2C5B41">🎯 Target cases</text>
+    <text x="140" y="568" font-size="9" fill="#3F7D5A">cases the analyst cares about,</text>
+    <text x="140" y="581" font-size="9" fill="#3F7D5A">e.g. high-balance defaulters</text>
+  </g>
+  </g>
+
+  <!-- ============================================================ -->
+  <!-- MODELING AGENT: discovery · evaluation · inference · board   -->
+  <!-- ============================================================ -->
+  <g transform="translate(20,30)">
+
+  <!-- agent scope -->
+  <rect x="264" y="40" width="1120" height="872" rx="14" fill="#F3EFF9" stroke="#DCD3EA"/>
+  <g transform="translate(278,44)">
+    <line x1="13" y1="1" x2="13" y2="6" stroke="#7A5AA8" stroke-width="1.6"/>
+    <circle cx="13" cy="2" r="2.2" fill="#7A5AA8"/>
+    <rect x="1" y="6" width="24" height="18" rx="5" fill="#7A5AA8"/>
+    <rect x="-2" y="11" width="3" height="8" rx="1.5" fill="#7A5AA8"/>
+    <rect x="25" y="11" width="3" height="8" rx="1.5" fill="#7A5AA8"/>
+    <circle cx="8.5" cy="14" r="2.4" fill="#FFFFFF"/>
+    <circle cx="17.5" cy="14" r="2.4" fill="#FFFFFF"/>
+    <rect x="9" y="19" width="8" height="1.6" rx="0.8" fill="#FFFFFF"/>
+  </g>
+  <text x="314" y="64" font-size="10" font-weight="700" fill="#7A5AA8" letter-spacing="2">MODELING AGENT</text>
+  <text x="462" y="64" font-size="9" fill="#7A5AA8" font-style="italic">one LLM agent · acts only through tools · discovery → evaluation → inference, all logged on one board</text>
+
+  <!-- feature discovery module -->
+  <g filter="url(#shadow)">
+    <rect x="280" y="76" width="740" height="524" rx="8" fill="#FFFFFF" stroke="#C3B6D8" stroke-width="0.8"/>
+    <path d="M280,84 a8,8 0 0 1 8,-8 h724 a8,8 0 0 1 8,8 v18 h-740 z" fill="#7A5AA8"/>
+  </g>
+  <text x="296" y="96" font-size="12.5" font-weight="700" fill="#FFFFFF">Feature discovery module</text>
+  <text x="1006" y="96" font-size="9.5" fill="#EDE9F3" text-anchor="end" font-style="italic">ideas → features or data requests → checks</text>
+
+  <!-- engines -->
+  <g filter="url(#shadow)">
+    <rect x="296" y="118" width="154" height="100" rx="7" fill="#FFFFFF" stroke="#D4C5A9" stroke-width="0.9"/>
+  </g>
+  <text x="373" y="136" font-size="11.5" font-weight="700" fill="#2D2D2D" text-anchor="middle">Idea engines</text>
+  <text x="373" y="149" font-size="8.5" fill="#7A7569" text-anchor="middle" font-style="italic">add new ideas each round</text>
+  <g font-size="9" fill="#5C5044" text-anchor="middle">
+    <text x="373" y="166">mechanism simulation</text>
+    <text x="373" y="179">contrastive abduction</text>
+    <text x="373" y="192">cross-domain analogy</text>
+    <text x="373" y="205">morphological · others</text>
+  </g>
+  <line x1="373" y1="218" x2="373" y2="238" stroke="#7A5AA8" stroke-width="1.6" marker-end="url(#ar-purple)"/>
+
+  <!-- ideas -->
+  <g filter="url(#shadow)">
+    <rect x="296" y="240" width="154" height="184" rx="7" fill="#FFFFFF" stroke="#7A5AA8" stroke-width="1.1"/>
+  </g>
+  <text x="373" y="260" font-size="11.5" font-weight="700" fill="#2D2D2D" text-anchor="middle">Ideas, ranked</text>
+  <text x="373" y="274" font-size="8.5" fill="#7A7569" text-anchor="middle" font-style="italic">each carries P(useful)</text>
+  <g font-size="8.5" fill="#2D2D2D">
+    <text x="308" y="294">Out-of-pattern spend</text>
+    <rect x="308" y="299" width="100" height="5" rx="2.5" fill="#EEE9DC"/><rect x="308" y="299" width="80" height="5" rx="2.5" fill="#4F8A5B"/>
+    <text x="414" y="304" font-size="8" fill="#5C5044">.80</text>
+    <text x="308" y="322">Payment timing drift</text>
+    <rect x="308" y="327" width="100" height="5" rx="2.5" fill="#EEE9DC"/><rect x="308" y="327" width="50" height="5" rx="2.5" fill="#3E6E9E"/>
+    <text x="414" y="332" font-size="8" fill="#5C5044">.50</text>
+    <text x="308" y="350" fill="#8A8275">Spend velocity</text>
+    <rect x="308" y="355" width="100" height="5" rx="2.5" fill="#EEE9DC"/><rect x="308" y="355" width="20" height="5" rx="2.5" fill="#B5523B"/>
+    <text x="414" y="360" font-size="8" fill="#5C5044">.20</text>
+  </g>
+  <g font-size="8.5" fill="#4F8A5B" font-style="italic" text-anchor="middle">
+    <text x="373" y="386">next idea = a weighted draw:</text>
+    <text x="373" y="399">promising first, failed later,</text>
+    <text x="373" y="412">never shut out</text>
+  </g>
+
+  <!-- fork into the two lanes -->
+  <g stroke="#7A5AA8" stroke-width="1.6" fill="none">
+    <path d="M450,330 H462"/>
+    <path d="M462,213 V422"/>
+    <path d="M462,213 H478" marker-end="url(#ar-purple)"/>
+    <path d="M462,422 H478" marker-end="url(#ar-purple)"/>
+  </g>
+
+  <!-- ===== LANE A · L1/L2 ===== -->
+  <rect x="468" y="114" width="540" height="214" rx="10" fill="#F6F3FA" stroke="#DCD3EA"/>
+  <text x="482" y="132" font-size="9.5" font-weight="700" fill="#4A3B69" letter-spacing="1">L1 / L2 · BUILD A FEATURE FROM DATA WE ALREADY HAVE</text>
+  <g filter="url(#shadow)">
+    <rect x="480" y="144" width="156" height="138" rx="7" fill="#FFFFFF" stroke="#7A5AA8" stroke-width="1"/>
+    <rect x="654" y="144" width="156" height="138" rx="7" fill="#FFFFFF" stroke="#7A5AA8" stroke-width="1"/>
+    <rect x="828" y="144" width="156" height="138" rx="7" fill="#FFFFFF" stroke="#7A5AA8" stroke-width="1.6"/>
+  </g>
+  <g text-anchor="middle">
+    <text x="558" y="166" font-size="11" font-weight="700" fill="#4A3B69">1 · Write the feature</text>
+    <text x="558" y="190" font-size="9" fill="#5C5044">Python code from an idea</text>
+    <text x="558" y="205" font-size="9" fill="#5C5044">joins sources point-in-time</text>
+    <text x="558" y="220" font-size="9" fill="#5C5044">uses only allowed sources</text>
+    <text x="558" y="235" font-size="9" fill="#5C5044">and levels</text>
+    <text x="558" y="270" font-family="ui-monospace, Menlo, monospace" font-size="8.5" fill="#7A5AA8">risk_weighted_oop.py</text>
+
+    <text x="732" y="166" font-size="11" font-weight="700" fill="#4A3B69">2 · Quick checks</text>
+  </g>
+  <g font-size="9" fill="#5C5044">
+    <text x="668" y="186"><tspan font-weight="700" fill="#4A3B69">C0</tspan>  code safe &amp; valid?</text>
+    <text x="668" y="201"><tspan font-weight="700" fill="#4A3B69">C1</tspan>  seen before?</text>
+    <text x="668" y="216"><tspan font-weight="700" fill="#4A3B69">C2</tspan>  runs on sample rows?</text>
+    <text x="668" y="231"><tspan font-weight="700" fill="#4A3B69">C3</tspan>  model already has it?</text>
+    <text x="668" y="246"><tspan font-weight="700" fill="#4A3B69">C4</tspan>  tracks what it misses?</text>
+  </g>
+  <g text-anchor="middle">
+    <text x="732" y="270" font-size="8.5" fill="#3D6BA8" font-weight="700">cheapest first · fail early</text>
+
+    <text x="906" y="166" font-size="11" font-weight="700" fill="#4A3B69">3 · Screen · C5</text>
+    <text x="906" y="190" font-size="9" fill="#5C5044">base vs base + feature</text>
+    <text x="906" y="205" font-size="9" fill="#5C5044">on the screening sample</text>
+    <text x="906" y="220" font-size="9" fill="#5C5044">Gini gain vs the gate</text>
+    <text x="906" y="270" font-size="8.5" fill="#3D6BA8" font-weight="700">seconds</text>
+  </g>
+  <g stroke="#7A5AA8" stroke-width="1.6" fill="none" marker-end="url(#ar-purple)">
+    <path d="M636,213 H652"/>
+    <path d="M810,213 H826"/>
+  </g>
+  <text x="482" y="310" font-size="9" fill="#5C5044"><tspan fill="#4F8A5B" font-weight="700">✓ verified</tspan> → goes on to evaluation     <tspan fill="#B5523B" font-weight="700">✗ failed</tspan> → logged with the check and the reason</text>
+
+  <!-- ===== LANE B · L3 ===== -->
+  <rect x="468" y="340" width="540" height="208" rx="10" fill="#FBF6EC" stroke="#E8D9B8"/>
+  <text x="482" y="358" font-size="9.5" font-weight="700" fill="#7C5A1E" letter-spacing="1">L3 · ASK FOR DATA WE DON'T HAVE YET</text>
+  <g filter="url(#shadow)">
+    <rect x="480" y="372" width="156" height="100" rx="7" fill="#FFFFFF" stroke="#A0782E" stroke-width="1"/>
+    <rect x="654" y="372" width="156" height="100" rx="7" fill="#FFFFFF" stroke="#A0782E" stroke-width="1"/>
+    <rect x="828" y="372" width="156" height="100" rx="7" fill="#FFFFFF" stroke="#A0782E" stroke-width="1.6"/>
+  </g>
+  <g text-anchor="middle">
+    <text x="558" y="392" font-size="11" font-weight="700" fill="#7C5A1E">1 · Spot a data gap</text>
+    <text x="558" y="410" font-size="9" fill="#5C5044">what the model can't see,</text>
+    <text x="558" y="424" font-size="9" fill="#5C5044">from the data-pull scope</text>
+    <text x="558" y="438" font-size="9" fill="#5C5044">→ write a SQL request</text>
+    <text x="558" y="460" font-family="ui-monospace, Menlo, monospace" font-size="8.5" fill="#A0782E">auth_declines_30d</text>
+
+    <text x="732" y="392" font-size="11" font-weight="700" fill="#7C5A1E">2 · Validate</text>
+    <text x="732" y="410" font-size="9" fill="#5C5044">tables &amp; columns exist</text>
+    <text x="732" y="424" font-size="9" fill="#5C5044">point-in-time window</text>
+    <text x="732" y="438" font-size="9" fill="#5C5044">within the request budget</text>
+    <text x="732" y="460" font-size="8.5" fill="#3D6BA8" font-weight="700">in code</text>
+
+    <text x="906" y="392" font-size="11" font-weight="700" fill="#7C5A1E">3 · Self-challenge</text>
+    <text x="906" y="410" font-size="9" fill="#5C5044">could today's data</text>
+    <text x="906" y="424" font-size="9" fill="#5C5044">already supply it?</text>
+    <text x="906" y="438" font-size="9" fill="#5C5044">→ kept or dropped</text>
+    <text x="906" y="460" font-size="8.5" fill="#3D6BA8" font-weight="700">agent argues against itself</text>
+  </g>
+  <g stroke="#A0782E" stroke-width="1.6" fill="none" marker-end="url(#ar-amber)">
+    <path d="M636,422 H652"/>
+    <path d="M810,422 H826"/>
+    <path d="M906,472 V484"/>
+  </g>
+  <rect x="846" y="486" width="120" height="18" rx="9" fill="#DCE7F4" stroke="#3D6BA8"/>
+  <text x="906" y="498.5" font-size="8.5" fill="#1F3A5F" text-anchor="middle">👤 approve the pull</text>
+  <text x="482" y="516" font-size="9" fill="#5C5044"><tspan fill="#4F8A5B" font-weight="700">✓ kept</tspan> → validated SQL, ready to pull</text>
+  <text x="482" y="531" font-size="9" fill="#5C5044"><tspan fill="#B5523B" font-weight="700">✗ dropped</tspan> → logged: current data covers it</text>
+
+
+  <!-- new source returns to the materials -->
+  <path d="M906,504 V586 H252 V432 H232" stroke="#3F7D5A" stroke-width="1.6" stroke-dasharray="5,3" fill="none" marker-end="url(#ar-green)"/>
+  <text x="640" y="580" font-size="9" fill="#3F7D5A" text-anchor="middle" font-style="italic">pulled data becomes a new source → L1/L2 features from it next round</text>
+
+  <!-- ===== EVALUATION ===== -->
+  <path d="M984,213 H1054" stroke="#7A5AA8" stroke-width="2.2" fill="none" marker-end="url(#ar-purple)"/>
+  <text x="1019" y="206" font-size="8.5" fill="#4A3B69" text-anchor="middle" font-weight="700">verified</text>
+
+  <g filter="url(#shadow)">
+    <rect x="1056" y="76" width="316" height="228" rx="8" fill="#FFFFFF" stroke="#C3B6D8" stroke-width="0.8"/>
+    <path d="M1056,84 a8,8 0 0 1 8,-8 h300 a8,8 0 0 1 8,8 v18 h-316 z" fill="#7A5AA8"/>
+  </g>
+  <text x="1070" y="96" font-size="12.5" font-weight="700" fill="#FFFFFF">Evaluation module</text>
+  <text x="1358" y="96" font-size="9.5" fill="#EDE9F3" text-anchor="end" font-style="italic">slow · rigorous</text>
+  <rect x="1074" y="110" width="280" height="18" rx="9" fill="#DCE7F4" stroke="#3D6BA8"/>
+  <text x="1214" y="122.5" font-size="8.5" fill="#1F3A5F" text-anchor="middle">👤 analyst picks which verified features to evaluate</text>
+  <g font-size="9" fill="#5C5044">
+    <text x="1070" y="145"><tspan font-weight="700" fill="#4A3B69">1 ·</tspan> rebuild on the full splits — 🔒 hidden from the agent</text>
+    <text x="1070" y="160"><tspan font-weight="700" fill="#4A3B69">2 ·</tspan> retrain base vs base + new, alone and combined</text>
+    <text x="1070" y="175"><tspan font-weight="700" fill="#4A3B69">3 ·</tspan> read out on the out-of-time test</text>
+  </g>
+
+  <!-- sketch: Gini gain -->
+  <rect x="1068" y="184" width="140" height="106" rx="6" fill="#FAF9F5" stroke="#E5E0D2"/>
+  <text x="1138" y="197" font-size="8.5" font-weight="700" fill="#4A3B69" text-anchor="middle">Gini gain vs base</text>
+  <line x1="1076" y1="266" x2="1200" y2="266" stroke="#9A9387"/>
+  <line x1="1076" y1="252" x2="1200" y2="252" stroke="#3D6BA8" stroke-width="0.8" stroke-dasharray="3,2"/>
+  <rect x="1086" y="232" width="18" height="34" fill="#9C84C4"/>
+  <rect x="1112" y="244" width="18" height="22" fill="#9C84C4"/>
+  <rect x="1138" y="260" width="18" height="6" fill="#D4CCE2"/>
+  <rect x="1166" y="212" width="18" height="54" fill="#7A5AA8"/>
+  <g font-size="7.5" fill="#7A7569" text-anchor="middle">
+    <text x="1095" y="276">f1</text><text x="1121" y="276">f2</text><text x="1147" y="276">f3</text><text x="1175" y="276">combo</text>
+  </g>
+  <text x="1138" y="285" font-size="7" fill="#9A9387" text-anchor="middle" font-style="italic">dashed = gate</text>
+
+  <!-- sketch: SHAP rank -->
+  <rect x="1218" y="184" width="140" height="106" rx="6" fill="#FAF9F5" stroke="#E5E0D2"/>
+  <text x="1288" y="197" font-size="8.5" font-weight="700" fill="#4A3B69" text-anchor="middle">where new features rank</text>
+  <g font-size="7" fill="#9A9387" text-anchor="end">
+    <text x="1234" y="212">1</text><text x="1234" y="223">2</text><text x="1234" y="234">3</text>
+    <text x="1234" y="245">4</text><text x="1234" y="256">5</text><text x="1234" y="267">6</text>
+  </g>
+  <rect x="1238" y="206" width="104" height="7" rx="2" fill="#C9C2B4"/>
+  <rect x="1238" y="217" width="86" height="7" rx="2" fill="#7A5AA8"/>
+  <rect x="1238" y="228" width="70" height="7" rx="2" fill="#C9C2B4"/>
+  <rect x="1238" y="239" width="54" height="7" rx="2" fill="#7A5AA8"/>
+  <rect x="1238" y="250" width="40" height="7" rx="2" fill="#C9C2B4"/>
+  <rect x="1238" y="261" width="26" height="7" rx="2" fill="#C9C2B4"/>
+  <rect x="1244" y="276" width="7" height="7" fill="#7A5AA8"/><text x="1254" y="282" font-size="7.5" fill="#7A7569">new</text>
+  <rect x="1284" y="276" width="7" height="7" fill="#C9C2B4"/><text x="1294" y="282" font-size="7.5" fill="#7A7569">base (SHAP)</text>
+
+  <line x1="1214" y1="304" x2="1214" y2="350" stroke="#7A5AA8" stroke-width="2" marker-end="url(#ar-purple)"/>
+  <text x="1222" y="331" font-size="8.5" fill="#4A3B69" font-weight="700">kept features</text>
+  <text x="1222" y="343" font-size="8.5" fill="#4A3B69" font-weight="700">→ base + new model</text>
+
+  <!-- ===== INFERENCE ===== -->
+  <g filter="url(#shadow)">
+    <rect x="1056" y="352" width="316" height="248" rx="8" fill="#FFFFFF" stroke="#C3B6D8" stroke-width="0.8"/>
+    <path d="M1056,360 a8,8 0 0 1 8,-8 h300 a8,8 0 0 1 8,8 v18 h-316 z" fill="#7A5AA8"/>
+  </g>
+  <text x="1070" y="372" font-size="12.5" font-weight="700" fill="#FFFFFF">Inference module</text>
+  <rect x="1300" y="360" width="60" height="14" rx="7" fill="#EDE9F3"/>
+  <text x="1330" y="370.5" font-size="8" font-weight="700" fill="#7A5AA8" text-anchor="middle">PLANNED</text>
+  <rect x="1074" y="386" width="280" height="18" rx="9" fill="#E7F0EA" stroke="#3F7D5A"/>
+  <text x="1214" y="398.5" font-size="8.5" fill="#2C5B41" text-anchor="middle">🎯 one target case · a high-balance customer who defaulted</text>
+  <text x="1070" y="420" font-size="9" fill="#5C5044">re-score the case after each transaction: base vs base + new</text>
+
+  <!-- sketch: one case, score after each transaction -->
+  <rect x="1068" y="428" width="292" height="140" rx="6" fill="#FAF9F5" stroke="#E5E0D2"/>
+  <text x="1096" y="446" font-size="7.5" fill="#9A9387">score</text>
+  <line x1="1092" y1="440" x2="1092" y2="536" stroke="#9A9387"/>
+  <line x1="1092" y1="536" x2="1350" y2="536" stroke="#9A9387"/>
+  <line x1="1092" y1="483.2" x2="1350" y2="483.2" stroke="#B5523B" stroke-width="0.9" stroke-dasharray="3,2"/>
+  <text x="1096" y="480.2" font-size="7.5" fill="#B5523B">flag cutoff</text>
+  <rect x="1204" y="440" width="130" height="96" fill="#7A5AA8" opacity="0.07"/>
+  <text x="1269" y="529" font-size="8" fill="#4A3B69" font-weight="700" text-anchor="middle">flagged 5 transactions earlier</text>
+  <polyline points="1100,518.7 1126,517.8 1152,518.7 1178,516.8 1204,515.8 1230,514.9 1256,513.0 1282,507.2 1308,492.8 1334,476.5" stroke="#A9A194" stroke-width="1.8" fill="none"/>
+  <polyline points="1100,516.8 1126,513.0 1152,504.3 1178,489.9 1204,478.4 1230,470.7 1256,466.9 1282,463.0 1308,459.2 1334,455.4" stroke="#7A5AA8" stroke-width="2" fill="none"/>
+  <circle cx="1100" cy="518.7" r="2.6" fill="#A9A194"/><circle cx="1126" cy="517.8" r="2.6" fill="#A9A194"/><circle cx="1152" cy="518.7" r="2.6" fill="#A9A194"/><circle cx="1178" cy="516.8" r="2.6" fill="#A9A194"/><circle cx="1204" cy="515.8" r="2.6" fill="#A9A194"/><circle cx="1230" cy="514.9" r="2.6" fill="#A9A194"/><circle cx="1256" cy="513.0" r="2.6" fill="#A9A194"/><circle cx="1282" cy="507.2" r="2.6" fill="#A9A194"/><circle cx="1308" cy="492.8" r="2.6" fill="#A9A194"/><circle cx="1334" cy="476.5" r="2.6" fill="#A9A194"/>
+  <circle cx="1100" cy="516.8" r="2.6" fill="#7A5AA8"/><circle cx="1126" cy="513.0" r="2.6" fill="#7A5AA8"/><circle cx="1152" cy="504.3" r="2.6" fill="#7A5AA8"/><circle cx="1178" cy="489.9" r="2.6" fill="#7A5AA8"/><circle cx="1204" cy="478.4" r="2.6" fill="#7A5AA8"/><circle cx="1230" cy="470.7" r="2.6" fill="#7A5AA8"/><circle cx="1256" cy="466.9" r="2.6" fill="#7A5AA8"/><circle cx="1282" cy="463.0" r="2.6" fill="#7A5AA8"/><circle cx="1308" cy="459.2" r="2.6" fill="#7A5AA8"/><circle cx="1334" cy="455.4" r="2.6" fill="#7A5AA8"/>
+  <g font-size="6.5" fill="#9A9387" text-anchor="middle"><text x="1100" y="546">t1</text><text x="1126" y="546">t2</text><text x="1152" y="546">t3</text><text x="1178" y="546">t4</text><text x="1204" y="546">t5</text><text x="1230" y="546">t6</text><text x="1256" y="546">t7</text><text x="1282" y="546">t8</text><text x="1308" y="546">t9</text><text x="1334" y="546">t10</text></g>
+  <line x1="1100" y1="556" x2="1112" y2="556" stroke="#A9A194" stroke-width="2"/><text x="1116" y="559" font-size="7.5" fill="#7A7569">base: barely reacts</text>
+  <line x1="1196" y1="556" x2="1208" y2="556" stroke="#7A5AA8" stroke-width="2"/><text x="1212" y="559" font-size="7.5" fill="#7A7569">base + new: rises early</text>
+  <text x="1352" y="559" font-size="7.5" fill="#9A9387" text-anchor="end">→ default</text>
+
+  <rect x="1074" y="576" width="280" height="18" rx="9" fill="#DCE7F4" stroke="#3D6BA8"/>
+  <text x="1214" y="588.5" font-size="8.5" fill="#1F3A5F" text-anchor="middle">👤 analyst sees: does the new model react earlier?</text>
+
+  <!-- ===== OUTPUT ===== -->
+  <rect x="1392" y="40" width="212" height="580" rx="14" fill="#F1EEE6" stroke="#E2DCCB"/>
+  <text x="1406" y="64" font-size="10" font-weight="700" fill="#8A7B5C" letter-spacing="2">OUTPUT</text>
+
+  <path d="M1372,214 H1402" stroke="#7A5AA8" stroke-width="2" fill="none" marker-end="url(#ar-purple)"/>
+  <g filter="url(#shadow)">
+    <rect x="1404" y="170" width="190" height="88" rx="10" fill="#EDE9F3" stroke="#7A5AA8" stroke-width="1.4"/>
+  </g>
+  <text x="1499" y="196" font-size="11.5" font-weight="700" fill="#4A3B69" text-anchor="middle">Recommended features</text>
+  <text x="1499" y="214" font-size="9" fill="#5C4B7A" text-anchor="middle">code + evaluation evidence</text>
+  <text x="1499" y="228" font-size="9" fill="#5C4B7A" text-anchor="middle">Gini gain · SHAP rank</text>
+  <text x="1499" y="245" font-size="8.5" fill="#7A7569" text-anchor="middle" font-style="italic">ready for the model owners</text>
+
+  <path d="M1372,490 H1402" stroke="#7A5AA8" stroke-width="2" fill="none" marker-end="url(#ar-purple)"/>
+  <g filter="url(#shadow)">
+    <rect x="1404" y="446" width="190" height="88" rx="10" fill="#EDE9F3" stroke="#7A5AA8" stroke-width="1.4"/>
+  </g>
+  <text x="1499" y="472" font-size="11.5" font-weight="700" fill="#4A3B69" text-anchor="middle">Case-impact report</text>
+  <text x="1499" y="490" font-size="9" fill="#5C4B7A" text-anchor="middle">each target case: its score path,</text>
+  <text x="1499" y="504" font-size="9" fill="#5C4B7A" text-anchor="middle">base vs new · how much earlier</text>
+  <text x="1499" y="521" font-size="8.5" fill="#7A7569" text-anchor="middle" font-style="italic">evidence a person can check</text>
+
+  <rect x="1404" y="584" width="190" height="20" rx="10" fill="#DCE7F4" stroke="#3D6BA8"/>
+  <text x="1499" y="597.5" font-size="8.5" fill="#1F3A5F" text-anchor="middle">👤 analyst decides what ships</text>
+
+  <!-- ===== arrows to and from the logging board ===== -->
+  <path d="M760,600 V658" stroke="#8A8275" stroke-width="1.6" fill="none" marker-end="url(#ar-gray)"/>
+  <text x="768" y="644" font-size="9" fill="#5C5044" font-style="italic">every check, screen and challenge result — pass or fail</text>
+  <path d="M1214,600 V658" stroke="#8A8275" stroke-width="1.6" fill="none" marker-end="url(#ar-gray)"/>
+  <text x="1206" y="644" font-size="9" fill="#5C5044" font-style="italic" text-anchor="end">evaluation verdicts</text>
+  <path d="M373,660 V426" stroke="#7A5AA8" stroke-width="2.2" fill="none" marker-end="url(#ar-purple)"/>
+  <rect x="380" y="634" width="268" height="16" rx="4" fill="#F3EFF9"/>
+  <text x="384" y="645" font-size="9" fill="#7A5AA8" font-weight="700">updates each idea's P(useful) → the next draw</text>
+  </g>
+
+  <!-- target cases go to the inference module -->
+  <g transform="translate(20,30)">
+    <path d="M190,592 V618 H1140 V604" stroke="#3F7D5A" stroke-width="1.8" fill="none" marker-end="url(#ar-green)"/>
+    <text x="1132" y="613" font-size="9" fill="#3F7D5A" text-anchor="end" font-style="italic">🎯 target cases, re-scored by base vs base + new</text>
+  </g>
+
+  <!-- inputs into the discovery module (drawn over the panel edge) -->
+  <g transform="translate(0,30)">
+    <line x1="250" y1="196" x2="298" y2="196" stroke="#3D6BA8" stroke-width="1.8" marker-end="url(#ar-blue)"/>
+    <line x1="250" y1="380" x2="298" y2="380" stroke="#3F7D5A" stroke-width="1.8" marker-end="url(#ar-green)"/>
+  </g>
+
+  <!-- ============================================================ -->
+  <!-- LOGGING BOARD (inside the agent)                             -->
+  <!-- ============================================================ -->
+  <g transform="translate(20,30)">
+  <g filter="url(#shadow)">
+    <rect x="280" y="660" width="1092" height="236" rx="8" fill="#FFFFFF" stroke="#D4C5A9" stroke-width="0.8"/>
+    <path d="M280,668 a8,8 0 0 1 8,-8 h1076 a8,8 0 0 1 8,8 v16 h-1092 z" fill="#7A5AA8"/>
+  </g>
+  <text x="294" y="677" font-size="12" font-weight="700" fill="#FFFFFF">Logging board</text>
+  <text x="394" y="677" font-size="9.5" fill="#EDE9F3" font-style="italic">one row per feature or data request · written from the run's own records, never from the agent's account</text>
+
+  <g font-size="7.5" font-weight="700" fill="#5C5044" letter-spacing="0.3">
+    <text x="292" y="704">IDEA · ENGINE</text>
+    <text x="456" y="704">FEATURE / REQUEST</text>
+    <text x="562" y="704">CODE</text>
+    <text x="740" y="704">LEVEL</text>
+    <text x="772" y="704">CHECKS C0–C4</text>
+    <text x="888" y="704">C5 Δ</text>
+    <text x="932" y="704">OUTCOME</text>
+    <text x="1090" y="704">EVALUATION</text>
+    <text x="1224" y="704">WHAT IT CHANGES</text>
+  </g>
+  <line x1="288" y1="711" x2="1364" y2="711" stroke="#E5E0D2"/>
+  <g stroke="#F1EDE3">
+    <line x1="288" y1="740" x2="1364" y2="740"/><line x1="288" y1="764" x2="1364" y2="764"/>
+    <line x1="288" y1="788" x2="1364" y2="788"/><line x1="288" y1="812" x2="1364" y2="812"/>
+    <line x1="288" y1="836" x2="1364" y2="836"/>
+  </g>
+  <g font-size="8.5" fill="#2D2D2D">
+    <g font-family="ui-monospace, Menlo, monospace" font-size="8">
+      <text x="456" y="730">risk_weighted_oop</text>
+      <text x="456" y="754">oop_change_3m</text>
+      <text x="456" y="778">payday_shift</text>
+      <text x="456" y="802">spend_vel_1m</text>
+      <text x="456" y="826">R1 auth_declines_30d</text>
+      <text x="456" y="850">R2 merchant_region</text>
+    </g>
+    <g font-family="ui-monospace, Menlo, monospace" font-size="8" fill="#7A5AA8">
+      <text x="562" y="730">z(spend,6m) * risk_score</text>
+      <text x="562" y="754">z(spend,1m) - z(spend,3m)</text>
+      <text x="562" y="778">days_between(pay_dt, due_dt)</text>
+      <text x="562" y="802">spend_1m / spend_3m</text>
+      <text x="562" y="826" fill="#A0782E">SELECT auth_decline_cnt_30d …</text>
+      <text x="562" y="850" fill="#A0782E">SELECT merchant_country …</text>
+    </g>
+
+    <text x="292" y="730">Out-of-pattern spend · mechanism</text>
+    <text x="740" y="730">L2</text><text x="772" y="730">✓ · new · ✓ · .31 · .14</text><text x="888" y="730">+.006</text>
+    <text x="932" y="730" fill="#4F8A5B" font-weight="700">✓ verified</text>
+    <text x="1090" y="730">+.004 Gini · SHAP #2</text>
+    <text x="1224" y="730" fill="#5C5044">P(useful) up — draw again</text>
+
+    <text x="292" y="754">Out-of-pattern spend · analogy</text>
+    <text x="740" y="754">L2</text><text x="772" y="754">✓ · new · ✓ · .58 · .09</text><text x="888" y="754">+.002</text>
+    <text x="932" y="754" fill="#4F8A5B" font-weight="700">✓ verified</text>
+    <text x="1090" y="754">adds nothing beside row 1</text>
+    <text x="1224" y="754" fill="#5C5044">try a different angle</text>
+
+    <text x="292" y="778">Payment timing drift · contrastive</text>
+    <text x="740" y="778">L2</text><text x="772" y="778">✓ · new · <tspan fill="#B5523B">✗</tspan> · — · —</text><text x="888" y="778">—</text>
+    <text x="932" y="778" fill="#B5523B" font-weight="700">✗ C2 script failed: no due_dt</text>
+    <text x="1090" y="778" fill="#9A9387">—</text>
+    <text x="1224" y="778" fill="#5C5044">fix code · P(useful) same</text>
+
+    <text x="292" y="802">Spend velocity · morphological</text>
+    <text x="740" y="802">L1</text><text x="772" y="802">✓ · new · ✓ · <tspan fill="#B5523B">.96 ✗</tspan> · —</text><text x="888" y="802">—</text>
+    <text x="932" y="802" fill="#B5523B" font-weight="700">✗ C3 model already has it</text>
+    <text x="1090" y="802" fill="#9A9387">—</text>
+    <text x="1224" y="802" fill="#5C5044">P(useful) down — later</text>
+
+    <text x="292" y="826">Missed declines · contrastive</text>
+    <text x="740" y="826">L3</text><text x="772" y="826">SQL validated</text><text x="888" y="826">—</text>
+    <text x="932" y="826" fill="#4F8A5B" font-weight="700">✓ kept · 👤 pull approved</text>
+    <text x="1090" y="826" fill="#9A9387">after the pull</text>
+    <text x="1224" y="826" fill="#5C5044">P(useful) up — new source</text>
+
+    <text x="292" y="850">Merchant geography · others</text>
+    <text x="740" y="850">L3</text><text x="772" y="850">SQL validated</text><text x="888" y="850">—</text>
+    <text x="932" y="850" fill="#B5523B" font-weight="700">✗ dropped: data covers it</text>
+    <text x="1090" y="850" fill="#9A9387">—</text>
+    <text x="1224" y="850" fill="#5C5044">P(useful) down</text>
+  </g>
+  <text x="292" y="880" font-size="8" fill="#9A9387" font-style="italic">Illustrative rows. Each outcome updates its idea's P(useful) — the distribution the next idea is drawn from. A script that fails to run says nothing about the idea, so it counts neither way.</text>
+  </g>
+
+  <!-- legend (below the inputs) -->
+  <g font-size="9" fill="#5C5044">
+    <text x="30" y="684" font-size="9" font-weight="700" fill="#8A7B5C" letter-spacing="1.5">LEGEND</text>
+    <text x="30" y="706">👤 a human decision</text>
+    <text x="30" y="726">🔒 hidden from the agent</text>
+    <text x="30" y="746">🎯 target cases</text>
+    <rect x="30" y="757" width="10" height="10" rx="2" fill="#7A5AA8"/><text x="46" y="766">the agent's work</text>
+    <rect x="30" y="777" width="10" height="10" rx="2" fill="#3F7D5A"/><text x="46" y="786">data</text>
+    <rect x="30" y="797" width="10" height="10" rx="2" fill="#A0782E"/><text x="46" y="806">new-data requests (L3)</text>
+    <rect x="30" y="817" width="10" height="10" rx="2" fill="#3D6BA8"/><text x="46" y="826">analyst</text>
+  </g>
+  </g>
+</svg>
