@@ -631,3 +631,54 @@ def test_the_trace_viewer_starts_beside_the_server(env):
     # A port already taken: the server runs on, without a viewer.
     port = int(url.rsplit(":", 1)[1])
     assert start_trace_viewer(app, "127.0.0.1", port) is None
+
+
+def test_a_run_with_no_room_waits_in_the_queue(env, tmp_path, monkeypatch):
+    import threading
+
+    from agent import server
+    from agent.server import create_app
+
+    _, root, _ = env
+    monkeypatch.setattr(server, "QUEUE_POLL_S", 0.1)
+    release = threading.Event()
+
+    def held(session):
+        from agent.tools import report_findings
+
+        session.start()
+        release.wait(60)
+        report_findings(session, "held")
+
+    payload = json.loads(json.dumps(yaml.safe_load(open(ROOT / "configs/synthetic_agent.yaml")))
+                         .replace("data/synthetic_agent", str(root)))
+    payload["agent"]["run_dir"] = str(tmp_path / "runs")
+    path = tmp_path / "cfg.yaml"
+    path.write_text(yaml.safe_dump(payload))
+    client = create_app(str(path), run_session=held, make_themes=fake_themes).test_client()
+    try:
+        first = client.post("/api/runs", json={"direction": "one"})
+        assert first.status_code == 202
+        # Without queue it is refused, as before; with it, it waits in line.
+        assert client.post("/api/runs", json={"direction": "two"}).status_code == 409
+        second = client.post("/api/runs", json={"direction": "two", "queue": True})
+        third = client.post("/api/runs", json={"direction": "three", "queue": True})
+        assert second.status_code == third.status_code == 202
+        assert (second.get_json()["position"], third.get_json()["position"]) == (1, 2)
+        assert client.get("/api/workspace").get_json()["queued_runs"] == 2
+        # Taken out of the line, it never starts.
+        assert client.delete(f"/api/queue/{third.get_json()['queued']}").status_code == 200
+        assert [e["direction"] for e in client.get("/api/queue").get_json()] == ["two"]
+        time.sleep(0.5)
+        assert len(client.get("/api/runs").get_json()) == 1     # no room yet
+    finally:
+        release.set()
+    wait_for(tmp_path / "runs" / first.get_json()["run_id"], "run_done")
+    deadline = time.time() + 30
+    while client.get("/api/queue").get_json() and time.time() < deadline:
+        time.sleep(0.1)
+    assert client.get("/api/queue").get_json() == []
+    runs = client.get("/api/runs").get_json()
+    assert sorted(r["direction"] for r in runs) == ["one", "two"]
+    for r in runs:
+        wait_for(tmp_path / "runs" / r["run_id"], "run_done")

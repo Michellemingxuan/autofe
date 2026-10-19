@@ -8,8 +8,9 @@ import s from './NewDirection.module.css'
 type Props = {
   workspace: Workspace | null
   initialDirection: string | null
-  busy: boolean
+  busy: string | null          // why a run cannot start now: it is queued instead
   onStarted: (runId: string) => void
+  onQueued: () => void
 }
 
 const EXAMPLES = [
@@ -25,12 +26,13 @@ const LEVELS: { level: Level; title: string; text: string }[] = [
 ]
 
 /** Start a direction: the idea in words, and the run's parameters. */
-export function NewDirection({ workspace, initialDirection, busy, onStarted }: Props) {
+export function NewDirection({ workspace, initialDirection, busy, onStarted, onQueued }: Props) {
   const [direction, setDirection] = useState(initialDirection ?? '')
   const [themePool] = usePolled(api.themes, [], 5000)
   const [params, setParams] = useState<Params | null>(null)
   const [error, setError] = useState<string | null>(null)
   const [starting, setStarting] = useState(false)
+  const [queued, setQueued] = useState<number | null>(null)   // its place in line, once queued
   // "Edit & re-run" lands here with the earlier run's direction and settings.
   const [rerun] = useState<RerunDraft | null>(() => {
     const draft = rerunDraft.take()
@@ -67,10 +69,15 @@ export function NewDirection({ workspace, initialDirection, busy, onStarted }: P
 
   const start = async () => {
     setError(null)
+    setQueued(null)
     setStarting(true)
     try {
-      const { run_id } = await api.start(direction.trim(), params, rerun?.replaces)
-      onStarted(run_id)
+      const reply = await api.start(direction.trim(), params, rerun?.replaces, !!busy)
+      if (reply.run_id) onStarted(reply.run_id)
+      else {
+        setQueued(reply.position ?? null)
+        onQueued()
+      }
     } catch (e: any) {
       setError(e.message)
     } finally {
@@ -245,9 +252,10 @@ export function NewDirection({ workspace, initialDirection, busy, onStarted }: P
           {error && <div className={s.error}>{error}</div>}
 
           <div className={s.startRow}>
-            <button className={s.start} disabled={(open && !pool.length) || busy || starting || noFeatureLevel}
+            <button className={s.start} disabled={(open && !pool.length) || starting || noFeatureLevel}
                     onClick={start}>
-              {busy ? 'A direction is running' : starting ? 'Starting…'
+              {starting ? 'Starting…'
+                : busy ? 'Add to the queue'
                 : rerun ? 'Re-run, replacing the earlier run'
                 : open ? 'Start an open exploration'
                 : l3Only ? 'Start data-request run' : 'Start direction'}
@@ -258,6 +266,15 @@ export function NewDirection({ workspace, initialDirection, busy, onStarted }: P
                       onClick={() => navigate('discover', rerun.replaces)}>Cancel</button>
             )}
           </div>
+          {queued !== null && (
+            <div className={s.queued}>
+              Queued{queued ? ` - ${ordinal(queued)} in line` : ''}. It starts on its own when a run ends;
+              add another direction, or follow the line in the rail.
+            </div>
+          )}
+          {busy && queued === null && (
+            <p className={s.hint}>{busy} - this one waits in the queue and starts when one ends.</p>
+          )}
           <p className={s.hint}>
             You confirm each new linkage and every data request; features at L1/L2 run on their own.
           </p>
@@ -266,6 +283,9 @@ export function NewDirection({ workspace, initialDirection, busy, onStarted }: P
     </div>
   )
 }
+
+const ordinal = (n: number) => `${n}${n % 10 === 1 && n % 100 !== 11 ? 'st'
+  : n % 10 === 2 && n % 100 !== 12 ? 'nd' : n % 10 === 3 && n % 100 !== 13 ? 'rd' : 'th'}`
 
 function Field({ label, hint, children }: { label: string; hint?: string; children: React.ReactNode }) {
   return (

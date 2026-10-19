@@ -67,14 +67,18 @@ discovery:
     # Inference results): their rows, shaped like train.csv (more columns are
     # fine), and their own history of each source, in the source's format.
     target_cases:
-      dir: data/cdss_us_sbs/additional_data/targeted_cases   # the names below are in it
-      rows: null                              # TODO: the transactions file
+      dir: data/cdss_us_sbs/targeted_cases    # the names below are in it
+      rows: hb_defaulters.csv                 # the cases' transactions
       # cust_id_new from its parts: customer id, transaction date, sequence number.
-      # TODO: check the columns' names and the date's form against a train.csv id.
-      id_template: "{cust_id}_{trans_dt:%Y%m%d}_{lseq_nbr}"
+      id_template: "{grmscust}_{trans_dt:%Y%m%d}_{lseq_no}"
       case_column: null                       # default: the template's first column (the customer)
       time_column: null                       # default: the template's first date
-      sources: {}                             # each additional dataset's history: its own file name in dir, unless given here
+      # Each additional dataset's history for the cases, in dir (.parquet or .csv
+      # is found when the name has no suffix).
+      sources:
+        bureau: hb_bureau_data_365day
+        spends: hb_spending_history_7day
+        payments: hb_payment_history_30day
       flag_top: 0.05                          # each model flags its top 5% of test scores
     
     # The discovery pipeline: lists these schemas in its prompt when enabled.

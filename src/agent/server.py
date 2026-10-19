@@ -35,8 +35,11 @@ The contract, page by page (``web/src/api.ts`` calls exactly these;
 
 2. Discover
    GET    /api/runs
-   POST   /api/runs               {direction, params, replaces?}   start - or re-run, replacing
-                                               an earlier run: its features leave the pool.
+   POST   /api/runs               {direction, params, replaces?, queue?}   start - or re-run,
+                                               replacing an earlier run: its features leave the pool.
+                                               With queue, a run with no room waits in line
+   GET    /api/queue                          the runs waiting, in order
+   DELETE /api/queue/<id>                     take one out of the line
                                                No direction: an open exploration, the
                                                agent drawing a theme from the pool per round
    DELETE /api/runs/<id>
@@ -195,6 +198,17 @@ class Hub:
                         headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"})
 
 
+class StartError(Exception):
+    """A run that cannot start, and the HTTP status that says why."""
+
+    def __init__(self, message: str, status: int = 400):
+        super().__init__(message)
+        self.status = status
+
+
+QUEUE_POLL_S = 2.0                             # how often the queue looks for room
+
+
 def _frame(record: dict[str, Any]) -> str:
     return f"event: {record['event']}\ndata: {json.dumps(record, default=str)}\n\n"
 
@@ -239,7 +253,8 @@ def create_app(config_path: str, static_dir: str | None = None,
     exercised without a model."""
     setup = Setup(config_path)
     cfg, ws = setup.load()
-    ctx: dict[str, Any] = {"cfg": cfg, "ws": ws, "active": None}
+    ctx: dict[str, Any] = {"cfg": cfg, "ws": ws}
+    starting = threading.Lock()                # a run counted and started as one step
     hubs: dict[str, dict[str, Hub]] = {"direction": {}, "linkage": {}, "evaluation": {},
                                        "inference": {}}
     app = Flask(__name__, static_folder=None)
@@ -278,11 +293,14 @@ def create_app(config_path: str, static_dir: str | None = None,
         threading.Thread(target=work, daemon=True).start()
 
     # ------------------------------------------------------------ helpers
+    def busy_jobs(kind: str | None = None) -> list[str]:
+        """The agent jobs running now: a discovery run or a linkage."""
+        return [job for k in ("direction", "linkage") if kind in (None, k)
+                for job, hub in list(hubs[k].items()) if hub.busy]
+
     def busy_job() -> str | None:
-        active = ctx["active"]
-        if active and any(active in h and h[active].busy for h in hubs.values()):
-            return active
-        return None
+        jobs = busy_jobs()
+        return jobs[0] if jobs else None
 
     def job_hub(kind: str, job_id: str) -> Hub:
         if job_id not in hubs[kind]:
@@ -309,7 +327,6 @@ def create_app(config_path: str, static_dir: str | None = None,
     def start_session(session: Session, approver: ServerApprover) -> Hub:
         hub = Hub(session, approver)
         hubs[session.kind][session.run_id] = hub
-        ctx["active"] = session.run_id
         hub.start(lambda: runner(session))
         return hub
 
@@ -321,11 +338,10 @@ def create_app(config_path: str, static_dir: str | None = None,
                 now = ctx["ws"].sources()
             except Exception:  # noqa: BLE001 - a half-written file; try again
                 continue
-            active = busy_job()
             for name, src in now.items():
-                if seen and seen.get(name) != src.usable and active \
-                        and active in hubs["direction"]:
-                    hubs["direction"][active].job.emit("source_detected", **src.summary())
+                if seen and seen.get(name) != src.usable:
+                    for run in busy_jobs("direction"):
+                        hubs["direction"][run].job.emit("source_detected", **src.summary())
             seen = {n: s.usable for n, s in now.items()}
 
     threading.Thread(target=watch_sources, daemon=True).start()
@@ -360,8 +376,9 @@ def create_app(config_path: str, static_dir: str | None = None,
                          "levels": list(LEVELS), "level_weights": list(agent.level_weights)},
             "choices": {"models": list(dict.fromkeys([agent.llm.model, *agent.models])),
                         "engines": ["pandas", *(["spark"] if spark_available() else []), "sql"], "levels": list(LEVELS)},
-            "active_run": busy_job() if busy_job() in hubs["direction"] else None,
-            "active_linkage": busy_job() if busy_job() in hubs["linkage"] else None,
+            "active_run": next(iter(busy_jobs("direction")), None),
+            "queued_runs": sum(1 for e in read_queue() if not e["error"]),
+            "active_linkage": next(iter(busy_jobs("linkage")), None),
             # The trace viewer started beside this server, if any (start_trace_viewer).
             "trace_viewer": app.config.get("TRACE_VIEWER"),
         })
@@ -546,23 +563,55 @@ def create_app(config_path: str, static_dir: str | None = None,
                 return error("no direction given and no themes to explore yet - write one, or "
                              "make the theme pool in Setup (it is drawn from the task description)")
             direction = themes.OPEN
-        if busy_job():
-            return error(f"{busy_job()} is still running", 409)
+        with starting:
+            blocked = start_blocked()
+            waiting = any(not e["error"] for e in read_queue())
+            if (blocked or waiting) and body.get("queue"):
+                # Waits in line - behind any already waiting; the dispatcher
+                # starts it when there is room.
+                try:
+                    RunParams(**{k: (body.get("params") or {}).get(k)
+                                 for k in RunParams.__dataclass_fields__})
+                except (TypeError, ValueError) as exc:
+                    return error(str(exc))
+                entry = {"queue_id": f"q{time.time_ns()}", "direction": direction,
+                         "explore": explore, "params": body.get("params") or {},
+                         "replaces": str(body.get("replaces") or "").strip() or None,
+                         "queued": time.time(), "error": None}
+                queue_now = read_queue() + [entry]
+                write_queue(queue_now)
+                return jsonify(queued=entry["queue_id"],
+                               position=sum(1 for q in queue_now if not q["error"])), 202
+            if blocked:
+                return error(blocked, 409)
+            try:
+                run_id, replaced = launch(body, direction, explore)
+            except StartError as exc:
+                return error(str(exc), exc.status)
+        return jsonify(run_id=run_id, replaced=replaced), 202
+
+    def start_blocked() -> str | None:
+        """Why a discovery run cannot start now, or None: one agent job at a time."""
+        job = busy_job()
+        return f"{job} is still running" if job else None
+
+    def launch(body: dict[str, Any], direction: str, explore: bool) -> tuple[str, str | None]:
+        """Start a discovery run now - the caller has checked there is room."""
         raw = body.get("params") or {}
         replaces = str(body.get("replaces") or "").strip()
         old = Session.folder_for(ctx["ws"], replaces) if replaces else None
         if old is not None:
             if replaces in hubs["direction"] and hubs["direction"][replaces].busy:
-                return error(f"{replaces} is still running; stop it before re-running", 409)
+                raise StartError(f"{replaces} is still running; stop it before re-running", 409)
             if not (old / "events.jsonl").exists():
-                return error(f"no run {replaces} to replace", 404)
+                raise StartError(f"no run {replaces} to replace", 404)
         try:
             params = RunParams(**{k: raw.get(k) for k in RunParams.__dataclass_fields__})
             approver = ServerApprover()
             session = Session(ctx["ws"], direction, approver=approver, params=params,
                               explore=explore)
         except (TypeError, ValueError) as exc:
-            return error(str(exc))
+            raise StartError(str(exc)) from exc
         if old is not None:
             # Replaced, not deleted: out of the list and the pool, kept on disk.
             archive = Path(ctx["cfg"].agent.run_dir) / "replaced"
@@ -571,7 +620,63 @@ def create_app(config_path: str, static_dir: str | None = None,
             hubs["direction"].pop(replaces, None)
             session.emit("run_replaces", replaces=replaces)
         start_session(session, approver)
-        return jsonify(run_id=session.run_id, replaced=replaces or None), 202
+        return session.run_id, replaces or None
+
+    # The queue: runs asked for while there was no room, started in order as
+    # runs end. Kept on disk, so a restarted server picks it up.
+    def queue_path() -> Path:
+        return Path(ctx["cfg"].agent.run_dir) / "queue.json"
+
+    def read_queue() -> list[dict[str, Any]]:
+        path = queue_path()
+        try:
+            return json.loads(path.read_text()) if path.exists() else []
+        except ValueError:
+            return []
+
+    def write_queue(entries: list[dict[str, Any]]) -> None:
+        path = queue_path()
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text(json.dumps(entries, indent=1))
+
+    def dispatch() -> None:
+        """Start the queue's next run whenever there is room - one per pass, so a
+        run counts as running before the next is weighed."""
+        with starting:
+            entries = read_queue()
+            nxt = next((e for e in entries if not e["error"]), None)
+            if nxt is None or start_blocked():
+                return
+            try:
+                launch(nxt, nxt["direction"], nxt["explore"])
+                entries.remove(nxt)
+            except Exception as exc:  # noqa: BLE001 - kept in line, marked, for the user
+                nxt["error"] = str(exc)
+            write_queue(entries)
+
+    def dispatcher() -> None:
+        while True:
+            time.sleep(QUEUE_POLL_S)
+            try:
+                dispatch()
+            except Exception:  # noqa: BLE001 - try again on the next pass
+                continue
+
+    threading.Thread(target=dispatcher, daemon=True).start()
+
+    @app.get("/api/queue")
+    def get_queue():
+        return jsonify(read_queue())
+
+    @app.delete("/api/queue/<queue_id>")
+    def unqueue(queue_id: str):
+        with starting:
+            entries = read_queue()
+            kept = [e for e in entries if e["queue_id"] != queue_id]
+            if len(kept) == len(entries):
+                return error(f"{queue_id} is not in the queue", 404)
+            write_queue(kept)
+        return jsonify(ok=True)
 
     @app.delete("/api/runs/<run_id>")
     def delete_run(run_id: str):

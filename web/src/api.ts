@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react'
 import type {
   BaseModelCard, BoardRow, EvalResult, InferenceDetail, InferenceSummary, LlmCall, LlmCallFull,
-  EvalSummary, Ev, Params, PathCheck, PoolFeature, RequestItem, RunSummary, SetupView, Source, TargetCases,
+  EvalSummary, Ev, Params, PathCheck, PoolFeature, QueuedRun, RequestItem, RunSummary, SetupView, Source, TargetCases,
   ThemePool, Workspace,
 } from './types'
 
@@ -71,8 +71,11 @@ export const api = {
 
   // 2. Discover
   runs: () => call<RunSummary[]>('/api/runs'),
-  start: (direction: string, params: Params, replaces?: string) =>
-    post<{ run_id: string }>('/api/runs', { direction, params, replaces }),
+  // With queue, a run with no room now waits in line instead of being refused.
+  start: (direction: string, params: Params, replaces?: string, queue = false) =>
+    post<{ run_id?: string; queued?: string; position?: number }>('/api/runs', { direction, params, replaces, queue }),
+  queue: () => call<QueuedRun[]>('/api/queue'),
+  unqueue: (id: string) => del(`/api/queue/${id}`),
   deleteRun: (id: string) => del(`/api/runs/${id}`),
   deleteIntent: (runId: string, name: string) => del(`/api/runs/${runId}/intents/${name}`),
   requestsUrl: (runId: string) => `/api/runs/${runId}/requests.md`,

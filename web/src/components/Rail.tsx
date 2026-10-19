@@ -1,11 +1,14 @@
 import { navigate, type Page, type Route } from '../App'
-import type { EvalSummary, RunSummary, SourceState, Workspace } from '../types'
+import { api } from '../api'
+import type { EvalSummary, QueuedRun, RunSummary, SourceState, Workspace } from '../types'
 import s from './Rail.module.css'
 
 type Props = {
   route: Route
   workspace: Workspace | null
   runs: RunSummary[]
+  queue: QueuedRun[]
+  onUnqueue: () => void
   evaluations: EvalSummary[]
   onBoard: () => void
   onLogo: () => void
@@ -35,7 +38,7 @@ const when = (ts: number) => new Date(ts * 1000).toLocaleString([], {
 })
 
 /** The dark rail: the three steps, and what each has made so far. */
-export function Rail({ route, workspace, runs, evaluations, onBoard, onLogo }: Props) {
+export function Rail({ route, workspace, runs, queue, onUnqueue, evaluations, onBoard, onLogo }: Props) {
   return (
     <aside className={s.rail}>
       <div className={s.brand} title={workspace?.name ? `workspace: ${workspace.name}` : undefined}>
@@ -82,7 +85,18 @@ export function Rail({ route, workspace, runs, evaluations, onBoard, onLogo }: P
                   onClick={() => navigate('discover')}>+ New direction</button>
           <div className={s.section}>
             <div className={`eyebrow ${s.sectionHead}`}>Directions</div>
-            {runs.length === 0 && <div className={s.empty}>None yet</div>}
+            {runs.length === 0 && !queue.length && <div className={s.empty}>None yet</div>}
+            {queue.map((q, i) => (
+              <div key={q.queue_id} className={`${s.item} ${s.queuedItem}`} title={q.error ?? q.direction}>
+                <span className={`${s.dot} ${q.error ? s.error : s.queued}`} />
+                <span className={s.itemText}>
+                  <span className={s.itemTitle}>{q.explore ? 'Open exploration' : q.direction}</span>
+                  <span className={s.itemMeta}>{q.error ? 'could not start' : `queued · ${i + 1} in line`}</span>
+                </span>
+                <button className={s.unqueue} title="Take it out of the queue"
+                        onClick={() => api.unqueue(q.queue_id).then(onUnqueue, onUnqueue)}>×</button>
+              </div>
+            ))}
             {runs.map((r) => (
               <button key={r.run_id}
                       className={`${s.item} ${r.run_id === route.id ? s.active : ''}`}

@@ -92,3 +92,4 @@
 .startRow .start { flex: 1; }
 .cancel { border: 1px solid var(--j-border-strong); background: var(--j-surface); color: var(--j-ink-3); border-radius: var(--j-radius-ctl); padding: 0 16px; font-weight: 600; }
 .cancel:hover:not(:disabled) { background: var(--j-surface-soft); color: var(--j-ink); }
+.queued { font-size: var(--j-fs-sm); color: var(--j-accent-deep); background: var(--j-accent-soft); border: 1px solid var(--j-accent-line); border-radius: 8px; padding: 7px 11px; }

@@ -163,14 +163,8 @@ BLOCKS: list[dict[str, Any]] = [
              "cases' own history of it, in the same format.",
      "fields": {
          "discovery.additional_data.target_cases.rows": {
-             "label": "Rows", "kind": "path", "section": "Cases",
-             "help": "The cases' rows, e.g. their transactions (.csv or .parquet)"},
-         "discovery.additional_data.target_cases.case_column": {
-             "section": "Cases", "label": "Case column", "kind": "text",
-             "help": "One case is every row with one value of it; empty: the customer id column"},
-         "discovery.additional_data.target_cases.time_column": {
-             "section": "Cases", "label": "Time column", "kind": "text",
-             "help": "Orders a case's rows; empty: the transaction date"},
+             "label": "Transactions", "kind": "path", "section": "Cases",
+             "help": "The cases' transactions (.csv or .parquet)"},
      }},
 ]
 # Keys that moved out of the agent section: overrides saved before still load.
@@ -290,8 +284,8 @@ def _get(cfg: Config, dotted: str) -> Any:
     if node and (dotted == f"{_CASES}.rows" or dotted.startswith(f"{_CASES}.sources.")):
         # A bare name inside the cases' folder, shown and checked as the full path.
         folder = cfg.discovery.additional_data.target_cases.dir
-        if folder and not Path(node).is_absolute() and not Path(node).exists():
-            return str(Path(folder) / node)
+        from agent.infer import _resolve
+        return str(_resolve(node, folder))
     if isinstance(node, (list, tuple)):
         return list(node)
     return node if node is not None else ""

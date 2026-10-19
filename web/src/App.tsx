@@ -10,6 +10,7 @@ import { RequestsPage } from './components/RequestsPage'
 import { InferencePage } from './components/InferencePage'
 import { LoggingBoard } from './components/LoggingBoard'
 import { Intro } from './components/Intro'
+import type { Workspace } from './types'
 import s from './App.module.css'
 
 // The journey: 1. Setup - point at the data, confirm each source's linkage;
@@ -46,6 +47,15 @@ export function navigate(page: Page, id: string | null = null) {
   window.location.hash = `/${page}${id ? `/${id}` : ''}`
 }
 
+/** Why a discovery run cannot start now - one agent job at a time - so it is
+ *  queued instead. */
+function startBlocked(w: Workspace | null): string | null {
+  if (w?.active_linkage) return 'A source is being linked'
+  if (w?.active_run) return 'A direction is running'
+  if (w?.queued_runs) return `${w.queued_runs} run${w.queued_runs === 1 ? ' is' : 's are'} already waiting`
+  return null
+}
+
 export function App() {
   const [route, setRoute] = useState<Route>(readRoute)
   useEffect(() => {
@@ -56,6 +66,7 @@ export function App() {
 
   const [workspace, refreshWorkspace] = usePolled(api.workspace, [], 4000)
   const [runs, refreshRuns] = usePolled(api.runs, [])
+  const [queue, refreshQueue] = usePolled(api.queue, [], 3000)
   const [evaluations, refreshEvals] = usePolled(api.evaluations, [])
   const [board, setBoard] = useState(false)
   const [intro, setIntro] = useState(() => !introSeen())
@@ -79,7 +90,7 @@ export function App() {
 
   return (
     <div className={`${s.shell} ${emerging ? s.emerging : ''}`}>
-      <Rail route={route} workspace={workspace} runs={runs ?? []} evaluations={evaluations ?? []}
+      <Rail route={route} workspace={workspace} runs={runs ?? []} queue={queue ?? []} onUnqueue={refreshQueue} evaluations={evaluations ?? []}
             onBoard={() => setBoard(true)} onLogo={() => setIntro(true)} />
       <main className={s.main}>
         {route.page === 'setup' && (
@@ -88,8 +99,9 @@ export function App() {
         {route.page === 'discover' && !route.id && (
           <NewDirection key={route.direction} workspace={workspace}
                         initialDirection={route.direction}
-                        busy={!!(workspace?.active_run || workspace?.active_linkage)}
-                        onStarted={(id) => { refreshRuns(); navigate('discover', id) }} />
+                        busy={startBlocked(workspace)}
+                        onStarted={(id) => { refreshRuns(); navigate('discover', id) }}
+                        onQueued={() => { refreshQueue(); refreshWorkspace() }} />
         )}
         {route.page === 'discover' && route.id && (
           <RunPage key={route.id} runId={route.id} onChange={refreshRuns}

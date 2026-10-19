@@ -89,11 +89,15 @@ def build_ids(rows: pd.DataFrame, template: str) -> pd.Series:
 
 def _resolve(path: str, folder: str | None) -> Path:
     """A configured path: as given, or inside the target cases folder when it is a
-    bare name there."""
+    bare name there; a name without suffix finds its .parquet or .csv."""
     p = Path(path)
-    if p.is_absolute() or p.exists() or not folder:
-        return p
-    return Path(folder) / p
+    if not (p.is_absolute() or p.exists()) and folder:
+        p = Path(folder) / p
+    if not p.exists() and not p.suffix:
+        # A name without its suffix: the .parquet or .csv of it.
+        p = next((p.with_name(p.name + s) for s in _DATA_SUFFIXES
+                  if p.with_name(p.name + s).exists()), p)
+    return p
 
 
 def needed_sources(ws: Workspace) -> dict[str, int]:

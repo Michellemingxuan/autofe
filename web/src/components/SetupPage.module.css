@@ -155,6 +155,7 @@
 .link { border: none; background: transparent; color: var(--j-accent); font-weight: 600; text-align: left; padding: 2px 0; }
 .error { font-size: var(--j-fs-sm); color: var(--j-danger); background: var(--j-danger-soft); padding: 6px 10px; border-radius: 8px; word-break: break-word; }
 .warnText { color: var(--j-warn-ink); }
+.idOk { color: var(--j-good-ink); font-weight: 600; }
 
 /* ── shots ─────────────────────────────────────────────────────────── */
 .options { display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: 8px; }

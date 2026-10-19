@@ -193,7 +193,7 @@ function Header({ cases, models, running, unscored, onScore }: {
             <div className={s.counter}><span className={s.num}>{cases.cases?.toLocaleString()}</span>
               <span className={s.of}>cases</span></div>
             <div className={s.counter}><span className={s.num}>{cases.rows?.toLocaleString()}</span>
-              <span className={s.of}>rows{cases.per_case ? ` · ${cases.per_case.min}–${cases.per_case.max} a case` : ''}</span></div>
+              <span className={s.of}>transactions{cases.per_case ? ` · ${cases.per_case.min}–${cases.per_case.max} a case` : ''}</span></div>
           </>
         )}
         {unscored > 0 && (

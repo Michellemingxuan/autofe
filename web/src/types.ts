@@ -107,7 +107,17 @@ export type Workspace = {
   defaults: Omit<Params, 'sources'> & { level_weights?: number[] }
   choices: { models: string[]; engines: string[]; levels: Level[] }
   active_run: string | null
+  queued_runs?: number                // runs waiting in line for room
   active_linkage: string | null
+}
+
+/** A run asked for while there was no room: started, in order, as runs end. */
+export type QueuedRun = {
+  queue_id: string
+  direction: string
+  explore: boolean
+  queued: number
+  error: string | null                // it could not start: kept in line, skipped
 }
 
 export type RunSummary = {

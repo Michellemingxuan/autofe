@@ -439,7 +439,7 @@ function Glance({ block, workspace: w, values, checks, cases }: {
     case 'target_cases': {
       if (!cases) return null
       if (cases.error) return <Pill ok={false} label="not set up" title={cases.error} />
-      return <div className={s.gRow}><Stat n={cases.cases} label="cases" /><Stat n={cases.rows} label="rows" /></div>
+      return <div className={s.gRow}><Stat n={cases.cases} label="cases" /><Stat n={cases.rows} label="transactions" /></div>
     }
   }
   return null
@@ -505,9 +505,8 @@ function TargetCasesFields({ block, values, set, checks, cases, folder, workspac
       {cases && !cases.error && (
         <div className={s.casesLine}>
           <span><b>{cases.cases?.toLocaleString()}</b> cases</span>
-          <span><b>{cases.rows?.toLocaleString()}</b> rows{cases.per_case ? `, ${cases.per_case.min}–${cases.per_case.max} a case` : ''}</span>
-          <span title="the first case row's id, built from its customer id, transaction date and sequence number - beside a model id">
-            id <code>{cases.id_example}</code> <span className={s.empty}>like</span> <code>{cases.model_id_example}</code></span>
+          <span><b>{cases.rows?.toLocaleString()}</b> transactions{cases.per_case ? `, ${cases.per_case.min}–${cases.per_case.max} a case` : ''}</span>
+          {cases.id_example && <IdCheck built={cases.id_example} model={cases.model_id_example} />}
           {!!cases.missing_base?.length && (
             <span className={s.warnText}>lacks {cases.missing_base.length} base column(s): {cases.missing_base.slice(0, 5).join(', ')}</span>
           )}
@@ -544,6 +543,34 @@ function TargetCasesFields({ block, values, set, checks, cases, folder, workspac
         </div>
       </section>
     </>
+  )
+}
+
+/** An id's shape: its parts, and what each part is - digits (a date's eight
+ *  exactly), letters or a mix - with the separators between them. The last part,
+ *  the indicator that tells a day's transactions apart, may differ in form
+ *  between the cases and the model data, so only its presence counts. */
+function idShape(id: string): string {
+  const parts = id.split(/([^A-Za-z0-9]+)/)
+  return parts.map((p, i) => {
+    if (i === parts.length - 1 && i > 0) return 'indicator'
+    if (i % 2) return p
+    if (/^\d+$/.test(p)) return p.length === 8 ? 'date' : 'digits'
+    return /^[A-Za-z]+$/.test(p) ? 'letters' : 'mixed'
+  }).join('')
+}
+
+/** The id built for a case beside an id of the model data: they must be shaped
+ *  alike, or the cases' rows meet no feature and no history. */
+function IdCheck({ built, model }: { built: string; model?: string | null }) {
+  const same = !model || idShape(built) === idShape(model)
+  return (
+    <span className={same ? undefined : s.warnText}
+          title="The cases have no model id: it is built from their columns by the id template. It must be shaped like the model data's ids.">
+      In cases, <code>{built}</code>; in model dataset, <code>{model ?? '-'}</code>
+      {model && (same ? <span className={s.idOk}> ✓ same shape</span>
+        : <> - shapes differ: edit <code>id_template</code> in the config</>)}
+    </span>
   )
 }
 

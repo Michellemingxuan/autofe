@@ -63,6 +63,12 @@
 .dot.running { background: var(--j-live); animation: pulse 1.2s infinite; }
 .dot.done { background: var(--j-rail-accent); }
 .dot.error { background: var(--j-danger); }
+.dot.queued { background: transparent; border: 1.5px dashed var(--j-rail-dim); width: 5px; height: 5px; }
+.queuedItem { cursor: default; align-items: flex-start; }
+.queuedItem .itemText { flex: 1; }
+.unqueue { border: none; background: transparent; color: var(--j-rail-dim); font-size: 15px; line-height: 1; padding: 0 2px; opacity: 0; }
+.queuedItem:hover .unqueue { opacity: 1; }
+.unqueue:hover { color: var(--j-rail-ink, #fff); }
 
 .source { display: flex; justify-content: space-between; align-items: center; gap: 6px; padding: 5px 6px; border-radius: 6px; }
 .source:hover { background: var(--j-rail-active); }
