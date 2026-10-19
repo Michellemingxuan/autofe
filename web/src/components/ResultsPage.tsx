@@ -387,13 +387,16 @@ function ModelCard({ card }: { card: BaseModelCard | null }) {
           </table>
           <div className={s.drivers}>
             <span className={s.driversTitle}>Top {card.drivers.length} of {card.n_features.toLocaleString()} features · SHAP share on test</span>
-            {card.drivers.map((d) => (
-              <div key={d.feature} className={s.driver}>
-                <span className={s.driverName}>{d.feature}</span>
-                <span className={s.driverBar}><i style={{ width: `${(d.share / top) * 100}%` }} /></span>
-                <span className={s.driverPct}>{pctOf(d.share)}</span>
-              </div>
-            ))}
+            <div className={s.driverList}>
+              {card.drivers.map((d, i) => (
+                <div key={d.feature} className={s.driver}>
+                  <span className={s.driverRank}>{i + 1}</span>
+                  <span className={s.driverName} title={d.feature}>{d.feature}</span>
+                  <span className={s.driverBar}><i style={{ width: `${(d.share / top) * 100}%` }} /></span>
+                  <span className={s.driverPct}>{pctOf(d.share)}</span>
+                </div>
+              ))}
+            </div>
           </div>
         </div>
       )}

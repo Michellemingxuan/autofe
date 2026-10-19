@@ -146,7 +146,7 @@ def removed_variants(events: list[dict[str, Any]]) -> set[str]:
     return {e["variant"] for e in events if e["event"] == "variant_removed"}
 
 
-def base_model_card(ws: Workspace, top: int = 5) -> dict[str, Any] | None:
+def base_model_card(ws: Workspace, top: int = 100) -> dict[str, Any] | None:
     """The base model as the latest finished evaluation trained it - every evaluation
     trains the same one (validation.stages.base_cache): its Gini and capture rates
     per split, its rows and default rate, its features and what drives it."""

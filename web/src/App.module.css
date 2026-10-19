@@ -11,3 +11,12 @@
   min-width: 0;
   min-height: 0;
 }
+
+/* Entering from the opening: the platform rises into focus as the dive clears. */
+.emerging { animation: emerge 1.4s cubic-bezier(.2, .7, .2, 1) both; transform-origin: 55% 50%; }
+@keyframes emerge {
+  from { transform: scale(0.94); filter: blur(8px) brightness(0.55) saturate(0.8); }
+  60% { filter: blur(1px) brightness(0.95); }
+  to { transform: none; filter: none; }
+}
+@media (prefers-reduced-motion: reduce) { .emerging { animation: none; } }

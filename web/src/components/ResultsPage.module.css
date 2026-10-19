@@ -90,7 +90,9 @@
 .testCol { background: var(--j-accent-soft); color: var(--j-ink); font-weight: 600; }
 .drivers { display: flex; flex-direction: column; gap: 4px; min-width: 0; }
 .driversTitle { font-size: var(--j-fs-meta); color: var(--j-label); font-weight: 600; margin-bottom: 2px; }
-.driver { display: grid; grid-template-columns: minmax(0, 160px) minmax(60px, 1fr) 48px; gap: 10px; align-items: center; font-size: var(--j-fs-meta); }
+.driverList { display: flex; flex-direction: column; gap: 4px; max-height: 190px; overflow-y: auto; padding-right: 6px; }
+.driverRank { color: var(--j-ink-mute); text-align: right; font-variant-numeric: tabular-nums; }
+.driver { display: grid; grid-template-columns: 22px minmax(0, 160px) minmax(60px, 1fr) 48px; gap: 10px; align-items: center; font-size: var(--j-fs-meta); }
 .driverName { font-family: var(--j-font-mono); color: var(--j-ink-2); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .driverBar { height: 7px; background: var(--j-border-soft); border-radius: 4px; overflow: hidden; }
 .driverBar i { display: block; height: 100%; background: var(--j-accent); border-radius: 4px; }

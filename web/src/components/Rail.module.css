@@ -85,3 +85,5 @@
 }
 .boardBtn:hover { background: var(--j-rail-active); border-color: var(--j-rail-accent); }
 .boardIcon { color: var(--j-rail-accent); }
+.logoBtn { border: none; background: transparent; padding: 0; border-radius: 8px; line-height: 0; }
+.logoBtn:hover .logo { box-shadow: 0 0 0 1px rgba(120, 175, 255, 0.6), 0 0 14px rgba(60, 130, 240, 0.45); }

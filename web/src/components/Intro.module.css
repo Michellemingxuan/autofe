@@ -1,0 +1,113 @@
+/* The opening, in dark blue: the scene at the left, what it is at the right. */
+.intro {
+  position: fixed; inset: 0; z-index: 100;
+  display: grid; grid-template-columns: minmax(0, 1.5fr) minmax(340px, 1fr); align-items: center;
+  color: #e8f0ff; overflow: hidden;
+  animation: introIn 0.6s ease both;
+}
+/* the overlay itself fades last, once the dive has gone through the layers */
+.leaving { animation: introOut 0.5s ease 1.1s forwards; pointer-events: none; }
+@keyframes introIn { from { opacity: 0; } to { opacity: 1; } }
+@keyframes introOut { to { opacity: 0; } }
+/* the dark field, on its own layer: entering, it clears early, so the planes
+   fly on over the platform coming up beneath them */
+.backdrop { position: absolute; inset: 0; background: radial-gradient(120% 90% at 30% 45%, #0b2350 0%, #061532 45%, #030a1a 100%); }
+.leaving .backdrop { animation: clear 0.75s ease-in 0.2s forwards; }
+@keyframes clear { to { opacity: 0; } }
+
+.glow {
+  position: absolute; left: 18%; top: 22%; width: 46vw; height: 46vw; border-radius: 50%;
+  background: radial-gradient(circle, rgba(46, 108, 196, 0.28), transparent 65%);
+  filter: blur(20px); pointer-events: none;
+  animation: breathe 6s ease-in-out infinite;
+}
+@keyframes breathe { 50% { transform: scale(1.08); opacity: 0.8; } }
+
+.scene { width: 100%; height: 100vh; max-height: 100vh; animation: drift 14s ease-in-out infinite alternate; }
+@keyframes drift { from { transform: translateY(-6px) rotate(-0.4deg); } to { transform: translateY(6px) rotate(0.4deg); } }
+
+/* layers arrive from the depth, back to front */
+.layer { opacity: 0; animation: arrive 0.8s cubic-bezier(.2, .7, .2, 1) forwards; }
+.l1 { animation-delay: 0.05s; }
+.l2 { animation-delay: 0.25s; }
+.l3 { animation-delay: 0.4s; }
+.l4 { animation-delay: 0.5s; }
+.l5 { animation-delay: 0.6s; }
+@keyframes arrive { from { opacity: 0; transform: translateX(-28px); } to { opacity: 1; transform: none; } }
+
+.frame { fill: rgba(10, 30, 70, 0.18); stroke: rgba(170, 205, 255, 0.75); stroke-width: 1.1; }
+.frameFaint { fill: none; stroke: rgba(150, 190, 255, 0.35); stroke-width: 1; }
+.frameScan { stroke: rgba(170, 205, 255, 0.55); stroke-width: 1; }
+.dashed { fill: none; stroke: rgba(150, 190, 255, 0.3); stroke-width: 0.8; stroke-dasharray: 4 5; }
+.contour { fill: none; stroke: rgba(170, 205, 255, 0.45); stroke-width: 0.8; }
+.tick { stroke: rgba(170, 205, 255, 0.5); stroke-width: 0.9; }
+
+.marker { opacity: 0; animation: pop 0.5s ease forwards; }
+.marker path { fill: none; stroke: rgba(200, 222, 255, 0.7); stroke-width: 0.9; }
+.marker text { font-family: var(--j-font-mono); font-size: 7.5px; fill: rgba(190, 215, 255, 0.75); }
+@keyframes pop { from { opacity: 0; transform: translateY(4px); } to { opacity: 1; transform: none; } }
+
+.curve { fill: none; stroke: rgba(230, 240, 255, 0.9); stroke-width: 1.3; stroke-dasharray: 1; stroke-dashoffset: 1;
+         animation: draw 1s cubic-bezier(.4, 0, .2, 1) forwards; filter: drop-shadow(0 0 3px rgba(120, 180, 255, 0.7)); }
+@keyframes draw { to { stroke-dashoffset: 0; } }
+.pulse { opacity: 0; animation: pulseIn 2.4s ease-in-out forwards, glowing 2.4s ease-in-out 2.4s infinite; }
+@keyframes pulseIn { 30% { opacity: 1; } to { opacity: 0.8; } }
+@keyframes glowing { 50% { opacity: 0.35; } }
+.hit { opacity: 0; animation: pop 0.45s ease forwards; }
+.hit rect { fill: rgba(46, 108, 196, 0.35); stroke: #ffffff; stroke-width: 1.4; }
+.hit path { fill: none; stroke: #ffffff; stroke-width: 1.1; stroke-linejoin: round; }
+
+/* what it is */
+.copy { padding: 0 8vw 0 2vw; display: flex; flex-direction: column; gap: 22px; max-width: 620px;
+        opacity: 0; animation: rise 0.8s cubic-bezier(.2, .7, .2, 1) 0.6s forwards; }
+@keyframes rise { from { opacity: 0; transform: translateY(14px); } to { opacity: 1; transform: none; } }
+.eyebrow { display: flex; align-items: center; gap: 10px; font-family: var(--j-font-mono); font-size: 12px; letter-spacing: 1.6px; color: #9db8e6; }
+.mark { width: 0; height: 0; border-left: 9px solid #9db8e6; border-bottom: 9px solid transparent; transform: rotate(90deg); }
+.title { max-width: 13em; font-size: clamp(30px, 3.4vw, 50px); line-height: 1.12; font-weight: 500; letter-spacing: -0.5px; color: #f2f6ff; }
+.lead { font-size: 16px; line-height: 1.6; color: #a9bddd; max-width: 520px; }
+.enter {
+  align-self: flex-start; display: inline-flex; align-items: center; gap: 14px;
+  padding: 14px 24px; border-radius: 10px; border: 1px solid rgba(140, 185, 255, 0.35);
+  background: linear-gradient(180deg, #16418a, #0d2c63); color: #f2f6ff; font-size: 16px; font-weight: 500;
+  box-shadow: 0 8px 30px rgba(20, 70, 160, 0.35); transition: transform 0.2s, box-shadow 0.2s;
+}
+.enter:hover { transform: translateY(-1px); box-shadow: 0 10px 36px rgba(40, 110, 230, 0.5); }
+.enter span { font-size: 22px; line-height: 0; }
+
+/* ── entering the workspace: about 1.6s ─────────────────────────────── */
+/* the words step back */
+.leaving .copy { animation: copyOut 0.4s ease forwards; }
+@keyframes copyOut { from { opacity: 1; } to { opacity: 0; transform: translateX(24px); filter: blur(3px); } }
+/* the signal lights up */
+.curve { transition: stroke-width 0.6s, filter 0.6s; }
+.leaving .curve { stroke-width: 2.2; filter: drop-shadow(0 0 6px rgba(140, 195, 255, 1)); }
+.leaving .hit rect { fill: rgba(90, 160, 255, 0.6); }
+/* a light sweeps the layers, back to front */
+.sweep { position: absolute; top: 0; bottom: 0; left: -30%; width: 22%; pointer-events: none; opacity: 0;
+         background: linear-gradient(90deg, transparent, rgba(120, 180, 255, 0.22), rgba(220, 235, 255, 0.35), rgba(120, 180, 255, 0.22), transparent);
+         filter: blur(8px); transform: skewX(-14deg); }
+.leaving .sweep { animation: sweep 0.8s cubic-bezier(.5, 0, .3, 1) 0.1s forwards; }
+@keyframes sweep { 0% { left: -30%; opacity: 0; } 15% { opacity: 1; } 85% { opacity: 1; } 100% { left: 70%; opacity: 0; } }
+/* the camera dives through the layers into the data */
+.leaving .scene { animation: dive 1.45s cubic-bezier(.65, 0, .35, 1) 0.15s forwards; transform-origin: 46% 52%; }
+@keyframes dive {
+  0% { transform: none; filter: none; }
+  45% { transform: scale(1.45) translateX(6%); filter: none; }
+  100% { transform: scale(4) translateX(9%); filter: blur(7px); opacity: 0; }
+}
+.leaving .glow { animation: flare 1.1s ease-in 0.1s forwards; }
+@keyframes flare { 50% { opacity: 0.9; } to { transform: scale(3.2); opacity: 0; } }
+/* the workspace comes up out of the light */
+.flash { position: absolute; inset: 0; pointer-events: none; opacity: 0;
+         background: radial-gradient(60% 50% at 45% 50%, rgba(200, 225, 255, 0.35), rgba(40, 90, 180, 0.12) 60%, transparent); }
+.leaving .flash { animation: flash 0.8s ease 0.75s forwards; }
+@keyframes flash { 40% { opacity: 1; } 100% { opacity: 0; } }
+
+@media (max-width: 900px) {
+  .intro { grid-template-columns: 1fr; grid-template-rows: 55vh auto; overflow-y: auto; }
+  .scene { height: 55vh; }
+  .copy { padding: 0 24px 40px; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .intro *, .intro { animation-duration: 0.01s !important; animation-delay: 0s !important; }
+}

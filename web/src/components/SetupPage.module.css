@@ -414,3 +414,4 @@
 .mNode { text-align: left; cursor: pointer; }
 .mNode:hover { border-color: var(--j-border-strong); }
 .mNodeBody { padding: 0 6px 4px; display: block; }
+.mNodeBody:empty { display: none; }

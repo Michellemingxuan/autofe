@@ -7,6 +7,7 @@ import s from './NewDirection.module.css'
 
 type Props = {
   workspace: Workspace | null
+  initialDirection: string | null
   busy: boolean
   onStarted: (runId: string) => void
 }
@@ -24,14 +25,17 @@ const LEVELS: { level: Level; title: string; text: string }[] = [
 ]
 
 /** Start a direction: the idea in words, and the run's parameters. */
-export function NewDirection({ workspace, busy, onStarted }: Props) {
-  const [direction, setDirection] = useState('')
+export function NewDirection({ workspace, initialDirection, busy, onStarted }: Props) {
+  const [direction, setDirection] = useState(initialDirection ?? '')
   const [themePool] = usePolled(api.themes, [], 5000)
   const [params, setParams] = useState<Params | null>(null)
   const [error, setError] = useState<string | null>(null)
   const [starting, setStarting] = useState(false)
   // "Edit & re-run" lands here with the earlier run's direction and settings.
-  const [rerun] = useState<RerunDraft | null>(() => rerunDraft.take())
+  const [rerun] = useState<RerunDraft | null>(() => {
+    const draft = rerunDraft.take()
+    return initialDirection === null ? draft : null
+  })
   useEffect(() => {
     if (rerun) { setDirection(rerun.direction); setParams(rerun.params) }
   }, [rerun])

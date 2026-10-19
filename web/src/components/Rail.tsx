@@ -8,6 +8,7 @@ type Props = {
   runs: RunSummary[]
   evaluations: EvalSummary[]
   onBoard: () => void
+  onLogo: () => void
 }
 
 export const SOURCE_STATE: Record<SourceState, { label: string; hint: string }> = {
@@ -34,11 +35,13 @@ const when = (ts: number) => new Date(ts * 1000).toLocaleString([], {
 })
 
 /** The dark rail: the three steps, and what each has made so far. */
-export function Rail({ route, workspace, runs, evaluations, onBoard }: Props) {
+export function Rail({ route, workspace, runs, evaluations, onBoard, onLogo }: Props) {
   return (
     <aside className={s.rail}>
       <div className={s.brand} title={workspace?.name ? `workspace: ${workspace.name}` : undefined}>
-        <img className={s.logo} src="/favicon.svg" alt="" />
+        <button className={s.logoBtn} onClick={onLogo} title="Play the opening again">
+          <img className={s.logo} src="/favicon.svg" alt="" />
+        </button>
         <div>
           <div className={s.brandName}>AutoFE</div>
           <div className={s.brandSub}>Model agent</div>

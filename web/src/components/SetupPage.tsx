@@ -395,14 +395,15 @@ function Glance({ block, workspace: w, values, checks, cases }: {
         : <Pill ok={false} label="not described" />
     case 'model':
       return <div className={s.gRow}>
-        <Stat n={w.base_features} label="base features" />
-        <Stat n={`${((w.screen_rows.fit + w.screen_rows.scored) / 1000).toFixed(1)}k`} label="screen rows" />
+        <Pill ok={['data.paths.train', 'data.paths.valid', 'data.paths.test'].every(has)}
+              label="model building splits" title="train · valid · test" />
+        <Pill ok={['discovery.screen_paths.train', 'discovery.screen_paths.valid'].every(has)}
+              label="quick screening" title="the screen's fit and score samples" />
       </div>
-    case 'shots': {
-      const rows = w.shots.reduce((n, c) => n + (c.kind === 'error' ? 0 : c.found), 0)
-      return <div className={s.gRow}><Stat n={rows} label="rows" />
-        <Stat n={w.shots.length} label={w.shots.length === 1 ? 'category' : 'categories'} /></div>
-    }
+    case 'shots':
+      return <div className={s.gRow}>
+        <Pill ok={w.shots.some((c) => c.kind === 'clustering' && c.found > 0)} label="clustering" />
+      </div>
     case 'context':
       return <div className={s.gRow}>
         <Pill ok={has('discovery.task_context_path')} label="description" />
@@ -434,23 +435,11 @@ function Glance({ block, workspace: w, values, checks, cases }: {
       })}</div>
     }
     case 'evaluation':
-      return <div className={s.gRow}>
-        <Stat n={`d${v('model.params.max_depth')}`} label={`· ${v('model.num_boost_round')} rounds`} />
-        <span className={`${s.gPill} ${s.gOff}`}
-              title={v('run.gates') === 'open' ? 'every feature measured, none dropped' : 'failures dropped before modelling'}>
-          gates {String(v('run.gates'))}</span>
-      </div>
+      return null
     case 'target_cases': {
       if (!cases) return null
       if (cases.error) return <Pill ok={false} label="not set up" title={cases.error} />
-      const needed = Object.entries(cases.sources).filter(([, x]) => x.needed_by > 0)
-      return <div className={s.gCol}>
-        <div className={s.gRow}><Stat n={cases.cases} label="cases" /><Stat n={cases.rows} label="rows" /></div>
-        <div className={s.gRow}>{needed.map(([n, x]) => (
-          <Pill key={n} ok={x.state === 'provided'} label={n}
-                title={x.state === 'provided' ? `history given, read by ${x.needed_by} feature(s)` : `no history - read by ${x.needed_by} feature(s)`} />))}
-        </div>
-      </div>
+      return <div className={s.gRow}><Stat n={cases.cases} label="cases" /><Stat n={cases.rows} label="rows" /></div>
     }
   }
   return null
