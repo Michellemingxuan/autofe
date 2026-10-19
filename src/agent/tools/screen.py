@@ -14,9 +14,10 @@ Before the fit, the cheap checks (``agent.checks``), each in milliseconds:
   same must say what differs. After it runs: identical values to an earlier
   feature (``agent.memory``) are refused. A refusal gives the attempt back.
 * **C1 - redundancy with the model?** On the built values: a feature whose
-  |Spearman rho| with a model column passes the limit fails without the fit. **C2 - new signal?** is measured too
-  (its residual correlation) and recorded - information only, unless the config
-  makes it a gate (``agent.checks.min_residual_rho``).
+  |Spearman rho| with a model column passes the limit fails without the fit. **C2 - signal?** is measured too
+  (the variable Gini: the feature alone as a score for y) and recorded -
+  information only, unless the config makes it a gate
+  (``agent.checks.min_variable_gini``).
 
 Every feature records what the checks measured (``checks``) and its idea, so
 the board (``agent.board``) shows it. An idea whose features carry no signal is
@@ -62,10 +63,16 @@ def screen_feature(session: Session, name: str, description: str, level: str,
     idea, problem = idea_for(session, idea, name)
     if problem:
         return {"ok": False, "error": problem}
-    # A name is taken by a base column or a feature that was built. A script that
-    # failed built nothing: its name is free for the fixed script.
-    if name in ws.base_features or any(e["name"] == name and _built(e) for e in session.ledger):
+    # A name is taken by a base column or a feature that was built - in this run or
+    # an earlier one. A script that failed built nothing: its name is free for the
+    # fixed script.
+    if name in ws.base_features:
         return {"ok": False, "error": f"{name!r} is already taken; choose a new name"}
+    if (owner := next((e for e in earlier_features(session)
+                       if e["name"] == name and _built(e)), None)):
+        where = "this run" if owner["run_id"] == session.run_id else f"run {owner['run_id']}"
+        return {"ok": False, "error": f"{name!r} is already taken by a feature of {where}; "
+                                      "choose a new name"}
     allowed_levels = [lv for lv in FEATURE_LEVELS if lv in p.levels]
     if level not in allowed_levels:
         return {"ok": False, "error": f"level must be one of {allowed_levels} in this run"}
@@ -298,8 +305,9 @@ def lessons(ledger: list[dict[str, Any]]) -> list[str]:
     across attempts is easy to miss one reply at a time. Only patterns in what
     was measured: a failed script is fixed once (the probe gate sees to it), and
     repeating it as a lesson would keep a solved problem in view."""
-    redundant = Counter(m.group(1) for e in ledger
-                        if (m := re.search(r"against the existing column '([^']+)'", e.get("reason") or "")))
+    redundant = Counter(m.group(1) or m.group(2) for e in ledger
+                        if (m := re.search(r"against the existing column '([^']+)'"
+                                           r"|with the model column `([^`]+)`", e.get("reason") or "")))
     below = sum(1 for e in ledger if "is not above" in str(e.get("reason", "")))
     sparse = sum(1 for e in ledger if e.get("coverage") is not None and e["coverage"] < 0.05)
     out = [f"{n} features were redundant with `{col}` - a ratio, difference or rescaling of it "

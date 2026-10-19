@@ -20,9 +20,9 @@ export async function removeShot(cat: ShotCategory, block: SetupBlock) {
  * The shots, in the order the agent reads them: the clustering shots first,
  * then your own categories appended after - and, last, what is available.
  */
-export function ShotsBody({ block, values, set, checks, workspace, onApplied }: {
+export function ShotsBody({ block, values, set, checks, workspace, onApplied, folder = '' }: {
   block: SetupBlock; values: Values; set: (k: string, v: unknown) => void
-  checks: PathCheck; workspace: Workspace | null; onApplied: () => void
+  checks: PathCheck; workspace: Workspace | null; onApplied: () => void; folder?: string
 }) {
   const cats = workspace?.shots ?? []
   const clustering = cats.find((c) => c.kind === 'clustering')
@@ -45,7 +45,7 @@ export function ShotsBody({ block, values, set, checks, workspace, onApplied }: 
               <code> prepare.ipynb</code> writes it. Apply the block to use it.</p>
             {fileField && (
               <PathOrUpload field={{ ...fileField, label: 'File' }} value={String(values[fileField.key] ?? '')}
-                            onChange={(v) => set(fileField.key, v)} checks={checks}
+                            onChange={(v) => set(fileField.key, v)} checks={checks} folder={folder}
                             dirty={values[fileField.key] !== fileField.value} />
             )}
           </div>

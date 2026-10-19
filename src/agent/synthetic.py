@@ -12,6 +12,9 @@ It writes everything a run reads, in the layout a real use case has:
         payments.parquet + payments_data_sample.json
         balances.parquet + balances_data_sample.json
         wwcas_synthetic_flagged.csv            the CAS scope
+        targeted_cases/                        the cases inference scores: their
+            transactions.csv                   rows, with no model id, and their
+            spends / payments / balances.parquet   histories, as the sources
 
 Ids follow the real form ``<customer_id>_<dt>_<marker>``; ``dt`` is the row's
 as-of date. Test holds the latest months, so it is out of time.
@@ -35,7 +38,7 @@ from pathlib import Path
 import numpy as np
 import pandas as pd
 
-__all__ = ["generate", "PLANTED_WINDOW_DAYS"]
+__all__ = ["generate", "target_cases", "PLANTED_WINDOW_DAYS"]
 
 PLANTED_WINDOW_DAYS = 90
 _MONTHS = pd.date_range("2024-01-01", "2024-12-01", freq="MS")
@@ -226,7 +229,78 @@ def generate(root: str | Path, n_customers: int = 6000, seed: int = 0) -> Path:
     pd.DataFrame(scope, columns=["NAME", "TABLE NAME", "DESCRIPTION", "TYPE", "PARTITION",
                                  "PRIMARY", "CDSS_G9_FLAG", "CDSS_G9_MATCHED_VARIABLE"]
                  ).to_csv(extra / "wwcas_synthetic_flagged.csv", index=False)
+    target_cases(extra / "targeted_cases", seed=seed)
     return root
+
+
+def target_cases(folder: str | Path, n_cases: int = 24, seed: int = 0) -> Path:
+    """The cases an analyst cares about, for inference: customers outside the model
+    database, a row per transaction date through 2024, and their histories.
+
+    Shaped like real target cases: no model id - its parts are columns
+    (``customer_id``, ``trans_dt``, ``marker``) - and a column the model database
+    lacks (``channel``), and no outcome column - real target cases are chosen for
+    their outcome. Cases 900000-900011 default: their payback slides from 90% to 15% over
+    the history, while what base sees (utilization, delinquencies, the bureau
+    score) turns only in the last three months - so base + the payback feature
+    should flag them sooner. Their own random stream: the model database is
+    unchanged by them.
+    """
+    rng = np.random.default_rng(seed + 7)
+    folder = Path(folder)
+    folder.mkdir(parents=True, exist_ok=True)
+    customers = np.arange(900000, 900000 + n_cases).astype(str)
+    defaults = np.arange(n_cases) < n_cases // 2
+    history = pd.date_range(_HISTORY_START, _HISTORY_END, freq="D")[:-1]
+    progress = np.linspace(0, 1, len(history))
+
+    spends, payments = [], []
+    for cust, bad in zip(customers, defaults):
+        rate, size = rng.gamma(4.0, 0.15), rng.lognormal(3.5, 0.4)
+        n = rng.poisson(rate, len(history))
+        days = np.repeat(history, n)
+        spends.append(pd.DataFrame({
+            "customer_id": cust, "event_dt": days,
+            "amount": np.round(rng.lognormal(np.log(size), 0.5, len(days)), 2),
+            "mcc_group": rng.choice(["grocery", "travel", "fuel", "retail", "services"], len(days))}))
+        share = pd.Series(0.9 - 0.75 * progress if bad else np.full(len(history), 0.85), index=history)
+        month = spends[-1].groupby(spends[-1]["event_dt"].dt.to_period("M"))["amount"].sum()
+        paid = month * share.groupby(share.index.to_period("M")).mean().reindex(month.index).to_numpy()
+        payments.append(pd.DataFrame({
+            "customer_id": cust,
+            "event_dt": month.index.to_timestamp(how="end").normalize()
+                        + pd.to_timedelta(rng.integers(5, 20, len(month)), "D"),
+            "amount": np.round(paid.to_numpy() * rng.lognormal(0, 0.1, len(month)), 2),
+            "returned": 0}))
+    spends, payments = pd.concat(spends, ignore_index=True), pd.concat(payments, ignore_index=True)
+    month = spends["event_dt"].dt.to_period("M")
+    balances = (spends.groupby(["customer_id", month])["amount"].sum()
+                .groupby(level=0).cumsum().reset_index())
+    balances["balance"] = np.round(balances.pop("amount") * 0.05, 2)
+    balances["event_dt"] = balances.pop("event_dt").dt.to_timestamp()
+
+    rows = []
+    for cust, bad in zip(customers, defaults):
+        risk = rng.normal(0, 0.5)
+        limit, tenure = np.round(rng.lognormal(9, 0.5), -2), int(rng.integers(12, 200))
+        for k, dt in enumerate(_MONTHS):
+            late = max(0.0, (k - 8) / 3) if bad else 0.0         # base sees it only at the end
+            for marker in rng.choice(["A", "B"], int(rng.integers(1, 3)), replace=False):
+                r = risk + 1.6 * late + rng.normal(0, 0.1)
+                util = float(np.clip(0.35 + 0.12 * r + rng.normal(0, 0.05), 0, 1.2))
+                rows.append({
+                    "customer_id": cust, "trans_dt": dt.strftime("%Y-%m-%d"), "marker": marker,
+                    "credit_limit": limit, "utilization": util, "tenure_months": tenure + k,
+                    "num_delinq_12m": int(rng.poisson(np.exp(-1.5 + 0.6 * r))),
+                    "bureau_score": float(np.round(700 - 45 * r + rng.normal(0, 10))),
+                    "income_est": float(np.round(rng.lognormal(11, 0.1), -2)),
+                    "num_accounts": int(rng.integers(1, 15)),
+                    "revolving_bal": round(util * limit, 2),
+                    "channel": rng.choice(["online", "branch", "phone"])})
+    pd.DataFrame(rows).to_csv(folder / "transactions.csv", index=False)
+    for name, frame in (("spends", spends), ("payments", payments), ("balances", balances)):
+        frame.to_parquet(folder / f"{name}.parquet", index=False)
+    return folder
 
 
 # The repo's data/ folder, wherever the generator is run from - a relative

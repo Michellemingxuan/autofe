@@ -367,6 +367,7 @@ export function deriveEval(events: Ev[]): EvalView {
   const view: EvalView = {
     status: 'idle', startTs: 0, lastTs: 0, features: [], combinations: {}, codes: [],
     stages: [], logs: [], rows: [], verdicts: [], capturePercents: [], shapRanks: {}, featureStats: {},
+    modelErrors: {}, removed: [],
   }
   const codes = new Map<string, CodeCard>()
   for (const e of events) {
@@ -405,6 +406,8 @@ export function deriveEval(events: Ev[]): EvalView {
         view.capturePercents = e.capture_percents ?? []
         view.shapRanks = e.shap_ranks ?? {}
         view.featureStats = e.feature_stats ?? {}
+        view.gates = e.gates
+        view.modelErrors = e.model_errors ?? {}
         break
       case 'eval_error':
         view.status = 'error'
@@ -415,6 +418,7 @@ export function deriveEval(events: Ev[]): EvalView {
         break
       case 'variant_removed':                 // taken off the results by the user
         view.rows = view.rows.filter((r) => r.variant !== e.variant)
+        view.removed = [...view.removed, e.variant]
         break
     }
   }

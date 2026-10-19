@@ -38,7 +38,7 @@ __all__ = ["SAME_FEATURE", "prior_features", "earlier_features", "prior_requests
            "memory_brief", "save_values", "same_feature", "same_request"]
 
 SAME_FEATURE = 0.99              # when the config sets none
-_NOT_RUNS = {"linkage", "evaluations", "replaced", "uploads", "shots", "ideas", "base_model"}
+_NOT_RUNS = {"linkage", "evaluations", "inferences", "replaced", "uploads", "shots", "ideas", "base_model"}
 
 
 def _runs(ws: "Workspace") -> list[Path]:

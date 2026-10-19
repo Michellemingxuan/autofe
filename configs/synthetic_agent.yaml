@@ -44,6 +44,15 @@ discovery:
       CAS:
         glob: "*_flagged.csv"
         sql_dialect: BigQuery
+    target_cases:                             # scored at inference (Evaluate > Inference results)
+      dir: data/synthetic_agent/additional_data/targeted_cases   # the names below are in it
+      rows: transactions.csv                  # their rows, shaped like the model data
+      # Each additional dataset's history for the cases: its own file name in dir
+      # (spends.parquet ...), unless `sources: {name: path}` says otherwise.
+      id_template: "{customer_id}_{trans_dt:%Y%m%d}_{marker}"   # the model id, from their columns
+      case_column: customer_id
+      time_column: trans_dt
+      flag_top: 0.05                          # each model flags its top 5% of test scores
 
 agent:
   engine: pandas              # the synthetic case is small: pandas, no Spark needed
@@ -56,7 +65,7 @@ agent:
     same_meaning: 0.6                       # C0: this close in words to an earlier one -> must say what differs (null: off)
     max_model_rho: 0.9                      # C1: max |Spearman rho| with a model column above this -> redundant (null: off)
     keep_if_residual_rho: 0.05              # C1's exception: fitted anyway when |rho residual| reaches this
-    min_residual_rho: null                  # C2: information only; a number makes it a gate
+    min_variable_gini: null                 # C2: the feature's own Gini on y - information only; a number makes it a gate
   llm:
     backend: openai
     model: gpt-4.1

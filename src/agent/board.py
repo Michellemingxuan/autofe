@@ -289,7 +289,8 @@ def board_rows(ws: "Workspace") -> list[dict[str, Any]]:
                          "max_model_rho": checks.get("max_model_rho", abs(checks["nearest_rho"])
                                                      if checks.get("nearest_rho") is not None else None),
                          "nearest": checks.get("nearest") or "", "nearest_rho": checks.get("nearest_rho"),
-                         "residual_rho": checks.get("residual_rho"), "note": checks.get("note") or "",
+                         "residual_rho": checks.get("residual_rho"),
+                         "variable_gini": checks.get("variable_gini"), "note": checks.get("note") or "",
                          "gini_gain": e.get("delta"), "capture_gain": e.get("capture_gain"),
                          "status": ("verified" if e.get("verified") else "failed"),
                          "reason": e.get("reason") or "", "evidence": feature_evidence(e),
@@ -304,7 +305,7 @@ def board_rows(ws: "Workspace") -> list[dict[str, Any]]:
                          "level": "L3", "description": r.get("gap") or "", "differs": "",
                          "code": r.get("sql") or r.get("data") or "", "attempt": r.get("intent"),
                          "seen_before": "", "max_model_rho": None, "nearest": "", "nearest_rho": None,
-                         "residual_rho": None, "note": "",
+                         "residual_rho": None, "variable_gini": None, "note": "",
                          "gini_gain": None, "capture_gain": None, "status": outcome, "reason": why,
                          "evidence": feature_evidence(r), "sent": "", "verdict": ""})
         for name, i in standings.items():
@@ -313,7 +314,7 @@ def board_rows(ws: "Workspace") -> list[dict[str, Any]]:
                              "kind": "idea", "name": "", "level": i.get("level"), "description": "",
                              "differs": "", "code": "", "attempt": None, "seen_before": "",
                              "max_model_rho": None, "nearest": "", "nearest_rho": None,
-                             "residual_rho": None, "note": "",
+                             "residual_rho": None, "variable_gini": None, "note": "",
                              "gini_gain": None, "capture_gain": None, "status": "not tried",
                              "reason": "", "evidence": None, "sent": "", "verdict": ""})
     return rows

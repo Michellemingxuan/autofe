@@ -38,7 +38,7 @@ CATEGORIES = {
     "below_gate": "screened, but the gain did not clear the gates",
     "redundant": "redundant with a base column",
     "explained": "C1 - redundant: a near-copy of a model column",
-    "no_signal": "C2 - no signal on the base model's residual",
+    "no_signal": "C2 - no signal: the feature alone barely ranks the outcome",
     "spike": "a spike - an epsilon-guarded division blew up",
     "non_finite": "infinite or not-a-number values",
     "script_error": "the script failed",
@@ -70,7 +70,7 @@ def outcome_of_feature(e: dict[str, Any]) -> str:
     reason = str(e.get("reason") or "")
     for pattern, category in ((r"^script failed", "script_error"), (r"^build\(\) returned", "contract"),
                               (r"^explained by the model", "explained"),
-                              (r"^no new signal", "no_signal"),
+                              (r"^no (new )?signal", "no_signal"),
                               (r"redundant", "redundant"), (r"spikes", "spike"),
                               (r"not finite|infinite|NaN|inf\b", "non_finite"),
                               (r"is not above", "below_gate")):

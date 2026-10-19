@@ -33,6 +33,7 @@ from typing import Any
 import pandas as pd
 
 from validation.metrics import calc_adj_gini, capture_rate
+from agent.checks import REBUILT
 from discovery.screen import Screener
 from validation.config import Config
 from validation.data import clean_missing
@@ -504,6 +505,11 @@ class Workspace:
             if redundancy is None and self.cfg.feature_selection.enabled \
                     and self.cfg.feature_selection.spearman.enabled:
                 redundancy = self.cfg.feature_selection.spearman.redundancy_max_abs
+            # The agent's C1 makes the redundancy call (agent.checks.max_model_rho, with
+            # C2's exception); the guard below it would refuse what C1 lets through, so
+            # it only stops a ranked copy. The discovery stage keeps its own limit.
+            if self.cfg.agent.checks.max_model_rho is not None and redundancy is not None:
+                redundancy = max(redundancy, REBUILT)
             cols = [self.target, *self.base_features]
             self._screener = Screener(
                 self.screen.iloc[: self.n_screen_train][cols],
@@ -516,7 +522,9 @@ class Workspace:
         return self._screener
 
     def write_base(self, path: Path) -> Path:
-        """The model rows a script may read: ids and base columns, never the target."""
+        """The model rows a script may read: ids and base columns, never the target -
+        each id once, as at evaluation."""
         path.parent.mkdir(parents=True, exist_ok=True)
-        self.screen.drop(columns=[self.target]).to_parquet(path, index=False)
+        (self.screen.drop(columns=[self.target]).drop_duplicates(subset=[self.id_col])
+         .to_parquet(path, index=False))
         return path

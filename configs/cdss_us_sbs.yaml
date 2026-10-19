@@ -63,6 +63,19 @@ discovery:
         glob: "*_flagged.csv"                 # its variable lists in dir
         sql_dialect: BigQuery
         description: ""                       # TODO: what CAS holds, in a sentence, for the agent
+    # The cases inference scores, base against every evaluated model (Evaluate >
+    # Inference results): their rows, shaped like train.csv (more columns are
+    # fine), and their own history of each source, in the source's format.
+    target_cases:
+      dir: data/cdss_us_sbs/additional_data/targeted_cases   # the names below are in it
+      rows: null                              # TODO: the transactions file
+      # cust_id_new from its parts: customer id, transaction date, sequence number.
+      # TODO: check the columns' names and the date's form against a train.csv id.
+      id_template: "{cust_id}_{trans_dt:%Y%m%d}_{lseq_nbr}"
+      case_column: null                       # default: the template's first column (the customer)
+      time_column: null                       # default: the template's first date
+      sources: {}                             # each additional dataset's history: its own file name in dir, unless given here
+      flag_top: 0.05                          # each model flags its top 5% of test scores
     
     # The discovery pipeline: lists these schemas in its prompt when enabled.
     enabled: false
@@ -110,7 +123,7 @@ agent:
     same_meaning: 0.6                       # C0: this close in words to an earlier one -> must say what differs (null: off)
     max_model_rho: 0.9                      # C1: max |Spearman rho| with a model column above this -> redundant (null: off)
     keep_if_residual_rho: 0.05              # C1's exception: fitted anyway when |rho residual| reaches this
-    min_residual_rho: null                  # C2: information only; a number makes it a gate
+    min_variable_gini: null                 # C2: the feature's own Gini on y - information only; a number makes it a gate
   llm:
     backend: safechain                      # llm.timeout_s / stall_retry_s: 180s, 40s by default
     model: gpt-5

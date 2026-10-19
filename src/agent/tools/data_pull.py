@@ -39,7 +39,7 @@ import re
 from typing import Any
 
 from agent.board import idea_for
-from agent.memory import same_request
+from agent.memory import prior_requests, same_request
 from agent.session import Session
 from agent.tools.ideas import ideas_needed
 
@@ -159,6 +159,11 @@ def _can_propose(session: Session, source_name: str) -> dict[str, Any] | None:
         return {"ok": False, "error": f"{source_name!r}: name the source in snake_case"}
     if any(r["source_name"] == source_name for r in session.data_requests):
         return {"ok": False, "error": f"{source_name!r} is already proposed; choose a new name"}
+    # A kept request's pull becomes a source by this name: one name, one request, across runs.
+    if (owner := next((r for r in prior_requests(session.ws, session.run_id)
+                       if r["source_name"] == source_name), None)):
+        return {"ok": False, "error": f"{source_name!r} was proposed in run {owner['run_id']} "
+                                      f"({owner['status']}); choose a new name"}
     return None
 
 

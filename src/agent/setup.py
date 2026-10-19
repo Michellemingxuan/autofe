@@ -6,8 +6,8 @@ and applied on top of the YAML - so the YAML stays the reviewed default, a
 restart keeps the user's choices, and "reset" is deleting one file.
 
 The page is in blocks - the task, the model materials (dataset, shots,
-context), the additional materials (folder, datasets, scope), evaluation -
-each applied on its own. A change is applied only if the workspace it
+context), the additional materials (folder, datasets, scope), evaluation, the
+target cases inference scores - each applied on its own. A change is applied only if the workspace it
 describes actually loads: the screen files are read, every other file must
 exist (the splits are not read - they may be tens of GB).
 
@@ -53,6 +53,10 @@ BLOCKS: list[dict[str, Any]] = [
          "discovery.task_description": {"label": "Task description", "kind": "longtext",
                                         "help": "What the features should improve"},
      }},
+    {"key": "model_folder", "title": "Folder", "folder": True,
+     "help": "The model materials' files below are names inside this folder; a name starting "
+             "with / points elsewhere. It is where they lie, not a setting of its own.",
+     "fields": {}},
     {"key": "model", "title": "Model dataset", "folder": True, "help": "",
      "fields": {
          "data.paths.train": {"label": "Train", "kind": "path",
@@ -144,6 +148,30 @@ BLOCKS: list[dict[str, Any]] = [
                        "section": "Verdict",
                        "help": "open: measure every feature; enforce: drop failures before modelling"},
      }},
+    {"key": "cases_folder", "title": "Folder", "folder": True,
+     "help": "Holds the target cases' rows and their histories; each history defaults to the "
+             "source's own file name in it.",
+     "fields": {
+         "discovery.additional_data.target_cases.dir": {
+             "label": "Target cases folder", "kind": "path",
+             "help": "Absolute, or from the project root"},
+     }},
+    {"key": "target_cases", "title": "Target cases", "folder": False,
+     "help": "The cases you care about - high-balance defaulters, say - scored at inference by "
+             "the base model and by every evaluated model. Their rows are shaped like the model "
+             "data (more columns are fine); each additional dataset the features read needs the "
+             "cases' own history of it, in the same format.",
+     "fields": {
+         "discovery.additional_data.target_cases.rows": {
+             "label": "Rows", "kind": "path", "section": "Cases",
+             "help": "The cases' rows, e.g. their transactions (.csv or .parquet)"},
+         "discovery.additional_data.target_cases.case_column": {
+             "section": "Cases", "label": "Case column", "kind": "text",
+             "help": "One case is every row with one value of it; empty: the customer id column"},
+         "discovery.additional_data.target_cases.time_column": {
+             "section": "Cases", "label": "Time column", "kind": "text",
+             "help": "Orders a case's rows; empty: the transaction date"},
+     }},
 ]
 # Keys that moved out of the agent section: overrides saved before still load.
 MOVED = {"agent.id_format": "data.id_format",
@@ -176,10 +204,47 @@ def _scope_fields(names: list[str]) -> dict[str, dict[str, Any]]:
     return out
 
 
+def source_files(cfg: Config) -> dict[str, str | None]:
+    """The additional datasets, as the Additional datasets block lists them - each
+    sample JSON in the folder, and each registered one - with the name of its data
+    file (None for schema only). Read from the folder, not the data."""
+    extra = cfg.discovery.additional_data
+    folder = Path(extra.dir) if extra.dir else None
+    out: dict[str, str | None] = {}
+    if folder and folder.is_dir():
+        for path in sorted(folder.glob("*.json")):
+            if path.name == "sources.json":
+                for name, entry in json.loads(path.read_text() or "{}").items():
+                    out[name] = Path(entry["data"]).name if entry.get("data") else None
+                continue
+            name = path.name
+            for suffix in ("_data_sample.json", ".json"):
+                if name.endswith(suffix):
+                    name = name[: -len(suffix)]
+                    break
+            data = next((folder / f"{name}{s}" for s in (".parquet", ".csv")
+                         if (folder / f"{name}{s}").exists()), None)
+            out.setdefault(name, data.name if data else None)
+    return dict(sorted(out.items()))
+
+
+def _case_fields(cfg: Config, fields: dict[str, Any]) -> dict[str, dict[str, Any]]:
+    """The Target cases block: the cases' settings, then a history per additional
+    dataset - by default the dataset's own file name, in the cases' folder."""
+    histories = {f"{_CASES}.sources.{name}": {
+        "label": name, "kind": "path", "section": "Histories", "source_file": data,
+        "help": f"The cases' own {name}, in the same format as {data or 'the source'}"}
+        for name, data in source_files(cfg).items()}
+    return {**fields, **histories}
+
+
 def blocks(cfg: Config) -> list[dict[str, Any]]:
-    """The Setup page's blocks for this config - the Scope block has its scopes."""
+    """The Setup page's blocks for this config - the Scope block has its scopes, the
+    Target cases block a history per source."""
     names = list(cfg.discovery.additional_data.scopes)
-    return [{**b, "fields": _scope_fields(names)} if b["key"] == "scope" else b for b in BLOCKS]
+    return [{**b, "fields": _scope_fields(names)} if b["key"] == "scope"
+            else {**b, "fields": _case_fields(cfg, b["fields"])} if b["key"] == "target_cases"
+            else b for b in BLOCKS]
 
 
 def fields(cfg: Config) -> dict[str, dict[str, Any]]:
@@ -220,9 +285,27 @@ def _get(cfg: Config, dotted: str) -> Any:
         node = node.get(key) if isinstance(node, dict) else getattr(node, key)
     if dotted == "data.id_cols":
         return node[0] if node else ""
+    if dotted.startswith(f"{_CASES}.sources.") and not node:
+        node = case_history_default(cfg, dotted.rsplit(".", 1)[1])
+    if node and (dotted == f"{_CASES}.rows" or dotted.startswith(f"{_CASES}.sources.")):
+        # A bare name inside the cases' folder, shown and checked as the full path.
+        folder = cfg.discovery.additional_data.target_cases.dir
+        if folder and not Path(node).is_absolute() and not Path(node).exists():
+            return str(Path(folder) / node)
     if isinstance(node, (list, tuple)):
         return list(node)
     return node if node is not None else ""
+
+
+_CASES = "discovery.additional_data.target_cases"
+
+
+def case_history_default(cfg: Config, source: str) -> str | None:
+    """A source's history for the cases, when none is given: the source's own data
+    file name, in the cases' folder."""
+    folder = cfg.discovery.additional_data.target_cases.dir
+    data = source_files(cfg).get(source)
+    return str(Path(folder) / data) if folder and data else None
 
 
 def _set(payload: dict[str, Any], dotted: str, value: Any) -> None:

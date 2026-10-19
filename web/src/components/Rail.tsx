@@ -27,7 +27,7 @@ const STEPS: { page: Page; name: string;
 ]
 
 // The pages under step 3.
-const EVALUATE: Page[] = ['evaluate', 'requests', 'results']
+const EVALUATE: Page[] = ['evaluate', 'requests', 'results', 'inference']
 
 const when = (ts: number) => new Date(ts * 1000).toLocaleString([], {
   month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit',
@@ -38,7 +38,7 @@ export function Rail({ route, workspace, runs, evaluations, onBoard }: Props) {
   return (
     <aside className={s.rail}>
       <div className={s.brand} title={workspace?.name ? `workspace: ${workspace.name}` : undefined}>
-        <span className={s.logo}>af</span>
+        <img className={s.logo} src="/favicon.svg" alt="" />
         <div>
           <div className={s.brandName}>AutoFE</div>
           <div className={s.brandSub}>Model agent</div>
@@ -104,7 +104,10 @@ export function Rail({ route, workspace, runs, evaluations, onBoard }: Props) {
             <button className={`${s.subItem} ${route.page === 'requests' ? s.subOn : ''}`}
                     onClick={() => navigate('requests')}>Request set</button>
             <button className={`${s.subItem} ${route.page === 'results' ? s.subOn : ''}`}
-                    onClick={() => navigate('results')}>Results</button>
+                    onClick={() => navigate('results')}>Metrics results</button>
+            <button className={`${s.subItem} ${route.page === 'inference' ? s.subOn : ''}`}
+                    onClick={() => navigate('inference')}
+                    title="The target cases, scored by base and by every evaluated model">Inference results</button>
           </div>
         </>
       )}

@@ -96,3 +96,7 @@
 .driverBar i { display: block; height: 100%; background: var(--j-accent); border-radius: 4px; }
 .driverPct { text-align: right; font-family: var(--j-font-mono); color: var(--j-ink-3); }
 @media (max-width: 900px) { .modelBody { grid-template-columns: minmax(0, 1fr); padding-left: 14px; } }
+
+/* A variant with no model: the gates dropped it, or its training failed. */
+.notTrained { color: var(--j-warn-ink); font-size: var(--j-fs-meta); font-style: italic; }
+.levelShift { color: var(--j-warn-ink); font-weight: 700; }

@@ -79,9 +79,12 @@ export function EvalPanel({ evalId, variant, onSelect, onClose, onDeleted }: {
       <div className={s.body}>
         {view.error && <div className={s.error}>{view.error}</div>}
         {row && view.status === 'done' && <VariantDetail view={view} row={row} pool={pool ?? []} />}
-        {variant && !row && view.status === 'done' && (
+        {variant && !row && view.status === 'done' && !untrained(view).some((u) => u.variant === variant) && (
           <div className={s.hint}>This evaluation has no variant {variant}.</div>
         )}
+
+        {view.status === 'done' && !variant && <NotTrained view={view} />}
+        {variant && !row && view.status === 'done' && <NotTrained view={view} only={variant} />}
 
         {variants.length > 0 && (
           <section className={s.section}>
@@ -111,6 +114,47 @@ export function EvalPanel({ evalId, variant, onSelect, onClose, onDeleted }: {
         </div>
       </div>
     </aside>
+  )
+}
+
+/** The chosen features and combinations no model was trained for, and why. */
+function untrained(view: EvalView) {
+  const have = new Set([...view.rows.map((r) => r.variant), ...view.removed])
+  const verdict = Object.fromEntries(view.verdicts.map((v) => [v.feature, v]))
+  return [
+    ...view.features.map((f) => ({ variant: `loi__${f.column}`, name: f.column,
+      why: view.modelErrors[`loi__${f.column}`] ? `training failed: ${view.modelErrors[`loi__${f.column}`]}`
+        : `dropped at ${verdict[f.column]?.failed_at || 'selection'}`
+          + (verdict[f.column]?.reason ? ` - ${verdict[f.column].reason}` : '') })),
+    ...Object.entries(view.combinations).map(([name, c]) => ({ variant: `combo__${name}`, name: `⊕ ${name}`,
+      why: view.modelErrors[`combo__${name}`] ? `training failed: ${view.modelErrors[`combo__${name}`]}`
+        : `a member was dropped: ${c.columns.filter((col) => !have.has(`loi__${col}`)).join(', ') || 'unknown'}` })),
+  ].filter((u) => !have.has(u.variant))
+}
+
+function NotTrained({ view, only }: { view: EvalView; only?: string }) {
+  const rows = untrained(view).filter((u) => !only || u.variant === only)
+  if (!rows.length) return null
+  const none = view.rows.filter((r) => r.variant !== 'base').length === 0
+  return (
+    <section className={s.section}>
+      <h3 className={s.h}>Not trained</h3>
+      <div className={s.error}>
+        {none ? 'Only the base model trained: ' : ''}
+        {view.gates === 'enforce'
+          ? 'with the gates enforced (Setup, Evaluation: Gates), a feature that fails a screen is dropped before the models train. '
+          : ''}
+        Set the gates to open to measure every chosen feature anyway.
+      </div>
+      <div className={s.gates}>
+        {rows.map((u) => (
+          <div key={u.variant} className={s.gate}>
+            <span className={s.mono}>{u.name}</span>
+            <span className={s.dim}>{u.why}</span>
+          </div>
+        ))}
+      </div>
+    </section>
   )
 }
 

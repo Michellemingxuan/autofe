@@ -126,25 +126,35 @@ def _fixes(clean: list[dict[str, Any]], focus: list[str], used: set[str], lenses
     return out or ["keep what passes, change what is MISSING"]
 
 
-def _same_as(session: Session, clean: list[dict[str, Any]]) -> str | None:
-    """Check the ideas against each other and the board: an error, or None. A
-    match with an idea of an earlier run is linked on the idea (``same_as``), with
-    that idea's record (``inherited``)."""
+def _same_as(session: Session, clean: list[dict[str, Any]],
+             earlier: list[dict[str, Any]]) -> str | None:
+    """Check the ideas against each other, this run's earlier rounds and the board
+    (``earlier``, the earlier runs' ideas): an error, or None. The same as another
+    idea of the answer, or of an earlier round - still in the order, to be worked
+    by its name - is an error. A match with an idea of an earlier run is linked on
+    the idea (``same_as``), with that idea's record (``inherited``)."""
     limit = session.ws.cfg.agent.checks.same_meaning
     if limit is None:
         return None
     text = lambda i: f"{i['name']} {i['description']}"           # noqa: E731
+    problem = None
     for a in range(len(clean)):
         scores = similarity(text(clean[a]), [text(b) for b in clean[a + 1:]])
         for b, score in enumerate(scores, a + 1):
-            if score >= limit:
-                return (f"ideas {clean[a]['name']!r} and {clean[b]['name']!r} say much the same "
-                        f"thing (overlap {score:.2f}) - merge them, or make one measure something "
-                        "else")
-    earlier = idea_records(session.ws, skip_run=session.run_id)
-    if not earlier:
-        return None
-    for idea in clean:
+            if score >= limit and problem is None:
+                problem = (f"ideas {clean[a]['name']!r} and {clean[b]['name']!r} say much the same "
+                           f"thing (overlap {score:.2f}) - merge them, or make one measure "
+                           "something else")
+    for idea in clean if session.ideas else []:
+        scores = similarity(text(idea), [text(e) for e in session.ideas])
+        best = max(range(len(scores)), key=scores.__getitem__)
+        if scores[best] >= limit and problem is None:
+            twin = session.ideas[best]
+            problem = (f"idea {idea['name']!r} reads like {twin['name']!r} of round "
+                       f"{twin.get('round') or '?'} (overlap {scores[best]:.2f}) - that idea is "
+                       f"still in the order: work it with idea=\"{twin['name']}\", or give an idea "
+                       "that measures something else")
+    for idea in clean if earlier else []:
         scores = similarity(text(idea), [text(e) for e in earlier])
         best = max(range(len(scores)), key=scores.__getitem__)
         if scores[best] < limit:
@@ -153,7 +163,7 @@ def _same_as(session: Session, clean: list[dict[str, Any]]) -> str | None:
         idea["same_as"] = f"{twin['run_id']}:{twin['name']}"
         idea["inherited"] = {"signal": twin["signal"], "none": twin["none"],
                              "why": twin.get("why") or ""}
-    return None
+    return problem
 
 
 def _scope_variables(session: Session) -> list[str]:
@@ -198,6 +208,8 @@ def record_ideas(session: Session, ideas: list[dict[str, Any]],
     scopes = ", ".join(session.ws.scopes) or "the scope"
     taken = _taken_variables(session) if "L3" in levels else {}
     earlier = {i["name"] for i in session.ideas}            # earlier rounds' ideas
+    board = idea_records(session.ws, skip_run=session.run_id)   # earlier runs' ideas
+    past = {e["name"]: e["run_id"] for e in board}
     first = len(session.ideas)                              # numbered across rounds
     clean, names, skipped = [], set(), []
     for i, idea in enumerate(ideas or [], 1):
@@ -216,6 +228,9 @@ def record_ideas(session: Session, ideas: list[dict[str, Any]],
             problem = f"idea {i}: give it a new snake_case name, got {name!r}"
         elif name in earlier:
             problem = f"idea {i}: {name!r} was an idea of an earlier round - give a new one"
+        elif name in past:
+            problem = (f"idea {i}: {name!r} was an idea of run {past[name]} - give a new name; "
+                       "if it is that idea again, say what is new about it")
         elif FEATURE_LIKE.search(name):
             problem = (f"idea {i}: {name!r} reads like a feature - a window or a version in "
                        "the name. Name the concept (liquidity_buffer_depletion, not "
@@ -294,7 +309,7 @@ def record_ideas(session: Session, ideas: list[dict[str, Any]],
                                                   bare if mixed else [], n, most))}
     if lenient and not clean:
         return {"ok": False, "error": "no idea in the answer was valid: " + "; ".join(skipped)}
-    if (problem := _same_as(session, clean)) and not lenient:
+    if (problem := _same_as(session, clean, board)) and not lenient:
         return {"ok": False, "error": problem}
     session.ideas = session.ideas + clean
     save_ideas(session)

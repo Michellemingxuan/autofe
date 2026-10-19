@@ -1,0 +1,38 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 128 128" role="img" aria-label="AutoFE">
+  <!-- AutoFE: a scan of the population - a cross-section, folded like data - with
+       markers on what stands out; the boxed ones are the signals the agent found. -->
+  <defs>
+    <linearGradient id="tissue" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#C4D3E1"/>
+      <stop offset="1" stop-color="#5D7690"/>
+    </linearGradient>
+    <path id="m" d="M0 0 L8 8 L0 8 Z"/>
+  </defs>
+  <rect width="128" height="128" rx="28" fill="#0A0F18"/>
+  <!-- the outline of the scan -->
+  <path d="M26 98 C14 66 28 24 68 20 C102 17 118 46 110 76 C106 92 96 101 86 106"
+        fill="none" stroke="#3E5368" stroke-width="5" stroke-linecap="round"/>
+  <!-- the cross-section, and its folds -->
+  <path d="M36 82 C30 58 44 32 70 31 C94 30 106 48 101 68 C98 80 88 86 76 86 L48 88 C42 88 38 86 36 82 Z"
+        fill="url(#tissue)"/>
+  <g fill="none" stroke="#0A0F18" stroke-width="3.2" stroke-linecap="round">
+    <path d="M44 72 q5 -10 10 -2 q5 8 10 -2 q5 -10 10 -2 q5 8 10 -2 q4 -7 8 -2"/>
+    <path d="M52 52 q4 -7 8 0 q4 7 8 0 q4 -7 8 0 q3 5 7 1"/>
+    <path d="M60 41 q5 -4 10 0 q5 4 10 0"/>
+  </g>
+  <!-- markers: what stands out -->
+  <g fill="none" stroke="#E8EEF6" stroke-width="2" stroke-linejoin="round">
+    <use href="#m" x="16" y="18"/>
+    <use href="#m" x="102" y="14"/>
+    <use href="#m" x="20" y="56"/>
+    <use href="#m" x="98" y="94"/>
+    <use href="#m" x="62" y="102"/>
+    <!-- the signals found, boxed -->
+    <use href="#m" x="80" y="58"/>
+    <use href="#m" x="38" y="97"/>
+  </g>
+  <g fill="none" stroke="#FFFFFF" stroke-width="3">
+    <rect x="72" y="50" width="24" height="24" rx="6"/>
+    <rect x="30" y="89" width="24" height="24" rx="6"/>
+  </g>
+</svg>

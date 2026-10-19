@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react'
 import type {
-  BaseModelCard, BoardRow, EvalResult, LlmCall, LlmCallFull, EvalSummary, Ev, Params, PathCheck, PoolFeature, RequestItem, RunSummary, SetupView, Source,
+  BaseModelCard, BoardRow, EvalResult, InferenceDetail, InferenceSummary, LlmCall, LlmCallFull,
+  EvalSummary, Ev, Params, PathCheck, PoolFeature, RequestItem, RunSummary, SetupView, Source, TargetCases,
   ThemePool, Workspace,
 } from './types'
 
@@ -94,6 +95,14 @@ export const api = {
   stopEvaluation: (id: string) => post(`/api/evaluations/${id}/cancel`),
   removeResult: (id: string, variant: string) =>
     del(`/api/evaluations/${id}/variants/${encodeURIComponent(variant)}`),
+
+  // 3. Evaluate - inference on the target cases
+  targetCases: () => call<TargetCases>('/api/target_cases'),
+  inferences: () => call<InferenceSummary[]>('/api/inferences'),
+  infer: (evalId: string) => post<{ infer_id: string }>('/api/inferences', { eval_id: evalId }),
+  inference: (id: string) => call<InferenceDetail>(`/api/inferences/${id}`),
+  deleteInference: (id: string) => del(`/api/inferences/${id}`),
+  stopInference: (id: string) => post(`/api/inferences/${id}/cancel`),
 }
 
 export const streamUrl = {

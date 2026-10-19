@@ -10,10 +10,8 @@
 
 .brand { display: flex; align-items: center; gap: 10px; padding: 0 4px; }
 .logo {
-  width: 30px; height: 30px; border-radius: 8px;
-  display: grid; place-items: center;
-  background: var(--j-accent); color: white;
-  font-weight: 700; font-size: 13px;
+  width: 34px; height: 34px; border-radius: 8px; display: block; flex-shrink: 0;
+  box-shadow: 0 0 0 1px rgba(255, 255, 255, 0.14);   /* its dark field against the dark rail */
 }
 .brandName { font-weight: 700; font-size: 14px; }
 .brandSub { font-size: var(--j-fs-meta); color: var(--j-rail-dim); }

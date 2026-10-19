@@ -30,6 +30,7 @@ export type SetupField = {
   options?: string[]
   int?: boolean
   section?: string
+  source_file?: string | null    // a target cases history: its dataset's own file name
   help: string
   value: SetupValue
   default: SetupValue
@@ -38,7 +39,8 @@ export type SetupField = {
 }
 
 export type SetupBlock = {
-  key: 'task' | 'model' | 'shots' | 'context' | 'folder' | 'additional' | 'scope' | 'evaluation'
+  key: 'task' | 'model_folder' | 'model' | 'shots' | 'context' | 'folder' | 'additional' | 'scope' | 'evaluation'
+    | 'cases_folder' | 'target_cases'
   title: string
   help: string
   folder: boolean
@@ -298,7 +300,8 @@ export type BoardRow = {
   max_model_rho: number | null   // C1: the largest |Spearman rho| with a model column
   nearest_rho: number | null     // ... its sign kept: the rho with `nearest`
   nearest: string
-  residual_rho: number | null
+  residual_rho: number | null    // C1's exception: rank correlation with the base model's residual
+  variable_gini?: number | null  // C2: the feature alone as a score for y
   note: string
   gini_gain: number | null
   capture_gain: number | null
@@ -377,6 +380,9 @@ export type EvalView = {
   featureStats: Record<string, FeatureStats>
   error?: string
   outputDir?: string
+  gates?: string                     // open | enforce, as the evaluation ran
+  modelErrors: Record<string, string>
+  removed: string[]                  // variants taken off the results
 }
 
 /** The base model, as the latest finished evaluation trained it. */
@@ -416,6 +422,89 @@ export type EvalResult = {
   missing_rate?: number | null    // share of rows with no value, every split
   max_corr?: number | null        // largest |Spearman| with a base feature, on train
   max_corr_with?: string | null   // that base feature
+  trained?: boolean               // false: no model - its reason in not_trained
+  not_trained?: string | null
+  score_base?: number | null      // mean predicted probability on test: base's
+  score_mean?: number | null      // ... and this model's
+  score_change?: number | null    // their relative change
+  nearest_shap?: { feature: string; base: number | null; variant: number | null } | null
+}
+
+// ------------------------------------------------------------------ inference
+
+/** The target cases as set up, and what reading them found. */
+export type TargetCases = {
+  rows_path: string | null
+  id_template: string | null
+  case_column: string | null
+  time_column: string | null
+  flag_top: number
+  // Each source of the additional data: the cases' own history of it, and how many
+  // verified features read it.
+  sources: Record<string, { path: string | null; state: 'provided' | 'not_found' | 'not_set'; needed_by: number }>
+  error: string | null
+  rows?: number
+  cases?: number
+  columns?: number
+  id_example?: string | null
+  model_id_example?: string
+  missing_base?: string[]
+  per_case?: { min: number; max: number } | null
+}
+
+export type CaseOutcome = 'earlier' | 'same' | 'later' | 'only_variant' | 'only_base' | 'neither'
+
+export type ScoredVariant = { variant: string; kind: 'feature' | 'combination'; name: string;
+                              columns: string[]; gini_gain: number | null }
+
+/** A finished evaluation and its inference on the target cases - none yet, or how it went. */
+export type InferenceSummary = {
+  eval_id: string
+  evaluated: number
+  variants: ScoredVariant[]
+  status: 'none' | 'running' | 'done' | 'error' | 'stopped'
+  scored: number | null
+  error: string | null
+  sooner: Record<string, number>       // per variant: cases it flags sooner than base
+}
+
+export type CaseResult = {
+  case: string
+  rows: number
+  first_base: number | null
+  first_variant: number | null
+  outcome: CaseOutcome
+  rows_sooner: number | null
+  days_sooner: number | null
+  defaulted: number | null
+}
+
+export type TimelinePoint = {
+  t: number; id: string; time: string
+  y?: number | null                    // the outcome, when the cases carry it
+  scores: Record<string, number>       // base and each variant
+  values: Record<string, number | null>
+}
+
+export type InferenceDetail = {
+  infer_id: string
+  eval_id: string
+  variants: ScoredVariant[]
+  columns: string[]
+  flag_top: number
+  ts: number
+  status: 'running' | 'done' | 'error' | 'stopped'
+  error: string | null
+  steps: { title?: string; state?: string; elapsed_s?: number }[]
+  logs: string[]
+  done: null | {
+    cutoffs: Record<string, number>
+    quantiles?: Record<string, Record<string, number>>   // model -> share -> its test cutoff
+    sources: Record<string, string>
+    rows_path: string
+    summaries: Record<string, { cases: number; outcomes: Record<CaseOutcome, number>; per_case: CaseResult[] }>
+  }
+  timelines?: Record<string, TimelinePoint[]>
 }
 
 export type FeatureStats = { missing_rate: number | null; max_corr: number | null; max_corr_with: string | null }

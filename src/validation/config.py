@@ -296,6 +296,34 @@ class ScopeConfig:
 
 
 @dataclass
+class TargetCasesConfig:
+    """The cases the analyst cares about, scored at inference (agent.infer): their
+    rows, shaped like the model database, and their own histories.
+
+    ``dir`` holds them. ``rows`` is the file of the cases' rows; each source of the
+    additional data has the cases' history of it, in the same format, under the
+    source's own file name in ``dir`` (spends.parquet for spends) - or where
+    ``sources`` says. Paths are as given, or names inside ``dir``. The rows carry no
+    model id: ``id_template`` builds it from their columns, in the form the model
+    id has - ``{customer_id}`` takes the column as is, ``{trans_dt:%Y%m%d}``
+    formats a date - so the linkage and feature scripts read it as they read a
+    model id."""
+    dir: Optional[str] = None
+    rows: Optional[str] = None
+    # The model id from its parts, as cust_id_new is built: the customer id, the
+    # transaction date and the sequence number that tells a day's transactions apart.
+    id_template: Optional[str] = "{cust_id}_{trans_dt:%Y%m%d}_{lseq_nbr}"
+    # A case is every row of one value of this column (a customer), in the order
+    # of time_column; both default to the template's first column and first date.
+    case_column: Optional[str] = None
+    time_column: Optional[str] = None
+    sources: Dict[str, str] = field(default_factory=dict)
+    # The inference page's first flag rule: each model flags a row in its own top
+    # share of test scores (the page can change it).
+    flag_top: float = 0.05
+
+
+@dataclass
 class AdditionalDataConfig:
     """Data beyond the model database: the extra sources, how each joins to the
     model ids, and the CAS scope data may be requested from.
@@ -318,8 +346,12 @@ class AdditionalDataConfig:
     # data it needs instead.
     scopes: Dict[str, "ScopeConfig"] = field(
         default_factory=lambda: {"CAS": ScopeConfig(glob="*_flagged.csv")})
+    # The cases scored at inference, base against base + new features.
+    target_cases: "TargetCasesConfig" = field(default_factory=lambda: TargetCasesConfig())
 
     def __post_init__(self):
+        if isinstance(self.target_cases, dict):
+            self.target_cases = _subset(TargetCasesConfig, self.target_cases)
         self.scopes = {str(name): _subset(ScopeConfig, v) if isinstance(v, dict) else v
                        for name, v in (self.scopes or {}).items()}
 
@@ -477,12 +509,11 @@ class ChecksConfig:
     # columns, not the shape - a ratio of two of them, say, is monotone in both
     # yet can carry what the model misses.
     keep_if_residual_rho: Optional[float] = 0.05
-    # C2 - new signal: the rank correlation, on the screen's held-out rows, with
-    # the base model's residual (y minus its prediction) - not with y. Information
-    # only by default (None): it is recorded and shown, and every feature still gets
-    # the screen's fit. On a few thousand held-out rows its noise is about
-    # 1/sqrt(rows) (±0.02 on 2,000), and it only sees monotone signal, so as a gate
-    # it threw away features the fit would have verified. A number makes it a gate.
+    # C2 - signal: the variable Gini, |2·AUC - 1| of the feature alone as a score
+    # for y on the screen rows. Information only by default (None): it is recorded
+    # and shown, and every feature still gets the screen's fit. A number makes it a
+    # gate. (min_residual_rho, the residual correlation it replaced, is ignored.)
+    min_variable_gini: Optional[float] = None
     min_residual_rho: Optional[float] = None
 
 

@@ -99,16 +99,17 @@ export function UploadButton({ kind, onUploaded, label = 'Upload' }: {
   )
 }
 
-/** A small file: type its path, or upload it. */
-export function PathOrUpload({ field, value, onChange, checks, dirty }: {
+/** A small file: type its path, or upload it. With a folder, a name inside it. */
+export function PathOrUpload({ field, value, onChange, checks, dirty, folder = '' }: {
   field: SetupField; value: string; onChange: (v: string) => void; checks: PathCheck; dirty: boolean
+  folder?: string
 }) {
   return (
     <div className={s.field}>
       <FieldLabel field={field} dirty={dirty} />
       <div className={s.inputRow}>
-        <input className={s.mono} value={value} placeholder="path, or upload →"
-               onChange={(e) => onChange(e.target.value)} />
+        <input className={s.mono} value={relTo(folder, value)} placeholder="path, or upload →"
+               title={value} onChange={(e) => onChange(inFolder(folder, e.target.value))} />
         {field.upload && <UploadButton kind={field.upload} onUploaded={onChange} />}
         <Tick path={value} checks={checks} />
       </div>
@@ -154,10 +155,12 @@ export function FilesList({ field, value, onChange, checks, dirty, folder = '' }
   )
 }
 
-/** A plain value or a big file by path. */
-export function PlainField({ field, value, onChange, checks, dirty }: {
+/** A plain value or a big file by path - with a folder, a name inside it. */
+export function PlainField({ field, value, onChange, checks, dirty, folder = '' }: {
   field: SetupField; value: string; onChange: (v: string) => void; checks: PathCheck; dirty: boolean
+  folder?: string
 }) {
+  const path = field.kind === 'path'
   return (
     <div className={s.field}>
       <FieldLabel field={field} dirty={dirty} />
@@ -165,8 +168,9 @@ export function PlainField({ field, value, onChange, checks, dirty }: {
         ? <textarea rows={3} value={value} onChange={(e) => onChange(e.target.value)} />
         : (
           <div className={s.inputRow}>
-            <input className={field.kind === 'path' ? s.mono : ''} value={value}
-                   onChange={(e) => onChange(e.target.value)} />
+            <input className={path ? s.mono : ''} value={path ? relTo(folder, value) : value}
+                   title={path ? value : undefined}
+                   onChange={(e) => onChange(path ? inFolder(folder, e.target.value) : e.target.value)} />
             {field.kind === 'path' && <Tick path={value} checks={checks} />}
           </div>
         )}

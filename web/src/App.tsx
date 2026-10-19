@@ -7,6 +7,7 @@ import { RunPage } from './components/RunPage'
 import { EvaluatePage } from './components/EvaluatePage'
 import { ResultsPage } from './components/ResultsPage'
 import { RequestsPage } from './components/RequestsPage'
+import { InferencePage } from './components/InferencePage'
 import { LoggingBoard } from './components/LoggingBoard'
 import s from './App.module.css'
 
@@ -14,15 +15,16 @@ import s from './App.module.css'
 // 2. Discover - run directions that generate verified features;
 // 3. Evaluate - the feature set: pick single features and combinations, judge
 //    them on test; the request set gathers every kept data request; Results lists
-//    every variant ever evaluated, with its details.
-export type Page = 'setup' | 'discover' | 'evaluate' | 'requests' | 'results'
+//    every variant ever evaluated, with its details; Inference scores the target
+//    cases with base and with base + new features.
+export type Page = 'setup' | 'discover' | 'evaluate' | 'requests' | 'results' | 'inference'
 export type Route = { page: Page; id: string | null }
 
 // The route lives in the hash - #/discover/<run>, #/results/<evaluation>[.<variant>] - so a
 // reload or a shared link reopens the same view.
 function readRoute(): Route {
   const [, page, id] = window.location.hash.split('/')
-  const known: Page[] = ['setup', 'discover', 'evaluate', 'requests', 'results']
+  const known: Page[] = ['setup', 'discover', 'evaluate', 'requests', 'results', 'inference']
   return { page: known.includes(page as Page) ? (page as Page) : 'setup', id: id || null }
 }
 
@@ -76,6 +78,7 @@ export function App() {
         )}
         {route.page === 'requests' && <RequestsPage />}
         {route.page === 'results' && <ResultsPage selected={route.id} />}
+        {route.page === 'inference' && <InferencePage />}
       </main>
       {board && <LoggingBoard onClose={() => setBoard(false)} />}
     </div>

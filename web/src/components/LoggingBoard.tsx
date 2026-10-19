@@ -25,7 +25,7 @@ const passed = (r: BoardRow) => r.status === 'verified' || r.status === 'kept'
 
 // ── Columns: what each sorts by ─────────────────────────────────────────
 type Key = 'direction' | 'engine' | 'idea' | 'idea_status' | 'name' | 'level' | 'seen_before'
-  | 'max_model_rho' | 'residual_rho' | 'gini_gain' | 'status' | 'sent'
+  | 'max_model_rho' | 'variable_gini' | 'gini_gain' | 'status' | 'sent'
 
 const COLUMNS: { key: Key; label: string; hint?: string; numeric?: boolean }[] = [
   { key: 'direction', label: 'Direction' },
@@ -35,8 +35,8 @@ const COLUMNS: { key: Key; label: string; hint?: string; numeric?: boolean }[] =
   { key: 'name', label: 'Feature / request' },
   { key: 'level', label: 'Level' },
   { key: 'seen_before', label: 'C0 (seen before?)', hint: 'Against every earlier feature and the model history: the same code or values are refused; a close meaning needs `differs`. Shows the closest earlier feature, or what it resembles' },
-  { key: 'max_model_rho', label: 'C1 (redundancy)', hint: 'The largest |Spearman rho| with any one model column, and that column. Above 0.9: a near-copy - unless C2 says it tracks what the model misses', numeric: true },
-  { key: 'residual_rho', label: 'C2 (new signal)', hint: 'Information only: rank correlation with what the base model misses (y minus its prediction) on the screen\'s held-out rows. Sorts by size', numeric: true },
+  { key: 'max_model_rho', label: 'C1 (redundancy)', hint: 'The largest |Spearman rho| with any one model column, and that column. Above 0.9: a near-copy - unless it tracks what the model misses (|ρ| with its residual ≥ 0.05)', numeric: true },
+  { key: 'variable_gini', label: 'C2 (variable Gini)', hint: 'Information only: the Gini of the feature alone as a score for the outcome, |2·AUC − 1| on the screen rows', numeric: true },
   { key: 'gini_gain', label: 'C3 (screen gain)', hint: 'The screen\'s Gini gain, base vs base + the feature - against your gates', numeric: true },
   { key: 'status', label: 'Status', hint: 'Feature: verified (passed C0-C1 and the screen gates) or failed (the reason says where: script, C1, guards, gates). Request: kept, or dropped - by its challenge (the current data supplies it) or by the analyst. Idea alone: not tried' },
   { key: 'sent', label: 'C4 (evaluation)', hint: 'Verified features only - the full verdict on the splits. not evaluated · evaluated (PASS or FAIL) · evaluated · removed (the analyst took it off) · removed (taken off before any evaluation)' },
@@ -54,7 +54,7 @@ const SENT_ORDER = ['evaluated', 'evaluated · removed', 'not evaluated', 'remov
 function sortValue(r: BoardRow, key: Key): string | number | null {
   switch (key) {
     case 'idea_status': return r.p_useful
-    case 'residual_rho': return r.residual_rho === null ? null : Math.abs(r.residual_rho)
+    case 'variable_gini': return r.variable_gini ?? null
     case 'sent': return r.sent ? SENT_ORDER.indexOf(r.sent) : null
     case 'status': return r.kind === 'idea' ? null : r.status
     default: {
@@ -77,7 +77,7 @@ function compare(a: BoardRow, b: BoardRow, key: Key, dir: 1 | -1): number {
 const CSV_COLUMNS: (keyof BoardRow)[] = [
   'run_id', 'direction', 'round', 'engine', 'lens', 'idea', 'idea_status', 'p_useful',
   'idea_description', 'idea_measures', 'kind', 'name', 'level', 'description', 'differs', 'attempt',
-  'seen_before', 'max_model_rho', 'nearest', 'nearest_rho', 'residual_rho', 'note', 'gini_gain', 'capture_gain',
+  'seen_before', 'max_model_rho', 'nearest', 'nearest_rho', 'residual_rho', 'variable_gini', 'note', 'gini_gain', 'capture_gain',
   'status', 'reason', 'evidence', 'sent', 'verdict', 'code',
 ]
 
@@ -153,8 +153,8 @@ function Schema() {
         <h4>Checks</h4>
         <dl>
           <dt>C0 (seen before?)</dt><dd>Against every earlier feature and the model history: the same code or values are refused; a close meaning needs `differs`. Shows the closest earlier feature, or what it resembles.</dd>
-          <dt>C1 (redundancy)</dt><dd>The largest |Spearman ρ| with any one model column, and that column. Fails above 0.9, unless C2 ≥ 0.05.</dd>
-          <dt>C2 (new signal)</dt><dd>Rank correlation with what the base model misses (y − ŷ), on held-out rows. Information only - set agent.checks.min_residual_rho to make it a gate.</dd>
+          <dt>C1 (redundancy)</dt><dd>The largest |Spearman ρ| with any one model column, and that column. Fails above 0.9, unless its |ρ| with the base model's residual (y − ŷ) reaches 0.05.</dd>
+          <dt>C2 (variable Gini)</dt><dd>The Gini of the feature alone as a score for the outcome, |2·AUC − 1| on the screen rows. Information only - set agent.checks.min_variable_gini to make it a gate.</dd>
           <dt>C3 (screen gain)</dt><dd>The screen's Gini gain, base vs base + the feature, against your gates.</dd>
           <dt>C4 (evaluation)</dt><dd>The full verdict on the splits - see Evaluation.</dd>
         </dl>
@@ -334,7 +334,7 @@ export function LoggingBoard({ onClose }: Props) {
                                     <>ρ {num(r.nearest_rho ?? r.max_model_rho, 2, true)} <span className={s.nearest}>· {r.nearest}</span></>
                                   )}
                                 </td>
-                                <td className={s.mono}>{num(r.residual_rho, 3, true)}</td>
+                                <td className={s.mono}>{num(r.variable_gini ?? null, 3)}</td>
                                 <td className={`${s.mono} ${r.gini_gain !== null && r.gini_gain > 0 ? s.good : ''}`}>{num(r.gini_gain, 4, true)}</td>
                                 <td>
                                   <span className={`${s.outcome} ${failed ? s.outcomeBad : r.status === 'pending' ? '' : s.outcomeGood}`}>{r.status}</span>

@@ -154,7 +154,14 @@ def test_every_event_the_views_fold_is_streamed_to_them():
 def test_setup_validates_before_it_saves(env):
     client, root, _ = env
     view = client.get("/api/setup").get_json()
-    assert [b["key"] for b in view["blocks"]] == ["task", "model", "shots", "context", "folder", "additional", "scope", "evaluation"]
+    assert [b["key"] for b in view["blocks"]] == ["task", "model_folder", "model", "shots", "context", "folder",
+                                                 "additional", "scope", "evaluation", "cases_folder",
+                                                 "target_cases"]
+    # The cases' datasets follow the additional data: one each, by default its own
+    # file name in the cases' folder.
+    histories = {f["label"]: f for b in view["blocks"] for f in b["fields"] if f.get("section") == "Histories"}
+    assert set(histories) == {"balances", "payments", "spends"}
+    assert histories["spends"]["value"].endswith("targeted_cases/spends.parquet")
     fields = {f["key"]: f for b in view["blocks"] for f in b["fields"]}
     assert fields["data.target"]["value"] == "default"
 
@@ -221,7 +228,7 @@ def test_direction_then_evaluation_then_deletes(env):
     assert {"income_to_limit", "n_payments"} <= set(board)
     row = board["income_to_limit"]
     assert "def build" in row["code"] and row["max_model_rho"] is not None
-    assert row["residual_rho"] is not None and row["sent"] == "not evaluated"
+    assert row["variable_gini"] is not None and row["sent"] == "not evaluated"
     # The process log, in the output folder: the run as an account, and its
     # attempts in the cross-run log.
     assert "## What worked" in (runs / run / "process.md").read_text()
@@ -266,6 +273,31 @@ def test_direction_then_evaluation_then_deletes(env):
     assert "missing_rate" not in by_name["both"]                  # a combination has members'
     # Checks every evaluation fails by design (no all-features model) are not warnings.
     assert not any("batch verdict" in w for st in stages for w in st["warnings"])
+
+    # The score level, base's against each model's; the nearest base feature's SHAP
+    # rank in base and in base + the feature.
+    assert stats["score_base"] > 0 and stats["score_change"] is not None
+    assert stats["nearest_shap"]["feature"] == stats["max_corr_with"]
+    assert stats["nearest_shap"]["base"] >= 1 and stats["nearest_shap"]["variant"] >= 1
+
+    # Inference: as the evaluation ended, the target cases were scored by base and
+    # by every model it trained.
+    cases = client.get("/api/target_cases").get_json()
+    assert cases["error"] is None and cases["cases"] == 24
+    wait_for(runs / "inferences" / ev, "infer_done")
+    detail = client.get(f"/api/inferences/{ev}").get_json()
+    assert {v["variant"] for v in detail["variants"]} == \
+        {"loi__income_to_limit", "loi__n_payments", "combo__both"}
+    assert set(detail["done"]["summaries"]) == {v["variant"] for v in detail["variants"]}
+    assert detail["columns"] == ["income_to_limit", "n_payments"] and len(detail["timelines"]) == 24
+    [listed] = [e for e in client.get("/api/inferences").get_json() if e["eval_id"] == ev]
+    assert listed["status"] == "done" and set(listed["sooner"]) == set(detail["done"]["summaries"])
+    # Deleted, it can be scored again from the page.
+    assert client.delete(f"/api/inferences/{ev}").status_code == 200
+    assert [e["status"] for e in client.get("/api/inferences").get_json() if e["eval_id"] == ev] == ["none"]
+    assert client.post("/api/inferences", json={"eval_id": ev}).status_code == 202
+    wait_for(runs / "inferences" / ev, "infer_done")
+    assert client.post("/api/inferences", json={"eval_id": "nope"}).status_code == 400
 
     # A row comes off the results; the last one takes the evaluation with it.
     assert client.delete(f"/api/evaluations/{ev}/variants/loi__n_payments").get_json() == \

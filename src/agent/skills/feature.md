@@ -47,11 +47,12 @@ around it:
   rho| between the feature and any one model column; `nearest` is that column.
   Above the limit it is a near-copy the model already has: build on other data,
   not another window of the same column.
-* **C2 - new signal?** `residual_rho` is its rank correlation with what the
-  base model misses - information, not a gate: every feature that passes C0
-  and C1 is fitted. A clearly non-zero value is a good sign; a value near zero
-  says little on its own (the signal may be non-monotone, or need other
-  columns), so judge by the screen's gain.
+* **C2 - signal?** `variable_gini` is the feature's own Gini: how well it alone
+  ranks the outcome, |2·AUC - 1| on the screen rows - information, not a gate:
+  every feature that passes C0 and C1 is fitted. It says nothing about what the
+  model already has: a strong one may be a copy (C1), a weak one may still add
+  to the model (a non-monotone shape, or with other columns), so judge by the
+  screen's gain.
 
 ## The contract
 
@@ -62,7 +63,7 @@ feature does not (only when the reply asks). The script defines:
 
 ```python
 def build(spark, sources, base):
-    # base:    model rows - id column + base features (no target)
+    # base:    model rows - id column + base features (no target), each id once
     # sources: {name: linked rows} for confirmed sources (id, as_of, events)
     # spark:   the SparkSession, or None on the pandas engine
     # return:  one row per id: the id column and exactly one column named `name`
@@ -71,7 +72,9 @@ def build(spark, sources, base):
 Rules:
 * Read only the columns the brief lists under "The columns you can use" - for
   `base` and for each source. A name not listed there does not exist.
-* Return exactly two columns: the id column and `name`. One row per id.
+* Return exactly two columns: the id column and `name`. One row per id. `base`
+  has each id once - on the full data too, where the model rows can repeat an
+  id - so start from `base[["<id>"]]` and map onto it; no de-duplication needed.
 * Ids with no events may be missing from the result - they become NaN. Fill
   them yourself when "no events" has a meaning (a count of 0, say).
 * Read sources only through `sources["<name>"]`; mention each source you use by

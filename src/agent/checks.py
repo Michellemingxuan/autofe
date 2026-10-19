@@ -16,17 +16,17 @@ milliseconds, so every feature gets them and only what passes is fitted:
 * **C1 - redundancy with the model?** The largest |Spearman rho| between the
   feature and any one model column, and that column (``nearest``). Above
   ``agent.checks.max_model_rho`` the feature is a near-copy of a column the model
-  already has - unless C2 says it still tracks what the model misses. Pairwise on
+  already has - unless it still tracks what the model misses: its rank
+  correlation with the base model's residual (y minus the baseline's prediction
+  on the held-out rows) reaches ``keep_if_residual_rho``. Pairwise on
   purpose: it says which column, in a number anyone reads; a feature rebuilt
   from two or three columns together can pass it, and the screen's fit judges
   that one.
-* **C2 - new signal?** The rank correlation with what the base model misses -
-  the residual, y minus the baseline's prediction on the screen's held-out rows.
-  Correlation with y alone can be high for a feature the model already has.
-  Information only by default (``agent.checks.min_residual_rho: null``): on a
-  few thousand held-out rows its noise is about 1/sqrt(rows), and it sees only
-  monotone signal, so as a gate it dropped features the fit would have verified.
-  It still decides C1's exception, and it is on the board.
+* **C2 - signal?** The variable Gini: how well the feature alone ranks the
+  outcome, |2·AUC - 1| on every screen row - the number analysts read for a
+  single variable. A missing value ranks in the middle. Information only by
+  default (``agent.checks.min_variable_gini: null``); a number makes it a gate.
+  It says nothing of what the model already has - C1 and the screen's fit do.
 
 C1 and C2 read one precomputed sketch of the screen rows (:class:`Sketch`),
 built once per screener. The thresholds are ``agent.checks`` in the config.
@@ -181,8 +181,8 @@ def _ranked(values: np.ndarray) -> np.ndarray:
 
 class Sketch:
     """The screen rows, ranked once: the model columns standardised (C1 - every
-    column's Spearman rho with a feature - is one matrix product), and the
-    baseline's residual on the held-out rows (C2)."""
+    column's Spearman rho with a feature - is one matrix product), the baseline's
+    residual on the held-out rows (C1's exception), and the outcome (C2)."""
 
     def __init__(self, base: pd.DataFrame, eval_rows: np.ndarray, y: np.ndarray,
                  base_predictions: np.ndarray | None):
@@ -195,6 +195,7 @@ class Sketch:
         self.n = len(base)
         self.standard = ranks / spread[keep] if ranks.shape[1] else ranks
         self.eval_rows = np.asarray(eval_rows)
+        self.y = np.asarray(y, dtype=float)
         self.residual = None
         if base_predictions is not None and len(base_predictions) == len(self.eval_rows):
             self.residual = _ranked(np.asarray(y, dtype=float)[self.eval_rows]
@@ -211,9 +212,24 @@ class Sketch:
         return {"max_model_rho": round(float(abs(rho[j])), 4), "nearest": self.columns[j],
                 "nearest_rho": round(float(rho[j]), 4)}
 
+    def variable_gini(self, values: np.ndarray) -> float | None:
+        """C2: the feature alone as a score for y - |2·AUC - 1| on every screen row,
+        AUC from ranks (Mann-Whitney), a missing value ranked in the middle. None
+        for a constant feature or a single class."""
+        f = pd.Series(np.asarray(values, dtype=float))
+        f = f.fillna(f.median()) if f.notna().any() else f
+        positive = self.y == 1
+        n1, n0 = int(positive.sum()), int((~positive).sum())
+        if f.isna().all() or f.nunique() < 2 or not n1 or not n0:
+            return None
+        ranks = f.rank().to_numpy()
+        auc = (ranks[positive].sum() - n1 * (n1 + 1) / 2) / (n1 * n0)
+        return round(abs(2 * auc - 1), 4)
+
     def signal(self, values: np.ndarray) -> float | None:
-        """C2: the rank correlation of the feature with the baseline's residual, on
-        the held-out rows. None without a residual or for a feature constant there."""
+        """C1's exception: the rank correlation of the feature with the baseline's
+        residual, on the held-out rows. None without a residual or for a feature
+        constant there."""
         if self.residual is None:
             return None
         f = _ranked(np.asarray(values, dtype=float)[self.eval_rows])
@@ -239,6 +255,7 @@ def model_checks(screener: Any, values: np.ndarray, checks: Any) -> tuple[dict[s
     out: dict[str, Any] = {}
     rho = sketch.signal(values)
     out["residual_rho"] = rho
+    out["variable_gini"] = gini = sketch.variable_gini(values)
     reason = ""
     if (c1 := sketch.explained(values)):
         out.update(c1)
@@ -252,8 +269,8 @@ def model_checks(screener: Any, values: np.ndarray, checks: Any) -> tuple[dict[s
             else:
                 reason = (f"explained by the model: |ρ| {c1['max_model_rho']:.2f} with the model "
                           f"column `{c1['nearest']}` (above {limit:g})")
-    floor = checks.min_residual_rho
-    if not reason and floor is not None and rho is not None and abs(rho) < floor:
-        reason = (f"no new signal: |ρ| with the base model's residual is {abs(rho):.3f}, "
-                  f"below {floor:g} - it does not track what the model misses")
+    floor = checks.min_variable_gini
+    if not reason and floor is not None and gini is not None and gini < floor:
+        reason = (f"no signal: the feature alone ranks the outcome with a Gini of {gini:.3f}, "
+                  f"below {floor:g}")
     return out, reason

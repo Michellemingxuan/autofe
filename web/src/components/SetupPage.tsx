@@ -1,10 +1,10 @@
 import { Fragment, useEffect, useMemo, useRef, useState } from 'react'
 import { api, usePolled } from '../api'
-import type { PathCheck, SetupBlock, SetupField, Workspace } from '../types'
+import type { PathCheck, SetupBlock, SetupField, TargetCases, Workspace } from '../types'
 import { ConfirmButton } from './ConfirmButton'
 import {
-  DefaultHint, FieldLabel, FilesList, PathOrUpload, PlainField, Tick, TypedField, normalise,
-  usePathCheck,
+  DefaultHint, FieldLabel, FilesList, PathOrUpload, PlainField, Tick, TypedField, inFolder, normalise,
+  relTo, usePathCheck,
 } from './SetupFields'
 import { ShotsBody } from './SetupShots'
 import { AddSource, LinkageJob, SourceRow } from './SetupSources'
@@ -15,18 +15,22 @@ type Readiness = 'ready' | 'attention' | 'edited'
 
 // The order the agent meets things: the task, the model materials, extra data
 // and where more may come from - then how features are judged.
-const ORDER: SetupBlock['key'][] = ['task', 'model', 'shots', 'context', 'folder', 'additional', 'scope', 'evaluation']
+const ORDER: SetupBlock['key'][] = ['task', 'model_folder', 'model', 'shots', 'context', 'folder', 'additional',
+                                     'scope', 'evaluation', 'cases_folder', 'target_cases']
 // The sections, each a heading over its blocks - lettered when there are several.
 const SECTIONS: { title: string; keys: SetupBlock['key'][] }[] = [
   { title: 'Overview', keys: ['task'] },
-  { title: 'Model materials', keys: ['model', 'shots', 'context'] },
+  { title: 'Model materials', keys: ['model_folder', 'model', 'shots', 'context'] },
   { title: 'Additional materials', keys: ['folder', 'additional', 'scope'] },
   { title: 'Evaluation', keys: ['evaluation'] },
+  { title: 'Inference', keys: ['cases_folder', 'target_cases'] },
 ]
 const sectionOf = (key: SetupBlock['key']) => SECTIONS.find((g) => g.keys.includes(key))
+// Each section's folder comes first: the paths below it are names inside it.
+const FOLDERS: SetupBlock['key'][] = ['model_folder', 'folder', 'cases_folder']
 const letterOf = (key: SetupBlock['key']) => {
-  if (key === 'folder') return null                     // the section's folder, ahead of its blocks
-  const keys = (sectionOf(key)?.keys ?? []).filter((k) => k !== 'folder')
+  if (FOLDERS.includes(key)) return null                // the section's folder, ahead of its blocks
+  const keys = (sectionOf(key)?.keys ?? []).filter((k) => !FOLDERS.includes(k))
   return keys.length > 1 ? 'abcdefgh'[keys.indexOf(key)] : null
 }
 const READINESS_LABEL: Record<Readiness, string> = {
@@ -45,6 +49,7 @@ const isDirty = (f: SetupField, v: unknown) =>
  */
 export function SetupPage({ workspace, onChange }: { workspace: Workspace | null; onChange: () => void }) {
   const [setup, refreshSetup] = usePolled(api.setup, [], 60000)
+  const [cases, refreshCases] = usePolled(api.targetCases, [], 30000)
   const [values, setValues] = useState<Values>({})
   const [jobId, setJobId] = useState<string | null>(null)
   const sections = useRef<Record<string, HTMLElement | null>>({})
@@ -65,23 +70,38 @@ export function SetupPage({ workspace, onChange }: { workspace: Workspace | null
 
   const set = (key: string, v: unknown) => setValues((old) => ({ ...old, [key]: v }))
   const extraFolder = asText(values['discovery.additional_data.dir'])
-  const applied = () => { refreshSetup(); onChange() }
+  const casesFolder = asText(values['discovery.additional_data.target_cases.dir'])
+  // The model materials' folder: where their files lie, not a setting - the
+  // dataset's files are names inside it, and moving it moves them.
+  const loadedModel = MODEL_FILES.map((k) => asText(setup?.blocks.flatMap((b) => b.fields)
+    .find((f) => f.key === k)?.value))
+  const [modelFolder, setModelFolder] = useState('')
+  useEffect(() => { setModelFolder(commonFolder(loadedModel)) }, [loadedModel.join('\n')])  // eslint-disable-line
+  const moveModelFolder = (next: string) => {
+    const name = (p: string) => relTo(modelFolder, p)
+    for (const k of MODEL_FILES) {
+      const n = name(asText(values[k]))
+      if (n && !n.startsWith('/')) set(k, inFolder(next.replace(/\/$/, ''), n))
+    }
+    setModelFolder(next.replace(/\/$/, ''))
+  }
+  const applied = () => { refreshSetup(); refreshCases(); onChange() }
 
   // Every path on screen, checked as it is typed.
   const paths = useMemo(() => {
-    const out: string[] = []
+    const out: string[] = [modelFolder]
     for (const b of setup?.blocks ?? []) for (const f of b.fields) {
       if (['path', 'file'].includes(f.kind)) out.push(asText(values[f.key]))
       if (f.kind === 'files') out.push(...((values[f.key] as string[]) ?? []))
     }
     return out
-  }, [setup, values])
+  }, [setup, values, modelFolder])
   const checks = usePathCheck(paths)
 
   if (!setup) return <div className={s.page}><p className={s.loading}>Loading the setup…</p></div>
   const blocks = ORDER.map((k) => setup.blocks.find((b) => b.key === k)).filter(Boolean) as SetupBlock[]
   const state = (b: SetupBlock): Readiness =>
-    b.fields.some((f) => isDirty(f, values[f.key])) ? 'edited' : ready(b, workspace, values, checks)
+    b.fields.some((f) => isDirty(f, values[f.key])) ? 'edited' : ready(b, workspace, values, checks, cases)
   const readyCount = blocks.filter((b) => state(b) === 'ready').length
 
   return (
@@ -108,17 +128,29 @@ export function SetupPage({ workspace, onChange }: { workspace: Workspace | null
                 className={`${s.stop} ${s.inGroup} ${flash === b.key ? s.flash : ''}`}>
               <span className={`${s.node} ${s['node_' + state(b)]}`} aria-hidden />
               <Block block={b} values={values} state={state(b)} onApplied={applied}>
-                {b.key === 'model' && <ModelFields block={b} values={values} set={set} checks={checks} />}
+                {b.key === 'model_folder' && (
+                  <div className={s.fieldStack}>
+                    <div className={s.field}>
+                      <span className={s.fieldLabel}>Model materials folder</span>
+                      <div className={s.inputRow}>
+                        <input className={s.mono} value={modelFolder} placeholder="/path/to/my_use_case"
+                               onChange={(e) => moveModelFolder(e.target.value)} />
+                        <Tick path={modelFolder} checks={checks} />
+                      </div>
+                    </div>
+                  </div>
+                )}
+                {b.key === 'model' && <ModelFields block={b} values={values} set={set} checks={checks} folder={modelFolder} />}
                 {b.key === 'task' && <Fields block={b} values={values} set={set} checks={checks} />}
                 {b.key === 'context' && (
                   <>
-                    <Fields block={b} values={values} set={set} checks={checks} />
+                    <Fields block={b} values={values} set={set} checks={checks} folder={modelFolder} />
                     <ThemePoolPart />
                   </>
                 )}
                 {b.key === 'shots' && (
                   <ShotsBody block={b} values={values} set={set} checks={checks}
-                             workspace={workspace} onApplied={applied} />
+                             workspace={workspace} onApplied={applied} folder={modelFolder} />
                 )}
                 {b.key === 'evaluation' && <EvaluationFields block={b} values={values} set={set} />}
                 {b.key === 'folder' && <Fields block={b} values={values} set={set} checks={checks} />}
@@ -147,6 +179,11 @@ export function SetupPage({ workspace, onChange }: { workspace: Workspace | null
                   </>
                 )}
                 {b.key === 'scope' && <ScopeFields block={b} values={values} set={set} checks={checks} folder={extraFolder} />}
+                {b.key === 'cases_folder' && <Fields block={b} values={values} set={set} checks={checks} />}
+                {b.key === 'target_cases' && (
+                  <TargetCasesFields block={b} values={values} set={set} checks={checks} cases={cases}
+                                     folder={casesFolder} workspace={workspace} />
+                )}
               </Block>
             </li>
             </Fragment>
@@ -157,32 +194,14 @@ export function SetupPage({ workspace, onChange }: { workspace: Workspace | null
       <aside className={s.overview} aria-label="What the agent has now">
         <div className={s.ovHead}>
           <span className={s.ovTitle}>What the agent has now</span>
+          <div className={s.ovProgress} aria-label={`${readyCount} of ${blocks.length} ready`}>
+            {blocks.map((b) => (
+              <i key={b.key} className={s['ovSeg_' + state(b)]} title={`${titleOf(b)}: ${READINESS_LABEL[state(b)]}`} />
+            ))}
+          </div>
         </div>
-        {SECTIONS.map((sec) => {
-          const own = blocks.filter((b) => sec.keys.includes(b.key))
-          if (!own.length) return null
-          const done = own.filter((b) => state(b) === 'ready').length
-          return (
-            <section key={sec.title} className={s.ovGroup}>
-              <header className={s.ovGroupHead}>
-                <span>{sec.title}</span>
-                <span className={done === own.length ? s.ovCountDone : s.ovCount}>{done}/{own.length} ready</span>
-              </header>
-              {own.map((b) => (
-                <button key={b.key} className={s.ovItem} onClick={() => jump(b.key)}>
-                  <span className={s.ovItemHead}>
-                    <span className={`${s.ovDot} ${s['ovDot_' + state(b)]}`} aria-hidden />
-                    <span className={s.ovName}>{titleOf(b)}</span>
-                    {state(b) !== 'ready' && (
-                      <span className={`${s.ovState} ${s['state_' + state(b)]}`}>{READINESS_LABEL[state(b)]}</span>
-                    )}
-                  </span>
-                  <Readout block={b} workspace={workspace} values={values} checks={checks} />
-                </button>
-              ))}
-            </section>
-          )
-        })}
+        <SetupMap blocks={blocks} state={state} jump={jump}
+                  glance={(b) => <Glance block={b} workspace={workspace} values={values} checks={checks} cases={cases} />} />
       </aside>
       </div>
     </div>
@@ -195,7 +214,8 @@ const startsSection = (blocks: SetupBlock[], i: number) =>
 const titleOf = (b: SetupBlock) => (letterOf(b.key) ? `${letterOf(b.key)}. ${b.title}` : b.title)
 
 /** Whether a block has what the agent needs, judged from what is loaded. */
-function ready(b: SetupBlock, w: Workspace | null, values: Values, checks: PathCheck): Readiness {
+function ready(b: SetupBlock, w: Workspace | null, values: Values, checks: PathCheck,
+               cases: TargetCases | null): Readiness {
   if (!w) return 'attention'
   const exists = (k: string) => {
     const p = asText(values[k])
@@ -214,10 +234,16 @@ function ready(b: SetupBlock, w: Workspace | null, values: Values, checks: PathC
     case 'folder':
       return asText(values['discovery.additional_data.dir']) && exists('discovery.additional_data.dir')
         ? 'ready' : 'attention'
+    case 'cases_folder':
+      return asText(values['discovery.additional_data.target_cases.dir'])
+        && exists('discovery.additional_data.target_cases.dir') ? 'ready' : 'attention'
     case 'additional':
       return w.sources.some((x) => x.state === 'needs_linkage') ? 'attention' : 'ready'
     case 'scope':
       return w.scope_files.length ? 'ready' : 'attention'
+    case 'target_cases':
+      return cases && !cases.error && !cases.missing_base?.length
+        && Object.values(cases.sources).every((x) => !x.needed_by || x.state === 'provided') ? 'ready' : 'attention'
     default:
       return 'ready'
   }
@@ -273,111 +299,163 @@ function Block({ block, values, state, onApplied, children }: {
   )
 }
 
-// ------------------------------------------------------------------ readouts
+// ------------------------------------------------------------------ at a glance
 
-type Row = { label: string; value: React.ReactNode; warn?: boolean }
 
-/** A block's facts as label - value rows; every block reads the same way. */
-function Rows({ rows }: { rows: Row[] }) {
+/** The setup as the agent uses it, drawn: the task and the materials feed the agent,
+ *  its features go to evaluation, and the evaluated models score the target cases.
+ *  Every box is a block - its state, one glance at it, a click to it. */
+function SetupMap({ blocks, state, jump, glance }: {
+  blocks: SetupBlock[]; state: (b: SetupBlock) => Readiness; jump: (k: string) => void
+  glance: (b: SetupBlock) => React.ReactNode
+}) {
+  const by = (k: SetupBlock['key']) => blocks.find((b) => b.key === k)
+  const worst = (keys: SetupBlock['key'][]): Readiness => {
+    const st = keys.map(by).filter(Boolean).map((b) => state(b!))
+    return st.includes('attention') ? 'attention' : st.includes('edited') ? 'edited' : 'ready'
+  }
+  const Dot = ({ st }: { st: Readiness }) => <span className={`${s.ovDot} ${s['ovDot_' + st]}`} aria-hidden />
+  const Item = ({ k, name }: { k: SetupBlock['key']; name?: string }) => {
+    const b = by(k)
+    if (!b) return null
+    return (
+      <button className={s.mItem} onClick={() => jump(k)} title={`${b.title}: ${READINESS_LABEL[state(b)]}`}>
+        <span className={s.mItemHead}><Dot st={state(b)} />{name ?? b.title}</span>
+        <span className={s.mGlance}>{glance(b)}</span>
+      </button>
+    )
+  }
+  const Group = ({ title, folder, keys, children }: {
+    title: string; folder?: SetupBlock['key']; keys: SetupBlock['key'][]; children: React.ReactNode
+  }) => (
+    <div className={s.mGroup}>
+      <button className={s.mGroupHead} onClick={() => jump(folder ?? keys[0])}>
+        <Dot st={worst(folder ? [folder, ...keys] : keys)} />{title}</button>
+      {children}
+    </div>
+  )
+  // A box of one block: its title, state and glance, without a second heading.
+  const Node = ({ title, k, folder }: { title: string; k: SetupBlock['key']; folder?: SetupBlock['key'] }) => {
+    const b = by(k)
+    if (!b) return null
+    return (
+      <button className={`${s.mGroup} ${s.mNode}`} onClick={() => jump(k)}
+              title={`${b.title}: ${READINESS_LABEL[state(b)]}`}>
+        <span className={s.mGroupHead}><Dot st={worst(folder ? [folder, k] : [k])} />{title}</span>
+        <span className={`${s.mGlance} ${s.mNodeBody}`}>{glance(b)}</span>
+      </button>
+    )
+  }
+  const Arrow = ({ label }: { label?: string }) => (
+    <div className={s.mArrow}>{label && <span>{label}</span>}</div>
+  )
   return (
-    <dl className={s.ovRows}>
-      {rows.map((r, i) => (
-        <div key={i}><dt>{r.label}</dt><dd className={r.warn ? s.warnText : undefined}>{r.value}</dd></div>
-      ))}
-    </dl>
+    <div className={s.map}>
+      <Node title="Task" k="task" />
+      <Arrow label="sets the direction" />
+      <div className={s.mPair}>
+        <Group title="Model materials" folder="model_folder" keys={['model', 'shots', 'context']}>
+          <Item k="model" name="Dataset" /><Item k="shots" /><Item k="context" />
+        </Group>
+        <Group title="Additional" folder="folder" keys={['additional', 'scope']}>
+          <Item k="additional" name="Datasets" /><Item k="scope" />
+        </Group>
+      </div>
+      <svg className={s.mJoin} viewBox="0 0 100 24" preserveAspectRatio="none" aria-hidden>
+        <path d="M25 0 V10 H50 M75 0 V10 H50 M50 10 V24" />
+      </svg>
+      <div className={s.mHub}>
+        <b>Modeling agent</b>
+        <span>proposes ideas, builds and screens features</span>
+      </div>
+      <Arrow label="verified features" />
+      <Node title="Evaluation" k="evaluation" />
+      <Arrow label="evaluated models" />
+      <Node title="Inference · target cases" k="target_cases" folder="cases_folder" />
+    </div>
   )
 }
 
-/** The block's state in one glance, drawn from what is loaded now. */
-function Readout({ block, workspace: w, values, checks }: {
-  block: SetupBlock; workspace: Workspace | null; values: Values; checks: PathCheck
+/** A block at a glance: one picture of what is loaded - the details are in the block. */
+function Glance({ block, workspace: w, values, checks, cases }: {
+  block: SetupBlock; workspace: Workspace | null; values: Values; checks: PathCheck; cases: TargetCases | null
 }) {
   if (!w) return null
   const v = (k: string) => values[k]
-  const file = (k: string): Row['value'] => {
-    const p = asText(v(k))
-    if (!p) return 'none'
-    return checks[p]?.exists === false ? 'not found' : <code title={p}>{p.split('/').pop()}</code>
-  }
-  const missing = (k: string) => checks[asText(v(k))]?.exists === false
+  const has = (k: string) => { const p = asText(v(k)); return !!p && checks[p]?.exists !== false }
+  const Stat = ({ n, label, warn }: { n: React.ReactNode; label: string; warn?: boolean }) => (
+    <span className={`${s.gStat} ${warn ? s.gWarn : ''}`}><b>{n}</b>{label}</span>)
+  const Pill = ({ ok, label, title }: { ok: boolean | 'warn'; label: string; title?: string }) => (
+    <span className={`${s.gPill} ${ok === true ? s.gOk : ok === 'warn' ? s.gAmber : s.gOff}`} title={title}>
+      {ok === true ? '✓' : ok === 'warn' ? '!' : '✕'} {label}</span>)
   switch (block.key) {
-    case 'task': {
-      const task = asText(v('discovery.task_description')).trim()
-      return task
-        ? <p className={s.ovQuote}>{task}</p>
-        : <p className={s.ovEmpty}>Not described yet - the agent needs to know what to improve.</p>
+    case 'task':
+      return asText(v('discovery.task_description')).trim()
+        ? <span className={s.gText}>{asText(v('discovery.task_description')).trim()}</span>
+        : <Pill ok={false} label="not described" />
+    case 'model':
+      return <div className={s.gRow}>
+        <Stat n={w.base_features} label="base features" />
+        <Stat n={`${((w.screen_rows.fit + w.screen_rows.scored) / 1000).toFixed(1)}k`} label="screen rows" />
+      </div>
+    case 'shots': {
+      const rows = w.shots.reduce((n, c) => n + (c.kind === 'error' ? 0 : c.found), 0)
+      return <div className={s.gRow}><Stat n={rows} label="rows" />
+        <Stat n={w.shots.length} label={w.shots.length === 1 ? 'category' : 'categories'} /></div>
     }
-    case 'model': {
-      const size = (k: string) => (missing(k) ? 'missing' : fmtBytes(checks[asText(v(k))]?.bytes ?? 0))
-      const splits = ['data.paths.train', 'data.paths.valid', 'data.paths.test']
-      const screen = ['discovery.screen_paths.train', 'discovery.screen_paths.valid']
-      return <Rows rows={[
-        { label: 'Target', value: <code>{w.target}</code> },
-        { label: 'Base features', value: w.base_features },
-        { label: 'Train · valid · test', value: splits.map(size).join(' · '), warn: splits.some(missing) },
-        { label: 'Screen fit · score',
-          value: `${w.screen_rows.fit.toLocaleString()} · ${w.screen_rows.scored.toLocaleString()} rows`,
-          warn: screen.some(missing) },
-      ]} />
-    }
-    case 'shots':
-      return w.shots.length
-        ? <Rows rows={w.shots.map((c) => ({
-            label: c.name,
-            value: c.kind === 'error' ? 'not loaded'
-              : `${c.found} rows · ${c.rotate ? `1 of ${c.batches} batches a run` : 'all every run'}`,
-            warn: c.kind === 'error',
-          }))} />
-        : <p className={s.ovEmpty}>No examples yet.</p>
     case 'context':
-      return <Rows rows={[
-        { label: 'Model and data description', value: file('discovery.task_context_path'), warn: missing('discovery.task_context_path') },
-        { label: 'Column description', value: file('discovery.column_descriptions_path'),
-          warn: missing('discovery.column_descriptions_path') },
-      ]} />
+      return <div className={s.gRow}>
+        <Pill ok={has('discovery.task_context_path')} label="description" />
+        <Pill ok={has('discovery.column_descriptions_path')} label="columns" />
+      </div>
     case 'folder': {
       const dir = asText(v('discovery.additional_data.dir'))
-      return dir
-        ? <Rows rows={[{ label: 'Path', value: <code title={dir}>{dir}</code>, warn: missing('discovery.additional_data.dir') }]} />
-        : <p className={s.ovEmpty}>Not set - sources and scope files need full paths.</p>
+      return dir ? <code className={s.gCode} title={dir}>{dir.split('/').slice(-2).join('/')}</code>
+                 : <Pill ok={false} label="not set" />
     }
     case 'additional':
       return w.sources.length
-        ? <Rows rows={w.sources.map((x) => ({
-            label: x.name,
-            value: x.state === 'linked' ? 'linked' : x.state === 'needs_linkage' ? 'needs linkage' : 'schema only',
-            warn: x.state === 'needs_linkage',
-          }))} />
-        : <p className={s.ovEmpty}>No sources yet.</p>
+        ? <div className={s.gRow}>{w.sources.map((x) => (
+            <Pill key={x.name} ok={x.state === 'linked' ? true : x.state === 'needs_linkage' ? 'warn' : false}
+                  label={x.name} title={x.state.replace('_', ' ')} />))}</div>
+        : <Pill ok={false} label="no sources" />
     case 'scope': {
       const scopes = Object.entries(w.scopes ?? {})
-      if (!scopes.length) return <p className={s.ovEmpty}>None set: only requests beyond scope.</p>
-      return <Rows rows={[
-        ...scopes.map(([name, c]) => {
-          const used = (c.in_model ?? 0) + (c.in_model_unused ?? 0), raw = c.unused_raw ?? 0
-          return { label: name, value: used + raw ? `${used.toLocaleString()} in model · ${raw.toLocaleString()} unused`
-                                                  : 'no variable lists', warn: !(used + raw) }
-        }),
-        ...(w.scope_notes.length ? [{ label: 'Notes', value: w.scope_notes.map((n) => n.name).join(', ') }] : []),
-      ]} />
+      if (!scopes.length) return <span className={s.gText}>none - only requests beyond scope</span>
+      return <div className={s.gCol}>{scopes.map(([name, c]) => {
+        const used = (c.in_model ?? 0) + (c.in_model_unused ?? 0), raw = c.unused_raw ?? 0
+        return (
+          <div key={name} className={s.gScope} title={`${used} in the model · ${raw} unused`}>
+            <span className={s.gScopeName}>{name}</span>
+            <span className={s.gBar}><i style={{ flex: used || 0.0001 }} /><em style={{ flex: raw || 0.0001 }} /></span>
+            <span className={s.gScopeN}>{used + raw}</span>
+          </div>
+        )
+      })}</div>
     }
-    case 'evaluation': {
-      const pct = (normalise({ kind: 'numbers' } as SetupField, v('analysis.capture_rate_percents')) as number[])
-        .map((p) => `${+(p * 100).toFixed(2)}%`)
-      return <Rows rows={[
-        { label: 'Model', value: `XGBoost · depth ${v('model.params.max_depth')} · eta ${v('model.params.eta')}`
-            + ` · ≤${v('model.num_boost_round')} rounds${v('model.tuning.enabled') === true ? ' · tuned' : ''}` },
-        { label: 'Reported', value: ['Gini gain', pct.length ? `capture ${pct.join(', ')}` : '',
-                                     v('analysis.shap.enabled') === true ? 'SHAP' : ''].filter(Boolean).join(' · ') },
-        { label: 'Passes at', value: `Gini gain ≥ ${v('verdict.min_gini_gain')} · gates ${v('run.gates')}` },
-      ]} />
+    case 'evaluation':
+      return <div className={s.gRow}>
+        <Stat n={`d${v('model.params.max_depth')}`} label={`· ${v('model.num_boost_round')} rounds`} />
+        <span className={`${s.gPill} ${s.gOff}`}
+              title={v('run.gates') === 'open' ? 'every feature measured, none dropped' : 'failures dropped before modelling'}>
+          gates {String(v('run.gates'))}</span>
+      </div>
+    case 'target_cases': {
+      if (!cases) return null
+      if (cases.error) return <Pill ok={false} label="not set up" title={cases.error} />
+      const needed = Object.entries(cases.sources).filter(([, x]) => x.needed_by > 0)
+      return <div className={s.gCol}>
+        <div className={s.gRow}><Stat n={cases.cases} label="cases" /><Stat n={cases.rows} label="rows" /></div>
+        <div className={s.gRow}>{needed.map(([n, x]) => (
+          <Pill key={n} ok={x.state === 'provided'} label={n}
+                title={x.state === 'provided' ? `history given, read by ${x.needed_by} feature(s)` : `no history - read by ${x.needed_by} feature(s)`} />))}
+        </div>
+      </div>
     }
   }
   return null
 }
 
-const fmtBytes = (b: number) =>
-  !b ? '–' : b > 1e9 ? `${(b / 1e9).toFixed(1)} GB` : b > 1e6 ? `${(b / 1e6).toFixed(1)} MB` : `${Math.max(1, Math.round(b / 1e3))} KB`
 
 // -------------------------------------------------------------------- fields
 
@@ -421,6 +499,65 @@ function ThemePoolPart() {
   )
 }
 
+/** The Target cases block: the cases' settings, then the cases' own data for each
+ *  additional dataset - the same datasets, in the same order, as the Additional
+ *  datasets block; each by default under its own file name in the cases' folder. */
+function TargetCasesFields({ block, values, set, checks, cases, folder, workspace }: {
+  block: SetupBlock; values: Values; set: (k: string, v: unknown) => void; checks: PathCheck
+  cases: TargetCases | null; folder: string; workspace: Workspace | null
+}) {
+  const histories = block.fields.filter((f) => f.section === 'Histories')
+  const linkage = Object.fromEntries((workspace?.sources ?? []).map((x) => [x.name, x.state]))
+  return (
+    <>
+      <Fields block={{ ...block, fields: block.fields.filter((f) => f.section !== 'Histories') }}
+              values={values} set={set} checks={checks} folder={folder} />
+      {cases?.error && <p className={s.error}>{cases.error}</p>}
+      {cases && !cases.error && (
+        <div className={s.casesLine}>
+          <span><b>{cases.cases?.toLocaleString()}</b> cases</span>
+          <span><b>{cases.rows?.toLocaleString()}</b> rows{cases.per_case ? `, ${cases.per_case.min}–${cases.per_case.max} a case` : ''}</span>
+          <span title="the first case row's id, built from its customer id, transaction date and sequence number - beside a model id">
+            id <code>{cases.id_example}</code> <span className={s.empty}>like</span> <code>{cases.model_id_example}</code></span>
+          {!!cases.missing_base?.length && (
+            <span className={s.warnText}>lacks {cases.missing_base.length} base column(s): {cases.missing_base.slice(0, 5).join(', ')}</span>
+          )}
+        </div>
+      )}
+      <section className={s.part}>
+        <h3 className={s.partTitle}>The cases' additional datasets</h3>
+        <p className={s.empty}>One per additional dataset, in its format - by default its own file name in the
+          folder above. A dataset the verified features read must be there.</p>
+        <div className={s.histories}>
+          {histories.map((f) => {
+            const st = cases?.sources[f.label]
+            const value = asText(values[f.key])
+            const needed = (st?.needed_by ?? 0) > 0
+            const there = !!value && checks[value]?.exists !== false
+            const state = linkage[f.label]
+            return (
+              <div key={f.key} className={s.history}>
+                <span className={s.historyName}>
+                  <span><code>{f.label}</code>
+                    {state && <span className={`${s.linkTag} ${s['link_' + state]}`}>{state.replace('_', ' ')}</span>}</span>
+                  <span className={s.empty}>{needed ? `read by ${st!.needed_by} feature${st!.needed_by === 1 ? '' : 's'}` : 'not read yet'}</span>
+                </span>
+                <input className={s.mono} value={relTo(folder, value)} title={value}
+                       placeholder={f.source_file ?? `the cases' ${f.label}`}
+                       onChange={(e) => set(f.key, inFolder(folder, e.target.value))} />
+                <span className={`${s.historyState} ${there ? s.hsOk : needed ? s.hsBad : s.hsOff}`}>
+                  {there ? '✓ found' : value ? (needed ? 'not found' : 'none') : needed ? 'needed' : 'optional'}
+                </span>
+              </div>
+            )
+          })}
+          {!histories.length && <p className={s.empty}>No additional datasets yet.</p>}
+        </div>
+      </section>
+    </>
+  )
+}
+
 /** One section per scope, under its keyword - the same three settings each. */
 function ScopeFields({ block, values, set, checks, folder }: {
   block: SetupBlock; values: Values; set: (k: string, v: unknown) => void; checks: PathCheck; folder: string
@@ -455,10 +592,10 @@ function Fields({ block, values, set, checks, folder }: {
                             onChange={(v) => set(f.key, v)} checks={checks} dirty={dirty} folder={folder} />
         }
         if (f.kind === 'file') {
-          return <PathOrUpload key={f.key} field={f} value={asText(values[f.key])}
+          return <PathOrUpload key={f.key} field={f} value={asText(values[f.key])} folder={folder}
                                onChange={(v) => set(f.key, v)} checks={checks} dirty={dirty} />
         }
-        return <PlainField key={f.key} field={f} value={asText(values[f.key])}
+        return <PlainField key={f.key} field={f} value={asText(values[f.key])} folder={folder}
                            onChange={(v) => set(f.key, v)} checks={checks} dirty={dirty} />
       })}
     </div>
@@ -488,34 +625,16 @@ function EvaluationFields({ block, values, set }: {
 }
 
 /** The split files share a folder: set it once, then only file names. */
-function ModelFields({ block, values, set, checks }: {
-  block: SetupBlock; values: Values; set: (k: string, v: unknown) => void; checks: PathCheck
+function ModelFields({ block, values, set, checks, folder }: {
+  block: SetupBlock; values: Values; set: (k: string, v: unknown) => void; checks: PathCheck; folder: string
 }) {
   const fileFields = block.fields.filter((f) => f.kind === 'path')
   const otherFields = block.fields.filter((f) => f.kind !== 'path')
-  const loadedPaths = fileFields.map((f) => asText(f.value))
-  const [folder, setFolder] = useState(() => commonFolder(loadedPaths))
-  useEffect(() => { setFolder(commonFolder(loadedPaths)) }, [loadedPaths.join('\n')])  // eslint-disable-line
-
-  const nameOf = (path: string) => (folder && path.startsWith(folder + '/') ? path.slice(folder.length + 1) : path)
-  const join = (name: string) => (!name || name.startsWith('/') || !folder ? name : `${folder.replace(/\/$/, '')}/${name}`)
-  const moveFolder = (next: string) => {
-    for (const f of fileFields) set(f.key, next && !nameOf(asText(values[f.key])).startsWith('/')
-      ? `${next.replace(/\/$/, '')}/${nameOf(asText(values[f.key]))}` : asText(values[f.key]))
-    setFolder(next.replace(/\/$/, ''))
-  }
+  const nameOf = (path: string) => relTo(folder, path)
+  const join = (name: string) => inFolder(folder, name)
 
   return (
     <div className={s.fieldStack}>
-      <div className={s.field}>
-        <span className={s.fieldLabel}>Folder</span>
-        <div className={s.inputRow}>
-          <input className={s.mono} value={folder} placeholder="data/my_use_case"
-                 onChange={(e) => moveFolder(e.target.value)} />
-          <Tick path={folder} checks={checks} />
-        </div>
-        <span className={s.fieldHelp}>The files below are names inside this folder; start a name with / to point elsewhere.</span>
-      </div>
       {[
         { title: 'Splits', keys: ['data.paths.train', 'data.paths.valid', 'data.paths.test'] },
         { title: 'Screen sample', keys: ['discovery.screen_paths.train', 'discovery.screen_paths.valid'] },
@@ -549,6 +668,10 @@ function ModelFields({ block, values, set, checks }: {
     </div>
   )
 }
+
+// The model dataset's files: the model materials' folder is where they lie.
+const MODEL_FILES = ['data.paths.train', 'data.paths.valid', 'data.paths.test',
+                     'discovery.screen_paths.train', 'discovery.screen_paths.valid']
 
 function commonFolder(paths: string[]): string {
   const dirs = paths.filter(Boolean).map((p) => p.split('/').slice(0, -1))

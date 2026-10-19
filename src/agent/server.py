@@ -65,6 +65,13 @@ The contract, page by page (``web/src/api.ts`` calls exactly these;
    DELETE /api/results                       clear them all: every finished evaluation
    GET    /api/evaluations/<id>/stream        SSE
    POST   /api/evaluations/<id>/cancel        stop it: its process, scripts and workers
+   GET    /api/target_cases                   the target cases as set up: rows, cases, histories
+   GET    /api/inferences                     each finished evaluation and its inference
+                                              (scored when the evaluation ends)
+   POST   /api/inferences         {eval_id}   score the target cases with its every model
+   GET    /api/inferences/<id>                how it went, its summaries, every case's scores
+   DELETE /api/inferences/<id>
+   POST   /api/inferences/<id>/cancel
 """
 
 from __future__ import annotations
@@ -83,8 +90,9 @@ from typing import Any, Callable
 from flask import Flask, Response, jsonify, request, send_from_directory
 
 from agent.evaluate import (Evaluation, EvaluationProcess, base_model_card, evaluation_results, feature_pool,
-                            list_evaluations, removed_variants)
+                            list_evaluations, removed_variants, untrained)
 from agent.events import EventLog, read_events
+from agent.infer import Inference, inference_result, list_inferences, preview as target_cases_preview
 from agent.board import board_rows
 from agent.llm_trace import store_for
 from agent.memory import request_set
@@ -232,7 +240,8 @@ def create_app(config_path: str, static_dir: str | None = None,
     setup = Setup(config_path)
     cfg, ws = setup.load()
     ctx: dict[str, Any] = {"cfg": cfg, "ws": ws, "active": None}
-    hubs: dict[str, dict[str, Hub]] = {"direction": {}, "linkage": {}, "evaluation": {}}
+    hubs: dict[str, dict[str, Hub]] = {"direction": {}, "linkage": {}, "evaluation": {},
+                                       "inference": {}}
     app = Flask(__name__, static_folder=None)
     app.config["WORKSPACE"] = ctx              # the loaded config, for start_trace_viewer
     # Uploads are for small files; refuse anything bigger before reading it.
@@ -277,12 +286,12 @@ def create_app(config_path: str, static_dir: str | None = None,
 
     def job_hub(kind: str, job_id: str) -> Hub:
         if job_id not in hubs[kind]:
-            if kind == "evaluation":
+            if kind in ("evaluation", "inference"):
                 # A past evaluation is only replayed, so its log is enough -
                 # and it stays viewable after the runs it drew on are deleted.
-                folder = Path(ctx["cfg"].agent.run_dir) / "evaluations" / job_id
+                folder = Path(ctx["cfg"].agent.run_dir) / f"{kind}s" / job_id
                 if not (folder / "events.jsonl").exists():
-                    raise FileNotFoundError(f"no evaluation {job_id}")
+                    raise FileNotFoundError(f"no {kind} {job_id}")
                 job: Any = EventLog(folder, job_id)
             else:
                 job = Session.resume(ctx["ws"], job_id, kind=kind)
@@ -492,7 +501,7 @@ def create_app(config_path: str, static_dir: str | None = None,
             except FileNotFoundError as exc:
                 return error(str(exc), 404)
 
-        if kind == "evaluation":
+        if kind in ("evaluation", "inference"):
             return
 
         @app.post(f"/api/{prefix}/<job_id>/approvals/<req_id>", endpoint=f"{kind}_approve")
@@ -518,7 +527,7 @@ def create_app(config_path: str, static_dir: str | None = None,
     def list_runs():
         root = Path(ctx["cfg"].agent.run_dir)
         folders = [d for d in sorted(root.glob("*"), reverse=True)
-                   if d.is_dir() and d.name not in ("evaluations", "linkage", "replaced")] \
+                   if d.is_dir() and d.name not in ("evaluations", "inferences", "linkage", "replaced")] \
             if root.exists() else []
         out = [r for r in (_run_summary(d) for d in folders) if r]
         for r in out:
@@ -716,7 +725,10 @@ def create_app(config_path: str, static_dir: str | None = None,
             return error("the evaluation is still running", 409)
         events = hub.job.events
         done = next((e for e in reversed(events) if e["event"] == "eval_done"), None)
-        variants = {r["variant"] for r in (done or {}).get("comparison", [])} - {"base"}
+        summary = next((e for e in list_evaluations(ctx["ws"]) if e["eval_id"] == eval_id), None)
+        trained = {r["variant"] for r in (done or {}).get("comparison", [])}
+        variants = (trained | ({r["variant"] for r in untrained(summary, done, trained)}
+                               if done and summary else set())) - {"base"}
         removed = removed_variants(events)
         if variant not in variants or variant in removed:
             return error(f"no result {variant} in {eval_id}", 404)
@@ -726,6 +738,69 @@ def create_app(config_path: str, static_dir: str | None = None,
             return jsonify(ok=True, evaluation_deleted=True)
         hub.job.emit("variant_removed", variant=variant)
         return jsonify(ok=True, evaluation_deleted=False)
+
+    # --------------------------------------------------------- 3. inference
+    @app.get("/api/target_cases")
+    def target_cases():
+        return jsonify(target_cases_preview(ctx["ws"]))
+
+    def inferring(eval_id: str) -> bool:
+        """Its inference runs: its log has not ended, and the thread that writes it -
+        started here, or the evaluation's own process - is alive."""
+        events = read_events(Path(ctx["cfg"].agent.run_dir) / "inferences" / eval_id / "events.jsonl")
+        if not events or any(e["event"] in ("infer_done", "infer_error", "infer_stopped")
+                             for e in events):
+            return False
+        return any(eval_id in hubs[k] and hubs[k][eval_id].thread is not None
+                   and hubs[k][eval_id].thread.is_alive() for k in ("inference", "evaluation"))
+
+    @app.get("/api/inferences")
+    def inferences():
+        out = list_inferences(ctx["ws"])
+        for e in out:
+            if e["status"] == "running" and not inferring(e["eval_id"]):
+                e["status"] = "stopped"         # a server restart ended it
+        return jsonify(out)
+
+    @app.post("/api/inferences")
+    def start_inference():
+        eval_id = str(request.get_json(force=True).get("eval_id") or "")
+        if inferring(eval_id):
+            return error("its target cases are being scored already", 409)
+        try:
+            job = Inference(ctx["ws"], eval_id)
+        except (KeyError, ValueError) as exc:
+            return error(str(exc))
+        hub = Hub(job)
+        hubs["inference"][job.infer_id] = hub
+        hub.start(job.run)
+        return jsonify(infer_id=job.infer_id), 202
+
+    @app.get("/api/inferences/<infer_id>")
+    def get_inference(infer_id: str):
+        try:
+            return jsonify(inference_result(ctx["ws"], infer_id))
+        except FileNotFoundError as exc:
+            return error(str(exc), 404)
+
+    @app.post("/api/inferences/<infer_id>/cancel")
+    def cancel_inference(infer_id: str):
+        hub = hubs["inference"].get(infer_id)
+        if hub is None or not hub.busy:
+            return error(f"{infer_id} is not running", 409)
+        hub.job.cancelled = True
+        return jsonify(ok=True)
+
+    @app.delete("/api/inferences/<infer_id>")
+    def delete_inference(infer_id: str):
+        if inferring(infer_id):
+            return error("the inference is still running", 409)
+        folder = Path(ctx["cfg"].agent.run_dir) / "inferences" / infer_id
+        if not folder.exists():
+            return error(f"no inference {infer_id}", 404)
+        shutil.rmtree(folder)
+        hubs["inference"].pop(infer_id, None)
+        return jsonify(ok=True)
 
     # ------------------------------------------------------- built frontend
     static_dir = str(Path(static_dir).resolve()) if static_dir else None

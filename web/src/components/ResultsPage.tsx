@@ -16,7 +16,10 @@ const when = (ts: number) => new Date(ts * 1000).toLocaleString([], {
 const identity = (r: EvalResult) =>
   r.kind === 'feature' ? `f:${r.key ?? r.name}` : `c:${r.name}:${[...r.members].sort().join(',')}`
 
-type SortKey = 'gini' | 'screen' | 'evaluated' | 'name' | 'missing' | 'corr' | `capture:${string}`
+type SortKey = 'gini' | 'screen' | 'evaluated' | 'name' | 'missing' | 'corr' | 'level' | `capture:${string}`
+
+// A score level that moves more than this, either way, is marked.
+const LEVEL_SHIFT = 0.05
 
 // The route's id: an evaluation, or one variant of it - `<eval_id>.<variant>`.
 export const selection = (id: string | null) => {
@@ -64,6 +67,7 @@ export function ResultsPage({ selected }: { selected: string | null }) {
       if (sort.key === 'name') return r.name
       if (sort.key === 'missing') return r.missing_rate ?? -Infinity
       if (sort.key === 'corr') return r.max_corr ?? -Infinity
+      if (sort.key === 'level') return r.score_change == null ? -Infinity : Math.abs(r.score_change)
       return r.capture_gain[sort.key.slice(8)] ?? -Infinity
     }
     return out.sort((a, b) => {
@@ -92,19 +96,37 @@ export function ResultsPage({ selected }: { selected: string | null }) {
   const Evaluated = ({ r }: { r: Row }) => (
     <td className={`${s.num} ${s.dim}`}>{when(r.evaluated)}</td>
   )
-  const Gains = ({ r }: { r: Row }) => (
+  const Gains = ({ r }: { r: Row }) => (r.trained === false ? (
+    <td colSpan={2 + captures.length} className={s.notTrained} title={r.not_trained ?? undefined}>
+      {r.not_trained?.startsWith('training failed') ? 'training failed' : 'not trained - dropped before modelling'}
+    </td>
+  ) : (
     <>
       <td className={`${s.num} ${s.gain} ${tone(r.gini_gain)}`}>{signed(r.gini_gain)}</td>
       {captures.map((c) => (
         <td key={c} className={`${s.num} ${tone(r.capture_gain[c])}`}>{signed(r.capture_gain[c], 3)}</td>
       ))}
+      <Level r={r} />
     </>
-  )
+  ))
   const GainHeads = () => (
     <>
       <Head k="gini" label="Test Δ Gini" />
       {captures.map((c) => <Head key={c} k={`capture:${c}`} label={`Δ capture ${c.slice(3)}%`} />)}
+      <Head k="level" label="Score level change"
+            hint="The mean predicted probability on test, base's → this model's, and the relative change. A new feature should not move the level much." />
     </>
+  )
+  const Level = ({ r }: { r: Row }) => (
+    <td className={s.num}>
+      {r.score_change == null ? <span className={s.dim}>–</span> : (
+        <>
+          <span className={Math.abs(r.score_change) >= LEVEL_SHIFT ? s.levelShift : ''}>
+            {r.score_change >= 0 ? '+' : ''}{(r.score_change * 100).toFixed(1)}%</span>
+          <div className={s.corrWith}>{r.score_base?.toFixed(4)} → {r.score_mean?.toFixed(4)}</div>
+        </>
+      )}
+    </td>
   )
   const open = (r: Row) => select(r.eval_id, r.variant)
   const remove = (r: Row) => (
@@ -126,7 +148,7 @@ export function ResultsPage({ selected }: { selected: string | null }) {
     <div className={s.page}>
       <header className={s.header}>
         <span className={`eyebrow ${s.eyebrow}`}>Step 3 · Evaluate</span>
-        <h1 className={s.title}>All evaluation results</h1>
+        <h1 className={s.title}>Metrics results</h1>
       </header>
 
       <div className={`${s.body} ${pick ? s.withPanel : ''}`}>
@@ -191,6 +213,7 @@ export function ResultsPage({ selected }: { selected: string | null }) {
                         <Head k="corr" label="Max |corr|" hint="largest |Spearman| with a base feature, on train - and which one" />
                         <GainHeads />
                         <th className={s.num}>SHAP rank</th>
+                        <th className={s.num} title="The base feature it moves with most (Max |corr|): its SHAP rank in base → in base + this feature">Nearest's SHAP rank</th>
                         <th>Verdict</th>
                         <Head k="evaluated" label="Evaluated" />
                         <th />
@@ -216,6 +239,12 @@ export function ResultsPage({ selected }: { selected: string | null }) {
                             {r.shap[0]
                               ? <span title={`${(r.shap[0].share * 100).toFixed(1)}% of SHAP`}>
                                   <b>#{r.shap[0].rank}</b><span className={s.dim}> of {r.shap[0].of}</span></span>
+                              : <span className={s.dim}>–</span>}
+                          </td>
+                          <td className={s.num}>
+                            {r.nearest_shap && (r.nearest_shap.base != null || r.nearest_shap.variant != null)
+                              ? <span title={r.nearest_shap.feature}>
+                                  #{r.nearest_shap.base ?? '–'} → <b>#{r.nearest_shap.variant ?? '–'}</b></span>
                               : <span className={s.dim}>–</span>}
                           </td>
                           <td>

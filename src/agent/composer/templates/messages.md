@@ -30,7 +30,7 @@ This round's new ideas and the earlier rounds' together. Drawn by Thompson sampl
 4. Read the reply before the next attempt:
    * refused (C0: same code, same meaning, same values; a name taken) - nothing was spent: change what it says, or move on;
    * explained by the model (C1, `nearest` names the column) - the model has it: the next measure must use other data, not another window of this one;
-   * screened - the Gini gain against your gates ({gates}). `residual_rho` is information only: judge by the gain.
+   * screened - the Gini gain against your gates ({gates}). `variable_gini` (the feature alone) is information only: judge by the gain.
 5. A measure that failed twice the same way is done. An idea is not: try its next measure, or follow `work_next`.
 
 ### Stop

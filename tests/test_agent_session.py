@@ -193,6 +193,13 @@ def build(spark, sources, base):
     assert screen_feature(session, "f3", "d", "L1", broken.replace("f1", "f3"))["intent"] == "I3"
 
 
+def test_c1_makes_the_redundancy_call_not_the_screen_guard(workspace):
+    from agent.checks import REBUILT
+
+    # The guard sits above C1's limit, so a feature C2 saves from C1 is fitted.
+    assert workspace.screener.redundancy_max_abs == REBUILT > workspace.cfg.agent.checks.max_model_rho
+
+
 def test_repeated_failures_become_a_lesson_and_old_results_are_cut():
     from agents.run import CallModelData, ModelInputData
 
@@ -200,7 +207,8 @@ def test_repeated_failures_become_a_lesson_and_old_results_are_cut():
     from agent.tools.screen import lessons
 
     redundant = "is redundant: |rho|=0.99 against the existing column 'tenure_months', above"
-    ledger = [{"reason": redundant}, {"reason": redundant}, {"reason": "Gini gain -0.01 is not above"}]
+    explained = "explained by the model: |ρ| 0.93 with the model column `tenure_months` (above 0.9)"
+    ledger = [{"reason": redundant}, {"reason": explained}, {"reason": "Gini gain -0.01 is not above"}]
     assert lessons(ledger) == ["2 features were redundant with `tenure_months` - a ratio, "
                                "difference or rescaling of it re-derives it; build on other columns"]
 
@@ -242,6 +250,38 @@ def test_an_earlier_rounds_idea_stays_in_the_order(workspace):
     session.round_ideas, session.round = session.ideas[1:], 2
     assert set(_work_order(session)) == {"pay_gap", "tenure_curve"}
     assert {i["name"]: i["round"] for i in round_board(session)} == {"pay_gap": 1, "tenure_curve": 2}
+
+
+def test_an_idea_like_an_earlier_rounds_is_sent_back_to_work_that_one(no_history):
+    from agent.tools.ideas import _same_as
+
+    session = _session(no_history, "x", params=RunParams(K=3))
+    session.ideas = [{"name": "payment_shortfall", "round": 1,
+                      "description": "months the payment falls short of the statement balance"}]
+    again = [{"name": "payment_gap", "description": "months the payment falls short of the statement balance"}]
+    problem = _same_as(session, again, [])
+    assert "'payment_shortfall' of round 1" in problem and 'idea="payment_shortfall"' in problem
+
+
+def test_an_idea_or_request_name_of_an_earlier_run_is_taken(no_history):
+    import json
+
+    from agent.tools.data_pull import _can_propose
+    from agent.tools.ideas import record_ideas
+
+    first = _session(no_history, "x", params=RunParams(K=2, levels=["L3"]))
+    first.ideas = [{"name": "decline_streaks", "round": 1, "description": "d"}]
+    (first.run_dir / "ideas.json").write_text(json.dumps(first.ideas))
+    (first.run_dir / "data_requests.json").write_text(json.dumps(
+        [{"intent": "R1", "source_name": "cas_declines", "status": "dropped"}]))
+    second = _session(no_history, "y", params=RunParams(K=2, levels=["L3"]))
+    reply = record_ideas(second, [{"name": "decline_streaks", "engine": "mechanism", "lens": "trend",
+                                   "level": "L3", "beyond_scope": True, "description": "runs of declines",
+                                   "measures": ["a b", "c d"], "data": "declines from the auth system monthly"}])
+    assert not reply["ok"] and f"idea of run {first.run_id}" in reply["error"]
+    second.ideas = [{"name": "other"}]                         # past the ideas stage
+    taken = _can_propose(second, "cas_declines")
+    assert not taken["ok"] and f"run {first.run_id} (dropped)" in taken["error"]
 
 
 def test_an_idea_whose_features_carry_no_signal_is_worked_later_not_refused(workspace):
@@ -297,30 +337,32 @@ def test_evaluation_pools_features_across_runs_and_combines_them(no_history):
         assert propose_linkage(first, source, LINK, "event_dt")["ok"]
     assert screen_feature(first, "pay_to_spend_90d", "d", "L1", PAY_TO_SPEND)["verified"]
 
-    # A second direction that happens to reuse the name: both must survive.
+    # A second direction may not reuse the name - a name is one feature, across runs.
     second = _session(workspace, "utilisation", params=RunParams(K=1, min_gini_gain=-1.0))
     util = """
 def build(spark, sources, base):
     out = base[["id"]].copy()
-    out["pay_to_spend_90d"] = base["income_est"] / base["credit_limit"]
+    out["{n}"] = base["income_est"] / base["credit_limit"]
     return out
 """
+    taken = screen_feature(second, "pay_to_spend_90d", "d", "L1", util.format(n="pay_to_spend_90d"))
+    assert not taken["ok"] and f"run {first.run_id}" in taken["error"]
     checks = workspace.cfg.agent.checks
-    limit, checks.max_model_rho = checks.max_model_rho, None  # this test is about names, not C1
+    limit, checks.max_model_rho = checks.max_model_rho, None  # this test is about pooling, not C1
     try:
-        assert screen_feature(second, "pay_to_spend_90d", "d", "L1", util,
+        assert screen_feature(second, "income_to_limit", "d", "L1", util.format(n="income_to_limit"),
                               differs="income against the limit, not payments against spend")["verified"]
     finally:
         checks.max_model_rho = limit
 
     pool = {f["key"] for f in feature_pool(workspace)}
-    a, b = f"{first.run_id}:pay_to_spend_90d", f"{second.run_id}:pay_to_spend_90d"
+    a, b = f"{first.run_id}:pay_to_spend_90d", f"{second.run_id}:income_to_limit"
     assert {a, b} <= pool
 
     evaluation = Evaluation(workspace, [a, b], {"both": [a, b]})
     out = evaluation.run()
     variants = {row["variant"]: row for row in out["comparison"]}
-    col_a = f"pay_to_spend_90d__{first.run_id[-4:]}"
+    col_a = "pay_to_spend_90d"                      # names are unique across runs: no suffix
     assert {"base", f"loi__{col_a}", "combo__both"} <= set(variants)
     assert variants[f"loi__{col_a}"]["gini_gain_test"] > 0.03
     assert evaluation.events[-1]["event"] == "eval_done"
@@ -1226,8 +1268,8 @@ def test_the_cheap_checks_see_code_meaning_and_what_the_model_misses():
     # C2 is information only by default: measured, never a failure.
     noise = rng.normal(size=n)
     _, default = model_checks(screener, noise, ChecksConfig())
-    assert default == "" and ChecksConfig().min_residual_rho is None
-    checks = ChecksConfig(min_residual_rho=0.02)                 # made a gate, as the config can
+    assert default == "" and ChecksConfig().min_variable_gini is None
+    checks = ChecksConfig(min_variable_gini=0.05)                # made a gate, as the config can
     # C1: a rescaled model column is a near-copy - |rho| 1 with it, named.
     measured, reason = model_checks(screener, (base["x1"] * 3).to_numpy(), checks)
     assert measured["max_model_rho"] > 0.99 and measured["nearest"] == "x1"
@@ -1235,11 +1277,16 @@ def test_the_cheap_checks_see_code_meaning_and_what_the_model_misses():
     # Pairwise by design: the sum of two columns is close to neither - the fit judges it.
     mixed, ok_mixed = model_checks(screener, (base["x1"] + base["x2"]).to_numpy(), checks)
     assert mixed["max_model_rho"] < 0.9 and not ok_mixed.startswith("explained")
-    # C2: noise tracks nothing the model misses; the hidden driver does.
+    # C2: noise alone ranks nothing; the hidden driver does - its variable Gini is
+    # |2·AUC - 1| of it as a score for y.
     _, gated = model_checks(screener, noise, checks)
-    assert gated.startswith("no new signal")
+    assert gated.startswith("no signal")
     found, ok = model_checks(screener, hidden, checks)
-    assert not ok and found["residual_rho"] > 0.2 and found["max_model_rho"] < 0.1
+    assert not ok and found["variable_gini"] > 0.3 and found["max_model_rho"] < 0.1
+    from sklearn.metrics import roc_auc_score
+    assert found["variable_gini"] == pytest.approx(abs(2 * roc_auc_score(y, hidden) - 1), abs=1e-4)
+    # C1's exception still reads the residual: the hidden driver tracks it.
+    assert found["residual_rho"] > 0.2
 
 
 def test_the_model_history_reaches_the_brief_and_check_c0(no_history, tmp_path):
@@ -1352,14 +1399,14 @@ def test_the_proposal_message_carries_each_idea_in_the_order_to_work_it(workspac
     engines = [*focus, *[e for e in ("analogy", "others", "contrastive", "mechanism") if e not in focus]][:4]
     ideas = [{"name": n, "engine": e, "lens": l, "level": "L1", "description": f"the {n} hypothesis",
               "measures": [f"{n} measured one way", f"{n} measured another way"], "data": "base columns"}
-             for n, e, l in zip(["capacity_strain", "limit_dependence", "tenure_maturity", "income_mismatch"],
+             for n, e, l in zip(["capacity_stress", "limit_reliance", "tenure_seasoning", "income_gap"],
                                 engines, ["capacity", "level", "trend", "peer"])]
     assert record_ideas(session, ideas)["ok"]
-    session.ledger.append({"intent": "I1", "name": "limit_doubled", "idea": "limit_dependence",
+    session.ledger.append({"intent": "I1", "name": "limit_doubled", "idea": "limit_reliance",
                            "verified": False, "reason": "explained by the model: R² 1.00; nearest `credit_limit`"})
     text = _propose(session)
     assert text.startswith("Round 1 - proposals") and "Still wanted: 2 results" in text
-    for n in ("capacity_strain", "limit_dependence", "tenure_maturity", "income_mismatch"):
+    for n in ("capacity_stress", "limit_reliance", "tenure_seasoning", "income_gap"):
         assert f"`{n}` - " in text and f"{n} measured another way" in text
     assert "Built so far: limit_doubled ✗ explained by the model" in text
     assert "Why not yet: explained by the model" in text
@@ -1492,3 +1539,137 @@ def test_a_failed_script_leaves_its_name_free_for_the_fix(workspace):
     # A built one keeps its name.
     taken = screen_feature(session, "util_band_x", "d", "L1", fixed.replace("997", "991"))
     assert not taken["ok"] and "already taken" in taken["error"]
+
+
+def _evaluated_pay_to_spend(workspace, **kwargs):
+    """A run that verifies the planted feature, then an evaluation of it."""
+    from agent.evaluate import Evaluation
+
+    workspace.cfg.analysis.shap.enabled = False
+    session = _session(workspace, "payments vs spend", params=RunParams(K=1))
+    for source in ("payments", "spends"):
+        assert propose_linkage(session, source, LINK, "event_dt")["ok"]
+    assert screen_feature(session, "pay_to_spend_90d", "d", "L1", PAY_TO_SPEND)["verified"]
+    evaluation = Evaluation(workspace, [f"{session.run_id}:pay_to_spend_90d"], {}, **kwargs)
+    return evaluation, evaluation.run()
+
+
+def test_a_feature_the_enforced_gates_drop_still_shows_in_the_results(no_history):
+    import copy as copying
+
+    from agent.evaluate import evaluation_results
+
+    workspace = no_history
+    saved = copying.deepcopy(workspace.cfg)
+    workspace.cfg.run.gates = "enforce"
+    workspace.cfg.feature_selection.spearman.target_min_abs = 0.99     # nothing gets through
+    try:
+        evaluation, out = _evaluated_pay_to_spend(workspace)
+    finally:
+        workspace.cfg = saved
+    assert {r["variant"] for r in out["comparison"]} == {"base"}       # only base trained ...
+    [row] = evaluation_results(workspace)                               # ... and the feature still shows
+    assert row["variant"] == "loi__pay_to_spend_90d" and row["trained"] is False
+    assert row["gini_gain"] is None and row["verdict"] == "FAIL"
+    assert "not trained: dropped at feature selection" in row["not_trained"]
+    assert "run.gates: enforce" in row["not_trained"]
+
+
+def test_inference_scores_the_target_cases_with_base_and_the_variant(no_history):
+    import pandas as pd
+
+    from agent.evaluate import evaluation_results
+    from agent.infer import Inference, inference_result, list_inferences, preview
+
+    workspace = no_history
+    cases = preview(workspace)
+    assert cases["error"] is None and cases["cases"] == 24 and cases["missing_base"] == []
+    assert cases["id_example"].count("_") == cases["model_id_example"].count("_")
+    assert {n: s["state"] for n, s in cases["sources"].items()} == \
+        {"balances": "provided", "payments": "provided", "spends": "provided"}
+
+    evaluation, out = _evaluated_pay_to_spend(workspace)
+    assert (evaluation.folder / "features.json").exists()
+    assert set(out["score_cutoffs"]) == {"base", "loi__pay_to_spend_90d"}
+    # The results: the score level of base and of the model, and the nearest base
+    # feature's SHAP rank in each.
+    [row] = evaluation_results(workspace)
+    assert row["score_base"] == pytest.approx(out["mean_scores"]["base"])
+    assert row["score_change"] == pytest.approx(row["score_mean"] / row["score_base"] - 1)
+    [listed] = list_inferences(workspace)
+    assert listed["status"] == "none" and [v["variant"] for v in listed["variants"]] == \
+        ["loi__pay_to_spend_90d"]
+
+    # A source the features read needs the cases' own history: without it, Setup
+    # marks it and the inference stops, saying which.
+    tc = workspace.cfg.discovery.additional_data.target_cases
+    given = dict(tc.sources)
+    tc.sources["payments"] = "no_such_file.parquet"           # by default: payments.parquet in dir
+    try:
+        lacking = preview(workspace)["sources"]["payments"]
+        assert lacking["state"] == "not_found" and lacking["needed_by"] == 1
+        with pytest.raises(ValueError, match="no history of payments"):
+            Inference(workspace, evaluation.eval_id).run()
+    finally:
+        tc.sources = given
+
+    job = Inference(workspace, evaluation.eval_id, flag_top=0.05)      # every model it trained
+    result = job.run()
+    summary = result["summaries"]["loi__pay_to_spend_90d"]
+    assert summary["cases"] == 24 and result["cutoffs"]["base"] == out["score_cutoffs"]["base"]["0.05"]
+    # The planted story: defaulters' payback slides long before base sees anything,
+    # so base + the payback feature flags more of them, and sooner.
+    defaulted = [c for c in summary["per_case"] if c["case"] < "900012"]    # the synthetic defaulters
+    assert sum(c["first_variant"] is not None for c in defaulted) > \
+        sum(c["first_base"] is not None for c in defaulted)
+    assert summary["outcomes"]["earlier"] + summary["outcomes"]["only_variant"] >= 3
+    assert summary["outcomes"]["later"] + summary["outcomes"]["only_base"] == 0
+    scores = pd.read_parquet(job.folder / "scores.parquet")
+    assert scores["pay_to_spend_90d"].notna().mean() > 0.9             # the cases' own histories
+    detail = inference_result(workspace, job.infer_id)
+    assert len(detail["timelines"]) == 24 and detail["status"] == "done"
+    assert set(detail["timelines"]["900000"][0]["scores"]) == {"base", "loi__pay_to_spend_90d"}
+    assert list_inferences(workspace)[0]["status"] == "done"
+
+    # An evaluation from before cutoffs were kept: test is scored again to set them.
+    done = next(e for e in evaluation.events if e["event"] == "eval_done")
+    done.pop("score_cutoffs")
+    lines = (evaluation.folder / "events.jsonl").read_text().splitlines()
+    (evaluation.folder / "events.jsonl").write_text("\n".join(
+        json.dumps({k: v for k, v in json.loads(line).items() if k != "score_cutoffs"})
+        for line in lines) + "\n")
+    again = Inference(workspace, evaluation.eval_id, flag_top=0.05).run()   # replaces the first
+    assert again["cutoffs"]["base"] == pytest.approx(result["cutoffs"]["base"], rel=1e-3)
+
+
+def test_ids_repeated_in_the_full_data_are_built_once_and_go_to_every_row(no_history, tmp_path):
+    """The screen sample has each id once; the full train can repeat one. A script
+    sees each id once - so a linked history is not doubled - and every row with the
+    id gets its value."""
+    import pandas as pd
+
+    from agent.evaluate import Evaluation
+
+    workspace = no_history
+    session = _session(workspace, "payments vs spend", params=RunParams(K=1))
+    for source in ("payments", "spends"):
+        assert propose_linkage(session, source, LINK, "event_dt")["ok"]
+    assert screen_feature(session, "pay_to_spend_90d", "d", "L1", PAY_TO_SPEND)["verified"]
+    key = f"{session.run_id}:pay_to_spend_90d"
+    once = Evaluation(workspace, [key], {}).materialise()["train"]
+
+    train = pd.read_csv(workspace.cfg.data.paths["train"])
+    repeated = tmp_path / "train.csv"
+    pd.concat([train, train.head(50)]).to_csv(repeated, index=False)
+    original = workspace.cfg.data.paths["train"]
+    workspace.cfg.data.paths["train"] = str(repeated)
+    try:
+        evaluation = Evaluation(workspace, [key], {})
+        twice = evaluation.materialise()["train"]
+    finally:
+        workspace.cfg.data.paths["train"] = original
+    assert len(twice) == len(train) + 50
+    value = "pay_to_spend_90d"
+    assert twice[value].iloc[-50:].tolist() == pytest.approx(once[value].iloc[:50].tolist(), nan_ok=True)
+    assert twice[value].iloc[:len(train)].tolist() == pytest.approx(once[value].tolist(), nan_ok=True)
+    assert any("repeat an id" in e.get("message", "") for e in evaluation.events)

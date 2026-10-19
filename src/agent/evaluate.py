@@ -52,7 +52,7 @@ from validation.pipeline import Pipeline
 from validation.stages.analysis import _pct_label
 
 __all__ = ["Evaluation", "EvaluationProcess", "base_model_card", "feature_pool", "list_evaluations",
-           "evaluation_results", "removed_variants",
+           "evaluation_results", "removed_variants", "score_cutoffs", "untrained", "FLAG_SHARES",
            "run_linkage",
            "CAPTURE_PERCENTS"]
 
@@ -209,7 +209,10 @@ def evaluation_results(ws: Workspace) -> list[dict[str, Any]]:
             {m.group(1) for r in done.get("comparison") or [] for k in r
              if (m := re.fullmatch(r"capture_gain_(top\d+)_test", k))},
             key=lambda p: -int(p[3:]))
-        for r in done.get("comparison") or []:
+        trained = {r["variant"] for r in done.get("comparison") or []}
+        means = done.get("mean_scores") or {}
+        shap_ranks = _shap_table(done)
+        for r in [*(done.get("comparison") or []), *untrained(summary, done, trained)]:
             variant = r["variant"]
             if variant == "base" or variant in removed:
                 continue
@@ -218,6 +221,8 @@ def evaluation_results(ws: Workspace) -> list[dict[str, Any]]:
             feature = {} if combo else by_column.get(column, {})
             members = summary["combinations"].get(column, {}).get("columns", []) if combo else []
             verdict = verdicts.get(column, {})
+            stats = {} if combo else (done.get("feature_stats") or {}).get(column, {})
+            nearest = stats.get("max_corr_with")
             rows.append({
                 "eval_id": summary["eval_id"], "evaluated": summary["started"],
                 "variant": variant, "kind": "combination" if combo else "feature",
@@ -229,10 +234,64 @@ def evaluation_results(ws: Workspace) -> list[dict[str, Any]]:
                 "gini_gain": r.get("gini_gain_test"),
                 "capture_gain": {p: r.get(f"capture_gain_{p}_test") for p in percents},
                 "shap": (done.get("shap_ranks") or {}).get(variant, []),
-                "verdict": verdict.get("verdict"), "reason": verdict.get("reason", ""),
-                **({} if combo else (done.get("feature_stats") or {}).get(column, {})),
+                "verdict": verdict.get("verdict") or r.get("verdict"),
+                "reason": verdict.get("reason") or r.get("reason", ""),
+                "trained": variant in trained,
+                "not_trained": r.get("not_trained"),
+                # The score level: the mean predicted probability on test, base's and
+                # this model's - a new feature should not move the level much.
+                "score_base": means.get("base"), "score_mean": means.get(variant),
+                "score_change": (means[variant] / means["base"] - 1
+                                 if means.get(variant) is not None and means.get("base") else None),
+                # The base feature it moves with most: its SHAP rank in base, and
+                # in base + this feature - how much of its role the feature took.
+                "nearest_shap": ({"feature": nearest,
+                                  "base": shap_ranks.get(("base", nearest)),
+                                  "variant": shap_ranks.get((variant, nearest))}
+                                 if nearest and shap_ranks else None),
+                **stats,
             })
     return rows
+
+
+def _shap_table(done: dict[str, Any]) -> dict[tuple[str, str], int]:
+    """(variant, feature) -> SHAP rank, from the evaluation's report folder."""
+    path = Path(done.get("output_dir") or "") / "shap_ranking.csv"
+    if not path.is_file():
+        return {}
+    shap = pd.read_csv(path, usecols=["variant", "feature", "shap_rank"])
+    return {(v, f): int(r) for v, f, r in shap.itertuples(index=False)}
+
+
+def untrained(summary: dict[str, Any], done: dict[str, Any], trained: set[str]) -> list[dict[str, Any]]:
+    """The chosen features and combinations with no model, and why - a feature the
+    enforced gates dropped before modelling, a combination with a member dropped,
+    or a variant whose training failed. Without these, an evaluation where only
+    base trained would show nothing at all."""
+    verdicts = {v["feature"]: v for v in done.get("verdicts") or []}
+    errors = done.get("model_errors") or {}
+    gates = done.get("gates") or "enforce"
+    out = []
+    for f in summary["features"]:
+        variant = f"loi__{f['column']}"
+        if variant in trained:
+            continue
+        v = verdicts.get(f["column"], {})
+        why = (f"training failed: {errors[variant]}" if variant in errors else
+               f"not trained: dropped at {v.get('failed_at') or 'selection'} before modelling "
+               f"(run.gates: {gates})" + (f" - {v['reason']}" if v.get("reason") else ""))
+        out.append({"variant": variant, "not_trained": why,
+                    "verdict": v.get("verdict") or "FAIL", "reason": v.get("reason") or why})
+    for name, combo in summary["combinations"].items():
+        variant = f"combo__{name}"
+        if variant in trained:
+            continue
+        dropped = [c for c in combo["columns"] if f"loi__{c}" not in trained]
+        why = (f"training failed: {errors[variant]}" if variant in errors else
+               f"not trained: {', '.join(dropped) or 'a member'} dropped before modelling "
+               f"(run.gates: {gates})")
+        out.append({"variant": variant, "not_trained": why})
+    return out
 
 
 @dataclass
@@ -282,6 +341,14 @@ class Evaluation:
         frames = {split: read_frame(cfg.data, path) for split, path in cfg.data.paths.items()}
         base = pd.concat([f[[ws.id_col, *ws.base_features]] for f in frames.values()],
                          ignore_index=True)
+        # The full splits can repeat an id the screen sample never does. Scripts get
+        # each id once - a repeat would multiply its linked rows and double every sum
+        # - and its value goes back to every row with that id.
+        repeats = int(base[ws.id_col].duplicated().sum())
+        if repeats:
+            self.emit("eval_log", message=f"{repeats:,} rows repeat an id; the scripts see each id "
+                                          "once (its first row), and its value goes to every row")
+            base = base.drop_duplicates(subset=[ws.id_col], ignore_index=True)
         base_path = self.folder / "base_full.parquet"
         base.to_parquet(base_path, index=False)
 
@@ -329,6 +396,11 @@ class Evaluation:
                             for f in self.chosen],
                   combinations={n: {"keys": ks, "columns": [self.column[k] for k in ks]}
                                 for n, ks in self.combinations.items()})
+        # Each feature as it was evaluated - its script, sources, linkage and engine -
+        # so inference reruns exactly these, though the run behind one is deleted.
+        (self.folder / "features.json").write_text(json.dumps(
+            [{k: f[k] for k in ("key", "column", "name", "run_id", "level", "code", "sources",
+                                "engine", "linkage")} for f in self.chosen], indent=2))
         handler = _EventLogHandler(self)
         logging.getLogger("validation").addHandler(handler)
         try:
@@ -374,6 +446,10 @@ class Evaluation:
             "gates": cfg.run.gates,
             "shap_ranks": self._shap_ranks(shap),
             "feature_stats": stats,
+            "model_errors": {m.name: m.error for m in result.models if m.error},
+            "mean_scores": {m.name: float(m.predictions["test"].mean()) for m in result.models
+                            if not m.error and len((m.predictions or {}).get("test", []))},
+            "score_cutoffs": score_cutoffs(result.models),
         }
         self.emit("eval_done", **payload)
         return payload
@@ -435,9 +511,14 @@ class Evaluation:
 def _evaluate_in_child(cfg: Any, features: list[str], combinations: dict[str, list[str]],
                        eval_id: str) -> None:
     """The evaluation's own process. A session of its own, so a stop ends it and
-    every script and worker it started, at once."""
+    every script and worker it started, at once. Once it is done, the target cases
+    are scored with every model it trained (agent.infer), if they are set up."""
+    from agent.infer import infer_after_evaluation
+
     os.setsid()
-    Evaluation(Workspace.from_config(cfg), features, combinations, eval_id=eval_id).run()
+    ws = Workspace.from_config(cfg)
+    Evaluation(ws, features, combinations, eval_id=eval_id).run()
+    infer_after_evaluation(ws, eval_id)
 
 
 class EvaluationProcess:
@@ -519,6 +600,27 @@ class EvaluationProcess:
                     self.events.append(record)
                     for listener in list(self.listeners):
                         listener(record)
+
+
+# The shares of test a model's flag cutoff may be set at (inference): the score
+# above which a model puts that share of the test rows.
+FLAG_SHARES = (0.01, 0.02, 0.05, 0.10, 0.20)
+
+
+def share_key(share: float) -> str:
+    return f"{share:g}"
+
+
+def score_cutoffs(models: list[Any], shares: tuple[float, ...] = FLAG_SHARES) -> dict[str, dict[str, float]]:
+    """Per trained variant, the test score at each share's cutoff."""
+    import numpy as np
+
+    out = {}
+    for m in models:
+        scores = None if m.error else (m.predictions or {}).get("test")
+        if scores is not None and len(scores):
+            out[m.name] = {share_key(s): float(np.quantile(scores, 1 - s)) for s in shares}
+    return out
 
 
 # The pipeline checks that fall short in every evaluation, by design: an evaluation
