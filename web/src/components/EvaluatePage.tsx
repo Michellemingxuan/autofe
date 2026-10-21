@@ -16,6 +16,8 @@ export function EvaluatePage({ onStarted }: { onStarted: (id: string) => void })
   const [picked, setPicked] = useState<string[]>([])
   const [combos, setCombos] = useState<Record<string, string[]>>({})
   const [building, setBuilding] = useState<string[]>([])
+  // Chosen features evaluated only inside their combinations, with no model alone.
+  const [groupOnly, setGroupOnly] = useState<string[]>([])
   const [comboName, setComboName] = useState('')
   const [opened, setOpened] = useState<string | null>(null)
   const [error, setError] = useState<string | null>(null)
@@ -41,13 +43,20 @@ export function EvaluatePage({ onStarted }: { onStarted: (id: string) => void })
     const alive = new Set(pool.map((f) => f.key))
     setPicked((p) => p.filter((k) => alive.has(k)))
     setBuilding((b) => b.filter((k) => alive.has(k)))
+    setGroupOnly((g) => g.filter((k) => alive.has(k)))
     setCombos((c) => Object.fromEntries(Object.entries(c).filter(([, ks]) => ks.every((k) => alive.has(k)))))
   }, [pool])
 
   const toggle = (key: string) => {
     setPicked((p) => (p.includes(key) ? p.filter((k) => k !== key) : [...p, key]))
     setBuilding((b) => b.filter((k) => k !== key))
+    setGroupOnly((g) => g.filter((k) => k !== key))
   }
+  // Alone: base + the feature, a model of its own; off, it is evaluated only in its
+  // combinations - so a combination can be evaluated by itself.
+  const inCombo = new Set(Object.values(combos).flat())
+  const singles = picked.filter((k) => !(groupOnly.includes(k) && inCombo.has(k)))
+  const nCombos = Object.keys(combos).length
   const addCombo = () => {
     const name = comboName.trim().replace(/\W+/g, '_') || `combo_${Object.keys(combos).length + 1}`
     setCombos({ ...combos, [name]: building })
@@ -58,7 +67,7 @@ export function EvaluatePage({ onStarted }: { onStarted: (id: string) => void })
     setError(null)
     setStarting(true)
     try {
-      const { eval_id } = await api.evaluate(picked, combos)
+      const { eval_id } = await api.evaluate(singles, combos)
       onStarted(eval_id)
     } catch (e: any) {
       setError(e.message)
@@ -119,14 +128,26 @@ export function EvaluatePage({ onStarted }: { onStarted: (id: string) => void })
               ? <div className={s.hint}>Tick features in the pool - from any direction.</div>
               : (
                 <div className={s.chips}>
-                  {picked.map((k) => (
-                    <label key={k} className={`${s.chip} ${building.includes(k) ? s.chipOn : ''}`}
-                           title="tick to put it in a combination">
-                      <input type="checkbox" checked={building.includes(k)}
-                             onChange={() => setBuilding((b) => b.includes(k) ? b.filter((x) => x !== k) : [...b, k])} />
-                      {byKey[k]?.name ?? k}
-                    </label>
-                  ))}
+                  {picked.map((k) => {
+                    const alone = !groupOnly.includes(k)
+                    return (
+                      <span key={k} className={`${s.chip} ${building.includes(k) ? s.chipOn : ''} ${alone ? '' : s.chipGroup}`}>
+                        <label className={s.chipPick} title="tick to put it in a combination">
+                          <input type="checkbox" checked={building.includes(k)}
+                                 onChange={() => setBuilding((b) => b.includes(k) ? b.filter((x) => x !== k) : [...b, k])} />
+                          {byKey[k]?.name ?? k}
+                        </label>
+                        {inCombo.has(k) && (
+                          <button className={s.alone}
+                                  title={alone ? 'Evaluated alone too (base + it). Click to evaluate it only in its combinations'
+                                               : 'Evaluated only in its combinations. Click to evaluate it alone too'}
+                                  onClick={() => setGroupOnly((g) => alone ? [...g, k] : g.filter((x) => x !== k))}>
+                            {alone ? 'alone ✓' : 'in combo only'}
+                          </button>
+                        )}
+                      </span>
+                    )
+                  })}
                 </div>
               )}
             <div className={s.comboRow}>
@@ -136,7 +157,8 @@ export function EvaluatePage({ onStarted }: { onStarted: (id: string) => void })
                 Combine {building.length >= 2 ? building.length : ''}
               </button>
             </div>
-            <div className={s.hint}>Tick two or more chips to evaluate them together as base + the group.</div>
+            <div className={s.hint}>Tick two or more chips to evaluate them together as base + the group.
+              A feature in a combination is also evaluated alone unless you switch it to “in combo only”.</div>
             {Object.entries(combos).map(([name, keys]) => (
               <div key={name} className={s.combo}>
                 <span className={s.comboName}>⊕ {name}</span>
@@ -150,9 +172,11 @@ export function EvaluatePage({ onStarted }: { onStarted: (id: string) => void })
             {error && <div className={s.error}>{error}</div>}
             <div className={s.hint}>Base + each feature, and base + each combination, train on the full
               splits and are scored on test. Progress and results open on the Results page.</div>
-            <button className={s.primary} disabled={!picked.length || starting} onClick={run}>
-              {starting ? 'Starting…' : `Evaluate ${picked.length} feature${picked.length === 1 ? '' : 's'}`
-                + (Object.keys(combos).length ? ` + ${Object.keys(combos).length} combination(s)` : '')}
+            <button className={s.primary} disabled={(!singles.length && !nCombos) || starting} onClick={run}>
+              {starting ? 'Starting…' : [
+                singles.length ? `${singles.length} feature${singles.length === 1 ? '' : 's'}` : '',
+                nCombos ? `${nCombos} combination${nCombos === 1 ? '' : 's'}` : '',
+              ].filter(Boolean).join(' + ').replace(/^/, 'Evaluate ') || 'Evaluate'}
             </button>
           </section>
 

@@ -41,6 +41,10 @@
 .chip { display: inline-flex; align-items: center; gap: 5px; font-family: var(--j-font-mono); font-size: var(--j-fs-meta); padding: 3px 9px; border-radius: var(--j-radius-pill); border: 1px solid var(--j-border-strong); cursor: pointer; }
 .chipOn { border-color: var(--j-accent); background: var(--j-accent-soft); color: var(--j-accent-deep); }
 .chip input { width: 11px; height: 11px; }
+.chipPick { display: inline-flex; align-items: center; gap: 5px; cursor: pointer; }
+.chipGroup { border-style: dashed; }
+.alone { border: none; background: var(--j-chip); color: var(--j-ink-3); border-radius: var(--j-radius-pill); padding: 0 6px; font-size: 10px; font-family: var(--j-font-sans, inherit); }
+.alone:hover { color: var(--j-accent-deep); }
 
 .comboRow { display: flex; gap: 6px; }
 .input { flex: 1; border: 1px solid var(--j-border-strong); border-radius: var(--j-radius-ctl); padding: 6px 9px; }

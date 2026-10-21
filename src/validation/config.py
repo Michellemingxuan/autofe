@@ -188,6 +188,9 @@ class ModelConfig:
     # Named sets of new features to add to base together, one variant each
     # (combo__<name>): e.g. {pay_and_recency: [pay_to_spend_90d, days_since_pay]}.
     combinations: Dict[str, List[str]] = field(default_factory=dict)
+    # The new features leave_one_in trains alone (base + it); None: every one. A
+    # feature named only in a combination is then trained only with its group.
+    single: Optional[List[str]] = None
     save_models: bool = True
     # Keep the base variant here, and reuse it while its data and settings are
     # unchanged (validation.stages.base_cache) - the agent's evaluations set it.

@@ -367,6 +367,16 @@ def build(spark, sources, base):
     assert variants[f"loi__{col_a}"]["gini_gain_test"] > 0.03
     assert evaluation.events[-1]["event"] == "eval_done"
 
+    # A combination by itself: its members get no model alone, and no row says
+    # they were "not trained".
+    from agent.evaluate import evaluation_results
+
+    alone = Evaluation(workspace, [], {"both": [a, b]})
+    trained = {row["variant"] for row in alone.run()["comparison"]}
+    assert trained == {"base", "combo__both"}
+    rows = [r for r in evaluation_results(workspace) if r["eval_id"] == alone.eval_id]
+    assert [r["variant"] for r in rows] == ["combo__both"]
+
     # The board: an evaluated feature says so, with its verdict; a removed one too.
     from agent.board import board_rows
 

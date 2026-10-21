@@ -93,7 +93,8 @@ class ModelResult:
 # Variant construction
 # --------------------------------------------------------------------------- #
 def build_variants(base: List[str], new: List[str], requested: List[str],
-                   combinations: Optional[Dict[str, List[str]]] = None) -> List[VariantSpec]:
+                   combinations: Optional[Dict[str, List[str]]] = None,
+                   single: Optional[List[str]] = None) -> List[VariantSpec]:
     variants: List[VariantSpec] = []
     seen = set()
 
@@ -114,7 +115,7 @@ def build_variants(base: List[str], new: List[str], requested: List[str],
         elif kind == "new_only":
             add(VariantSpec("new_only", list(new), "new features only"))
         elif kind == "leave_one_in":
-            for feature in new:
+            for feature in (new if single is None else [f for f in new if f in single]):
                 add(VariantSpec(f"loi__{feature}", list(base) + [feature], f"base + {feature}"))
         elif kind == "leave_one_out":
             for feature in new:
@@ -343,7 +344,7 @@ def run_modeling(
     model_dir: Optional[Path] = None,
 ) -> tuple[List[ModelResult], pd.DataFrame]:
     variants = build_variants(dataset.base_features, dataset.new_features, cfg.model.variants,
-                              cfg.model.combinations)
+                              cfg.model.combinations, cfg.model.single)
     if not variants:
         raise ValueError("no model variants to train; check model.variants and the feature lists")
 

@@ -273,6 +273,8 @@ def untrained(summary: dict[str, Any], done: dict[str, Any], trained: set[str]) 
     gates = done.get("gates") or "enforce"
     out = []
     for f in summary["features"]:
+        if f.get("single") is False:                    # only in a combination
+            continue
         variant = f"loi__{f['column']}"
         if variant in trained:
             continue
@@ -391,8 +393,9 @@ class Evaluation:
         (``eval_log``) - which variant is training, SHAP progress, the verdict.
         """
         self.emit("eval_started",
-                  features=[{k: f[k] for k in ("key", "column", "name", "run_id", "direction",
-                                               "level", "delta", "description")}
+                  features=[{**{k: f[k] for k in ("key", "column", "name", "run_id", "direction",
+                                                  "level", "delta", "description")},
+                             "single": f["key"] in self.features}
                             for f in self.chosen],
                   combinations={n: {"keys": ks, "columns": [self.column[k] for k in ks]}
                                 for n, ks in self.combinations.items()})
@@ -423,6 +426,8 @@ class Evaluation:
             cfg.model.base_cache_dir = str(Path(self.ws.cfg.agent.run_dir) / "base_model")
             cfg.model.combinations = {n: [self.column[k] for k in ks]
                                       for n, ks in self.combinations.items()}
+            # A feature chosen only inside a combination gets no model of its own.
+            cfg.model.single = [self.column[k] for k in self.features]
             percents = sorted(set(cfg.analysis.capture_rate_percents or CAPTURE_PERCENTS),
                               reverse=True)
             cfg.analysis.capture_rate_percents = percents
