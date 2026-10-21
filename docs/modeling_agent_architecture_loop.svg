@@ -8,7 +8,7 @@
       <feMerge><feMergeNode/><feMergeNode in="SourceGraphic"/></feMerge>
     </filter>
     <marker id="m-p" viewBox="0 0 10 10" refX="8" refY="5" markerUnits="userSpaceOnUse" markerWidth="13" markerHeight="13" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" fill="#7A5AA8"/></marker><marker id="m-pl" viewBox="0 0 10 10" refX="8" refY="5" markerUnits="userSpaceOnUse" markerWidth="13" markerHeight="13" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" fill="#4A3B69"/></marker><marker id="m-g" viewBox="0 0 10 10" refX="8" refY="5" markerUnits="userSpaceOnUse" markerWidth="13" markerHeight="13" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" fill="#3F7D5A"/></marker><marker id="m-b" viewBox="0 0 10 10" refX="8" refY="5" markerUnits="userSpaceOnUse" markerWidth="13" markerHeight="13" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" fill="#3D6BA8"/></marker><marker id="m-gray" viewBox="0 0 10 10" refX="8" refY="5" markerUnits="userSpaceOnUse" markerWidth="13" markerHeight="13" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" fill="#A9A194"/></marker>
-    <marker id="s-p" viewBox="0 0 10 10" refX="7" refY="5" markerUnits="userSpaceOnUse" markerWidth="8" markerHeight="8" orient="auto"><path d="M0,0 L10,5 L0,10 z" fill="#7A5AA8"/></marker><marker id="s-pl" viewBox="0 0 10 10" refX="7" refY="5" markerUnits="userSpaceOnUse" markerWidth="8" markerHeight="8" orient="auto"><path d="M0,0 L10,5 L0,10 z" fill="#4A3B69"/></marker><marker id="s-g" viewBox="0 0 10 10" refX="7" refY="5" markerUnits="userSpaceOnUse" markerWidth="8" markerHeight="8" orient="auto"><path d="M0,0 L10,5 L0,10 z" fill="#3F7D5A"/></marker><marker id="s-b" viewBox="0 0 10 10" refX="7" refY="5" markerUnits="userSpaceOnUse" markerWidth="8" markerHeight="8" orient="auto"><path d="M0,0 L10,5 L0,10 z" fill="#3D6BA8"/></marker>
+    <marker id="s-p" viewBox="0 0 10 10" refX="7" refY="5" markerUnits="userSpaceOnUse" markerWidth="8" markerHeight="8" orient="auto"><path d="M0,0 L10,5 L0,10 z" fill="#7A5AA8"/></marker><marker id="s-pl" viewBox="0 0 10 10" refX="7" refY="5" markerUnits="userSpaceOnUse" markerWidth="8" markerHeight="8" orient="auto"><path d="M0,0 L10,5 L0,10 z" fill="#4A3B69"/></marker><marker id="s-g" viewBox="0 0 10 10" refX="7" refY="5" markerUnits="userSpaceOnUse" markerWidth="8" markerHeight="8" orient="auto"><path d="M0,0 L10,5 L0,10 z" fill="#3F7D5A"/></marker><marker id="s-b" viewBox="0 0 10 10" refX="7" refY="5" markerUnits="userSpaceOnUse" markerWidth="8" markerHeight="8" orient="auto"><path d="M0,0 L10,5 L0,10 z" fill="#3D6BA8"/></marker><marker id="s-a" viewBox="0 0 10 10" refX="7" refY="5" markerUnits="userSpaceOnUse" markerWidth="8" markerHeight="8" orient="auto"><path d="M0,0 L10,5 L0,10 z" fill="#A0782E"/></marker>
   </defs>
 
   <rect width="1920" height="1090" fill="#FAF9F5"/>
@@ -46,7 +46,7 @@
   </g>
 
   <!-- ===== MODELING AGENT ===== -->
-  <rect x="430" y="250" width="1050" height="610" rx="36" fill="#F3EFF9" stroke="#E2DAEE"/>
+  <rect x="430" y="250" width="1050" height="630" rx="36" fill="#F3EFF9" stroke="#E2DAEE"/>
   <g transform="translate(462,268)">
     <line x1="16" y1="2" x2="16" y2="9" stroke="#7A5AA8" stroke-width="2.2" stroke-linecap="round"/>
     <circle cx="16" cy="3" r="3" fill="#7A5AA8"/>
@@ -61,24 +61,17 @@
 
   <!-- ===== LOOPS ===== -->
   <path d="M560,408 C540,368 300,360 262,448" stroke="#3F7D5A" stroke-width="12" stroke-opacity="0.10" fill="none" stroke-linecap="round" stroke-linejoin="round"/><path d="M560,408 C540,368 300,360 262,448" stroke="#3F7D5A" stroke-width="3.2" fill="none" stroke-linecap="round" stroke-linejoin="round" stroke-dasharray="9,6" marker-end="url(#m-g)"/>
-  <path d="M342,548 H486" stroke="#3F7D5A" stroke-width="12" stroke-opacity="0.10" fill="none" stroke-linecap="round" stroke-linejoin="round"/><path d="M342,548 H486" stroke="#3F7D5A" stroke-width="3.2" fill="none" stroke-linecap="round" stroke-linejoin="round" marker-end="url(#m-g)"/>
-  <path d="M960,552 V686" stroke="#4A3B69" stroke-width="12" stroke-opacity="0.10" fill="none" stroke-linecap="round" stroke-linejoin="round"/><path d="M960,552 V686" stroke="#4A3B69" stroke-width="3.2" fill="none" stroke-linecap="round" stroke-linejoin="round" marker-end="url(#m-pl)"/>
-  <path d="M1300,552 C1300,650 1320,740 1288,745" stroke="#4A3B69" stroke-width="12" stroke-opacity="0.10" fill="none" stroke-linecap="round" stroke-linejoin="round"/><path d="M1300,552 C1300,650 1320,740 1288,745" stroke="#4A3B69" stroke-width="3.2" fill="none" stroke-linecap="round" stroke-linejoin="round" marker-end="url(#m-pl)"/>
-  <path d="M636,772 C470,786 430,630 482,512" stroke="#4A3B69" stroke-width="12" stroke-opacity="0.10" fill="none" stroke-linecap="round" stroke-linejoin="round"/><path d="M636,772 C470,786 430,630 482,512" stroke="#4A3B69" stroke-width="3.2" fill="none" stroke-linecap="round" stroke-linejoin="round" marker-end="url(#m-pl)"/>
-  <path d="M712,552 C752,600 752,642 722,686" stroke="#7A5AA8" stroke-width="12" stroke-opacity="0.10" fill="none" stroke-linecap="round" stroke-linejoin="round"/><path d="M712,552 C752,600 752,642 722,686" stroke="#7A5AA8" stroke-width="3.2" fill="none" stroke-linecap="round" stroke-linejoin="round" marker-end="url(#m-p)"/>
-  <path d="M676,686 C640,642 640,600 672,552" stroke="#7A5AA8" stroke-width="12" stroke-opacity="0.10" fill="none" stroke-linecap="round" stroke-linejoin="round"/><path d="M676,686 C640,642 640,600 672,552" stroke="#7A5AA8" stroke-width="3.2" fill="none" stroke-linecap="round" stroke-linejoin="round" marker-end="url(#m-p)"/>
-  <path d="M752,480 H826" stroke="#7A5AA8" stroke-width="12" stroke-opacity="0.10" fill="none" stroke-linecap="round" stroke-linejoin="round"/><path d="M752,480 H826" stroke="#7A5AA8" stroke-width="2.6" fill="none" stroke-linecap="round" stroke-linejoin="round" marker-end="url(#m-p)"/>
+  <path d="M342,548 H464" stroke="#3F7D5A" stroke-width="12" stroke-opacity="0.10" fill="none" stroke-linecap="round" stroke-linejoin="round"/><path d="M342,548 H464" stroke="#3F7D5A" stroke-width="3.2" fill="none" stroke-linecap="round" stroke-linejoin="round" marker-end="url(#m-g)"/>
+  <path d="M725,624 V714" stroke="#4A3B69" stroke-width="12" stroke-opacity="0.10" fill="none" stroke-linecap="round" stroke-linejoin="round"/><path d="M725,624 V714" stroke="#4A3B69" stroke-width="3.2" fill="none" stroke-linecap="round" stroke-linejoin="round" marker-end="url(#m-pl)"/>
+  <path d="M965,552 V714" stroke="#4A3B69" stroke-width="12" stroke-opacity="0.10" fill="none" stroke-linecap="round" stroke-linejoin="round"/><path d="M965,552 V714" stroke="#4A3B69" stroke-width="3.2" fill="none" stroke-linecap="round" stroke-linejoin="round" marker-end="url(#m-pl)"/>
+  <path d="M1305,552 C1305,690 1320,808 1286,812" stroke="#4A3B69" stroke-width="12" stroke-opacity="0.10" fill="none" stroke-linecap="round" stroke-linejoin="round"/><path d="M1305,552 C1305,690 1320,808 1286,812" stroke="#4A3B69" stroke-width="3.2" fill="none" stroke-linecap="round" stroke-linejoin="round" marker-end="url(#m-pl)"/>
+  <path d="M636,812 C540,812 520,730 520,628" stroke="#4A3B69" stroke-width="12" stroke-opacity="0.10" fill="none" stroke-linecap="round" stroke-linejoin="round"/><path d="M636,812 C540,812 520,730 520,628" stroke="#4A3B69" stroke-width="3.2" fill="none" stroke-linecap="round" stroke-linejoin="round" marker-end="url(#m-pl)"/>
+  <path d="M772,480 H826" stroke="#7A5AA8" stroke-width="12" stroke-opacity="0.10" fill="none" stroke-linecap="round" stroke-linejoin="round"/><path d="M772,480 H826" stroke="#7A5AA8" stroke-width="2.6" fill="none" stroke-linecap="round" stroke-linejoin="round" marker-end="url(#m-p)"/>
   <path d="M1102,480 H1176" stroke="#7A5AA8" stroke-width="12" stroke-opacity="0.10" fill="none" stroke-linecap="round" stroke-linejoin="round"/><path d="M1102,480 H1176" stroke="#7A5AA8" stroke-width="2.6" fill="none" stroke-linecap="round" stroke-linejoin="round" marker-end="url(#m-p)"/>
   <path d="M1695,586 V912 Q1695,936 1671,936 H74 Q50,936 50,912 V359 Q50,335 74,335 H84" stroke="#3D6BA8" stroke-width="12" stroke-opacity="0.10" fill="none" stroke-linecap="round" stroke-linejoin="round"/><path d="M1695,586 V912 Q1695,936 1671,936 H74 Q50,936 50,912 V359 Q50,335 74,335 H84" stroke="#3D6BA8" stroke-width="3.4" fill="none" stroke-linecap="round" stroke-linejoin="round" marker-end="url(#m-b)"/>
   <path d="M342,335 H426" stroke="#3D6BA8" stroke-width="2.6" fill="none" marker-end="url(#m-b)"/>
   <path d="M1432,446 H1538" stroke="#7A5AA8" stroke-width="12" stroke-opacity="0.10" fill="none" stroke-linecap="round" stroke-linejoin="round"/><path d="M1432,446 H1538" stroke="#7A5AA8" stroke-width="2.6" fill="none" stroke-linecap="round" stroke-linejoin="round" marker-end="url(#m-p)"/>
   <path d="M1432,514 H1538" stroke="#7A5AA8" stroke-width="12" stroke-opacity="0.10" fill="none" stroke-linecap="round" stroke-linejoin="round"/><path d="M1432,514 H1538" stroke="#7A5AA8" stroke-width="2.6" fill="none" stroke-linecap="round" stroke-linejoin="round" marker-end="url(#m-p)"/>
-  <g filter="url(#soft)"><rect x="490" y="410" width="260" height="136" rx="26" fill="#FFFFFF"/></g>
-  <circle cx="530" cy="452" r="18" fill="#7A5AA8"/>
-  <text x="530" y="458" font-size="17" font-weight="700" fill="#FFFFFF" text-anchor="middle">1</text>
-  <text x="560" y="461" font-size="26" font-weight="700" fill="#1D1D1F" letter-spacing="-0.5">Discover</text>
-  <text x="514" y="500" font-size="14" fill="#6E6E73">ideas → code → quick checks</text>
-  <text x="514" y="521" font-size="14" fill="#6E6E73">asks for new data when needed</text>
   <g filter="url(#soft)"><rect x="830" y="410" width="270" height="136" rx="26" fill="#FFFFFF"/></g>
   <circle cx="870" cy="452" r="18" fill="#7A5AA8"/>
   <text x="870" y="458" font-size="17" font-weight="700" fill="#FFFFFF" text-anchor="middle">2</text>
@@ -91,21 +84,45 @@
   <text x="1250" y="461" font-size="26" font-weight="700" fill="#1D1D1F" letter-spacing="-0.5">Infer</text>
   <text x="1204" y="500" font-size="14" fill="#6E6E73">re-score the target cases:</text>
   <text x="1204" y="521" font-size="14" fill="#6E6E73">does the risk show sooner?</text>
+  <g filter="url(#soft)"><rect x="470" y="410" width="300" height="212" rx="26" fill="#FFFFFF"/></g>
+  <circle cx="510" cy="452" r="18" fill="#7A5AA8"/>
+  <text x="510" y="458" font-size="17" font-weight="700" fill="#FFFFFF" text-anchor="middle">1</text>
+  <text x="540" y="461" font-size="26" font-weight="700" fill="#1D1D1F" letter-spacing="-0.5">Discover</text>
+  <text x="494" y="500" font-size="13" fill="#6E6E73">an idea → build (L1/L2) or request data (L3)</text>
+  <g filter="url(#soft)">
+    <rect x="484" y="516" width="52" height="36" rx="10" fill="#FFFFFF" stroke="#D9CFEA"/>
+    <rect x="550" y="516" width="70" height="36" rx="10" fill="#FFFFFF" stroke="#D9CFEA"/>
+    <rect x="634" y="516" width="50" height="36" rx="10" fill="#FFFFFF" stroke="#D9CFEA"/>
+    <rect x="698" y="516" width="54" height="36" rx="10" fill="#7A5AA8"/>
+  </g>
+  <g font-size="10.5" font-weight="700" fill="#4A3B69" text-anchor="middle">
+    <text x="510" y="538">Feature</text><text x="585" y="538">Executable</text><text x="659" y="538">Checks</text>
+    <text x="725" y="538" fill="#FFFFFF">Screen</text>
+  </g>
+  <g stroke="#7A5AA8" stroke-width="1.6">
+    <line x1="537" y1="534" x2="547" y2="534" marker-end="url(#s-p)"/>
+    <line x1="621" y1="534" x2="631" y2="534" marker-end="url(#s-p)"/>
+    <line x1="685" y1="534" x2="695" y2="534" marker-end="url(#s-p)"/>
+  </g>
+  <path d="M585,554 C585,576 510,576 510,558" stroke="#A0782E" stroke-width="1.8" fill="none" marker-end="url(#s-a)"/>
+  <text x="596" y="574" font-size="10.5" font-weight="600" fill="#A0782E">fix &amp; retry</text>
+  <g filter="url(#soft)"><rect x="488" y="583" width="144" height="30" rx="15" fill="#FFFFFF" stroke="#7A5AA8" stroke-width="1.6"/></g><rect x="493" y="588" width="22" height="20" rx="6" fill="#7A5AA8"/><text x="504" y="602.5" font-size="12" font-weight="700" fill="#FFFFFF" text-anchor="middle">A</text><text x="522" y="603" font-size="13.5" font-weight="700" fill="#7A5AA8">Build-up loop</text>
 
-  <g filter="url(#soft)"><rect x="640" y="690" width="640" height="130" rx="28" fill="#FFFFFF"/></g>
-  <g transform="translate(672,722)">
+
+  <g filter="url(#soft)"><rect x="640" y="716" width="640" height="130" rx="28" fill="#FFFFFF"/></g>
+  <g transform="translate(672,748)">
     <rect width="28" height="28" rx="7" fill="#7A5AA8"/>
     <rect x="6" y="7" width="16" height="2.8" rx="1.4" fill="#FFFFFF"/>
     <rect x="6" y="12.6" width="16" height="2.8" rx="1.4" fill="#FFFFFF"/>
     <rect x="6" y="18.2" width="10" height="2.8" rx="1.4" fill="#FFFFFF"/>
   </g>
-  <text x="714" y="745" font-size="24" font-weight="700" fill="#1D1D1F" letter-spacing="-0.5">Logging board</text>
-  <text x="672" y="784" font-size="14" fill="#6E6E73">every result, pass or fail — the agent's memory</text>
-  <circle cx="1110" cy="730" r="5" fill="#3F7D5A"/><circle cx="1126" cy="730" r="5" fill="#3F7D5A"/><circle cx="1142" cy="730" r="5" fill="#3F7D5A"/><circle cx="1158" cy="730" r="5" fill="#3F7D5A"/><circle cx="1174" cy="730" r="5" fill="#3F7D5A"/><circle cx="1190" cy="730" r="5" fill="#3F7D5A"/>
-  <circle cx="1110" cy="748" r="5" fill="#3F7D5A"/><circle cx="1126" cy="748" r="5" fill="#3F7D5A"/><circle cx="1142" cy="748" r="5" fill="#B5523B"/><circle cx="1158" cy="748" r="5" fill="#E0DACD"/><circle cx="1174" cy="748" r="5" fill="#E0DACD"/><circle cx="1190" cy="748" r="5" fill="#E0DACD"/>
-  <circle cx="1110" cy="766" r="5" fill="#3F7D5A"/><circle cx="1126" cy="766" r="5" fill="#3F7D5A"/><circle cx="1142" cy="766" r="5" fill="#3F7D5A"/><circle cx="1158" cy="766" r="5" fill="#B5523B"/><circle cx="1174" cy="766" r="5" fill="#E0DACD"/><circle cx="1190" cy="766" r="5" fill="#E0DACD"/>
-  <circle cx="1110" cy="784" r="5" fill="#3F7D5A"/><circle cx="1126" cy="784" r="5" fill="#3F7D5A"/><circle cx="1142" cy="784" r="5" fill="#3F7D5A"/><circle cx="1158" cy="784" r="5" fill="#3F7D5A"/><circle cx="1174" cy="784" r="5" fill="#3F7D5A"/><circle cx="1190" cy="784" r="5" fill="#3F7D5A"/>
-  <text x="1150" y="806" font-size="11" fill="#9A9387" text-anchor="middle">checks per feature</text>
+  <text x="714" y="771" font-size="24" font-weight="700" fill="#1D1D1F" letter-spacing="-0.5">Logging board</text>
+  <text x="672" y="810" font-size="14" fill="#6E6E73">every result, pass or fail — the agent's memory</text>
+  <circle cx="1110" cy="756" r="5" fill="#3F7D5A"/><circle cx="1126" cy="756" r="5" fill="#3F7D5A"/><circle cx="1142" cy="756" r="5" fill="#3F7D5A"/><circle cx="1158" cy="756" r="5" fill="#3F7D5A"/><circle cx="1174" cy="756" r="5" fill="#3F7D5A"/><circle cx="1190" cy="756" r="5" fill="#3F7D5A"/>
+  <circle cx="1110" cy="774" r="5" fill="#3F7D5A"/><circle cx="1126" cy="774" r="5" fill="#3F7D5A"/><circle cx="1142" cy="774" r="5" fill="#B5523B"/><circle cx="1158" cy="774" r="5" fill="#E0DACD"/><circle cx="1174" cy="774" r="5" fill="#E0DACD"/><circle cx="1190" cy="774" r="5" fill="#E0DACD"/>
+  <circle cx="1110" cy="792" r="5" fill="#3F7D5A"/><circle cx="1126" cy="792" r="5" fill="#3F7D5A"/><circle cx="1142" cy="792" r="5" fill="#3F7D5A"/><circle cx="1158" cy="792" r="5" fill="#B5523B"/><circle cx="1174" cy="792" r="5" fill="#E0DACD"/><circle cx="1190" cy="792" r="5" fill="#E0DACD"/>
+  <circle cx="1110" cy="810" r="5" fill="#3F7D5A"/><circle cx="1126" cy="810" r="5" fill="#3F7D5A"/><circle cx="1142" cy="810" r="5" fill="#3F7D5A"/><circle cx="1158" cy="810" r="5" fill="#3F7D5A"/><circle cx="1174" cy="810" r="5" fill="#3F7D5A"/><circle cx="1190" cy="810" r="5" fill="#3F7D5A"/>
+  <text x="1150" y="832" font-size="11" fill="#9A9387" text-anchor="middle">checks per feature</text>
 
   <!-- ===== OUTPUT ===== -->
   <rect x="1542" y="370" width="306" height="214" rx="28" fill="#F1EEE6"/>
@@ -118,14 +135,13 @@
   <text x="1584" y="548" font-size="13" fill="#6E6E73">how much sooner risk shows</text>
 
   <!-- ===== LOOP LABELS ===== -->
-  <g filter="url(#soft)"><rect x="763" y="605" width="113" height="30" rx="15" fill="#FFFFFF" stroke="#7A5AA8" stroke-width="1.6"/></g><rect x="768" y="610" width="22" height="20" rx="6" fill="#7A5AA8"/><text x="779" y="624.5" font-size="12" font-weight="700" fill="#FFFFFF" text-anchor="middle">A</text><text x="797" y="625" font-size="13.5" font-weight="700" fill="#7A5AA8">Idea loop</text>
-  <g filter="url(#soft)"><rect x="1060" y="597" width="144" height="30" rx="15" fill="#FFFFFF" stroke="#4A3B69" stroke-width="1.6"/></g><rect x="1065" y="602" width="22" height="20" rx="6" fill="#4A3B69"/><text x="1076" y="616.5" font-size="12" font-weight="700" fill="#FFFFFF" text-anchor="middle">B</text><text x="1094" y="617" font-size="13.5" font-weight="700" fill="#4A3B69">Evidence loop</text>
+  <g filter="url(#soft)"><rect x="653" y="645" width="144" height="30" rx="15" fill="#FFFFFF" stroke="#4A3B69" stroke-width="1.6"/></g><rect x="658" y="650" width="22" height="20" rx="6" fill="#4A3B69"/><text x="669" y="664.5" font-size="12" font-weight="700" fill="#FFFFFF" text-anchor="middle">B</text><text x="687" y="665" font-size="13.5" font-weight="700" fill="#4A3B69">Evidence loop</text><rect x="672" y="681" width="106" height="20" rx="6" fill="#F3EFF9"/><text x="725" y="695" font-size="12.5" fill="#4A3B69" text-anchor="middle" font-style="italic">screen results</text>
+  <g filter="url(#soft)"><rect x="893" y="625" width="144" height="30" rx="15" fill="#FFFFFF" stroke="#4A3B69" stroke-width="1.6"/></g><rect x="898" y="630" width="22" height="20" rx="6" fill="#4A3B69"/><text x="909" y="644.5" font-size="12" font-weight="700" fill="#FFFFFF" text-anchor="middle">B</text><text x="927" y="645" font-size="13.5" font-weight="700" fill="#4A3B69">Evidence loop</text><rect x="932" y="661" width="67" height="20" rx="6" fill="#F3EFF9"/><text x="965" y="675" font-size="12.5" fill="#4A3B69" text-anchor="middle" font-style="italic">verdicts</text>
+  <g filter="url(#soft)"><rect x="1235" y="625" width="144" height="30" rx="15" fill="#FFFFFF" stroke="#4A3B69" stroke-width="1.6"/></g><rect x="1240" y="630" width="22" height="20" rx="6" fill="#4A3B69"/><text x="1251" y="644.5" font-size="12" font-weight="700" fill="#FFFFFF" text-anchor="middle">B</text><text x="1269" y="645" font-size="13.5" font-weight="700" fill="#4A3B69">Evidence loop</text><rect x="1260" y="661" width="93" height="20" rx="6" fill="#F3EFF9"/><text x="1307" y="675" font-size="12.5" fill="#4A3B69" text-anchor="middle" font-style="italic">case results</text>
   <g filter="url(#soft)"><rect x="293" y="389" width="113" height="30" rx="15" fill="#FFFFFF" stroke="#3F7D5A" stroke-width="1.6"/></g><rect x="298" y="394" width="22" height="20" rx="6" fill="#3F7D5A"/><text x="309" y="408.5" font-size="12" font-weight="700" fill="#FFFFFF" text-anchor="middle">C</text><text x="327" y="409" font-size="13.5" font-weight="700" fill="#3F7D5A">Data loop</text>
-  <rect x="794" y="920" width="446" height="32" fill="#FAF9F5"/>
-  <g filter="url(#soft)"><rect x="812" y="921" width="136" height="30" rx="15" fill="#FFFFFF" stroke="#3D6BA8" stroke-width="1.6"/></g><rect x="817" y="926" width="22" height="20" rx="6" fill="#3D6BA8"/><text x="828" y="940.5" font-size="12" font-weight="700" fill="#FFFFFF" text-anchor="middle">D</text><text x="846" y="941" font-size="13.5" font-weight="700" fill="#3D6BA8">Analyst loop</text>
-  <text x="964" y="941" font-size="14" font-weight="600" fill="#3D6BA8">findings inspire the next direction</text>
-  <text x="1020" y="666" font-size="12.5" fill="#4A3B69" font-style="italic">verdicts</text>
-  <text x="1318" y="660" font-size="12.5" fill="#4A3B69" font-style="italic">case results</text>
+  <rect x="790" y="920" width="490" height="32" fill="#FAF9F5"/>
+  <g filter="url(#soft)"><rect x="796" y="921" width="167" height="30" rx="15" fill="#FFFFFF" stroke="#3D6BA8" stroke-width="1.6"/></g><rect x="801" y="926" width="22" height="20" rx="6" fill="#3D6BA8"/><text x="812" y="940.5" font-size="12" font-weight="700" fill="#FFFFFF" text-anchor="middle">D</text><text x="830" y="941" font-size="13.5" font-weight="700" fill="#3D6BA8">Analyst feedback</text>
+  <text x="984" y="941" font-size="14" font-weight="600" fill="#3D6BA8">findings inspire the next direction</text>
   <text x="384" y="537" font-size="12.5" fill="#3F7D5A" font-style="italic" text-anchor="middle">materials</text>
   <text x="384" y="324" font-size="12.5" fill="#3D6BA8" font-style="italic" text-anchor="middle">direction</text>
 
@@ -138,8 +154,8 @@
     <path d="M154,1022 A8,8 0 1 1 146,1014" stroke="#7A5AA8" marker-end="url(#s-p)"/>
   </g>
   <text x="212" y="1002" font-size="11" font-weight="700" fill="#8A7B5C" letter-spacing="2.5">FASTEST TO SLOWEST</text>
-  <rect x="212" y="1018" width="26" height="20" rx="6" fill="#7A5AA8"/><text x="225" y="1032.5" font-size="11.5" font-weight="700" fill="#FFFFFF" text-anchor="middle">A</text><text x="248" y="1034" font-size="15" font-weight="700" fill="#1D1D1F">Idea loop<tspan font-weight="400" fill="#6E6E73"> · every idea</tspan></text><text x="248" y="1055" font-size="12.5" fill="#6E6E73">each idea's checks re-rank the ideas</text>
-  <rect x="622" y="1018" width="26" height="20" rx="6" fill="#4A3B69"/><text x="635" y="1032.5" font-size="11.5" font-weight="700" fill="#FFFFFF" text-anchor="middle">B</text><text x="658" y="1034" font-size="15" font-weight="700" fill="#1D1D1F">Evidence loop<tspan font-weight="400" fill="#6E6E73"> · every evaluation</tspan></text><text x="658" y="1055" font-size="12.5" fill="#6E6E73">evaluation and case results sharpen feature generation</text>
+  <rect x="212" y="1018" width="26" height="20" rx="6" fill="#7A5AA8"/><text x="225" y="1032.5" font-size="11.5" font-weight="700" fill="#FFFFFF" text-anchor="middle">A</text><text x="248" y="1034" font-size="15" font-weight="700" fill="#1D1D1F">Build-up loop<tspan font-weight="400" fill="#6E6E73"> · every feature</tspan></text><text x="248" y="1055" font-size="12.5" fill="#6E6E73">fix and retry until it runs, then check and screen</text>
+  <rect x="622" y="1018" width="26" height="20" rx="6" fill="#4A3B69"/><text x="635" y="1032.5" font-size="11.5" font-weight="700" fill="#FFFFFF" text-anchor="middle">B</text><text x="658" y="1034" font-size="15" font-weight="700" fill="#1D1D1F">Evidence loop<tspan font-weight="400" fill="#6E6E73"> · every result</tspan></text><text x="658" y="1055" font-size="12.5" fill="#6E6E73">all results re-rank the ideas and sharpen generation</text>
   <rect x="1032" y="1018" width="26" height="20" rx="6" fill="#3F7D5A"/><text x="1045" y="1032.5" font-size="11.5" font-weight="700" fill="#FFFFFF" text-anchor="middle">C</text><text x="1068" y="1034" font-size="15" font-weight="700" fill="#1D1D1F">Data loop<tspan font-weight="400" fill="#6E6E73"> · every data pull</tspan></text><text x="1068" y="1055" font-size="12.5" fill="#6E6E73">pulled data becomes a new source to build from</text>
-  <rect x="1442" y="1018" width="26" height="20" rx="6" fill="#3D6BA8"/><text x="1455" y="1032.5" font-size="11.5" font-weight="700" fill="#FFFFFF" text-anchor="middle">D</text><text x="1478" y="1034" font-size="15" font-weight="700" fill="#1D1D1F">Analyst loop<tspan font-weight="400" fill="#6E6E73"> · every review</tspan></text><text x="1478" y="1055" font-size="12.5" fill="#6E6E73">findings inspire the analyst's next direction</text>
+  <rect x="1442" y="1018" width="26" height="20" rx="6" fill="#3D6BA8"/><text x="1455" y="1032.5" font-size="11.5" font-weight="700" fill="#FFFFFF" text-anchor="middle">D</text><text x="1478" y="1034" font-size="15" font-weight="700" fill="#1D1D1F">Analyst feedback<tspan font-weight="400" fill="#6E6E73"> · every review</tspan></text><text x="1478" y="1055" font-size="12.5" fill="#6E6E73">findings inspire the analyst's next direction</text>
 </svg>

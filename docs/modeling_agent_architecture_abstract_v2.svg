@@ -8,7 +8,7 @@
       <feMerge><feMergeNode/><feMergeNode in="SourceGraphic"/></feMerge>
     </filter>
     <marker id="ar-purple" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" fill="#7A5AA8"/></marker><marker id="ar-plum" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" fill="#4A3B69"/></marker><marker id="ar-green" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" fill="#3F7D5A"/></marker><marker id="ar-blue" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" fill="#3D6BA8"/></marker>
-    <marker id="sm-purple" viewBox="0 0 10 10" refX="7" refY="5" markerUnits="userSpaceOnUse" markerWidth="8" markerHeight="8" orient="auto"><path d="M0,0 L10,5 L0,10 z" fill="#7A5AA8"/></marker><marker id="sm-plum" viewBox="0 0 10 10" refX="7" refY="5" markerUnits="userSpaceOnUse" markerWidth="8" markerHeight="8" orient="auto"><path d="M0,0 L10,5 L0,10 z" fill="#4A3B69"/></marker><marker id="sm-green" viewBox="0 0 10 10" refX="7" refY="5" markerUnits="userSpaceOnUse" markerWidth="8" markerHeight="8" orient="auto"><path d="M0,0 L10,5 L0,10 z" fill="#3F7D5A"/></marker><marker id="sm-blue" viewBox="0 0 10 10" refX="7" refY="5" markerUnits="userSpaceOnUse" markerWidth="8" markerHeight="8" orient="auto"><path d="M0,0 L10,5 L0,10 z" fill="#3D6BA8"/></marker>
+    <marker id="sm-purple" viewBox="0 0 10 10" refX="7" refY="5" markerUnits="userSpaceOnUse" markerWidth="8" markerHeight="8" orient="auto"><path d="M0,0 L10,5 L0,10 z" fill="#7A5AA8"/></marker><marker id="sm-plum" viewBox="0 0 10 10" refX="7" refY="5" markerUnits="userSpaceOnUse" markerWidth="8" markerHeight="8" orient="auto"><path d="M0,0 L10,5 L0,10 z" fill="#4A3B69"/></marker><marker id="sm-green" viewBox="0 0 10 10" refX="7" refY="5" markerUnits="userSpaceOnUse" markerWidth="8" markerHeight="8" orient="auto"><path d="M0,0 L10,5 L0,10 z" fill="#3F7D5A"/></marker><marker id="sm-blue" viewBox="0 0 10 10" refX="7" refY="5" markerUnits="userSpaceOnUse" markerWidth="8" markerHeight="8" orient="auto"><path d="M0,0 L10,5 L0,10 z" fill="#3D6BA8"/></marker><marker id="sm-amber" viewBox="0 0 10 10" refX="7" refY="5" markerUnits="userSpaceOnUse" markerWidth="8" markerHeight="8" orient="auto"><path d="M0,0 L10,5 L0,10 z" fill="#A0782E"/></marker>
   </defs>
 
   <rect width="2020" height="1400" fill="#FAF9F5"/>
@@ -96,28 +96,46 @@
   <text x="792" y="481" font-size="14" font-weight="700" fill="#7A5AA8" text-anchor="middle">+</text>
   <path d="M786,492 l6,10 l6,-10 z" fill="#B5523B"/>
 
-  <text x="528" y="550" font-size="13" font-weight="600" fill="#1D1D1F"><tspan font-family="ui-monospace, Menlo, monospace" fill="#7A5AA8">&lt;/&gt;</tspan> write code → checks, cheapest first</text>
-  <g fill="#F3EFF9">
-    <rect x="528" y="564" width="134" height="24" rx="12"/><rect x="672" y="564" width="134" height="24" rx="12"/>
-    <rect x="528" y="596" width="134" height="24" rx="12"/><rect x="672" y="596" width="134" height="24" rx="12"/>
-  </g>
-  <g font-size="11.5" fill="#5C4B7A">
-    <text x="540" y="580"><tspan font-weight="700" fill="#7A5AA8">✓</tspan> safe, valid code</text>
-    <text x="684" y="580"><tspan font-weight="700" fill="#7A5AA8">✓</tspan> not in the model</text>
-    <text x="540" y="612"><tspan font-weight="700" fill="#7A5AA8">✓</tspan> not seen before</text>
-    <text x="684" y="612"><tspan font-weight="700" fill="#7A5AA8">✓</tspan> adds new signal</text>
-  </g>
+  <!-- an idea goes to L1/L2 (build it here) or to L3 (request the data) -->
+  <line x1="600" y1="517" x2="600" y2="530" stroke="#7A5AA8" stroke-width="1.8" marker-end="url(#sm-purple)"/>
+  <path d="M524,476 H511 V684 H556 V698" stroke="#A0782E" stroke-width="1.8" fill="none" stroke-linejoin="round" marker-end="url(#sm-amber)"/>
 
-  <rect x="524" y="644" width="286" height="44" rx="14" fill="#F3EFF9"/>
-  <text x="542" y="663" font-size="13.5" font-weight="700" fill="#4A3B69">L1 / L2</text>
-  <text x="542" y="680" font-size="11.5" fill="#6B5A8A">build from data we already have</text>
-  <rect x="524" y="696" width="286" height="44" rx="14" fill="#F7F0E2"/>
-  <text x="542" y="715" font-size="13.5" font-weight="700" fill="#7A5A1E">L3</text>
-  <text x="542" y="732" font-size="11.5" fill="#8A6A2E">ask for data we don't have yet</text>
+  <rect x="518" y="532" width="300" height="142" rx="16" fill="#F3EFF9"/>
+  <text x="534" y="556" font-size="13" font-weight="700" fill="#4A3B69">L1 / L2<tspan font-size="11.5" font-weight="400" fill="#6B5A8A"> · data we have</tspan></text>
+  <g filter="url(#soft)"><rect x="672" y="536" width="144" height="30" rx="15" fill="#FFFFFF" stroke="#7A5AA8" stroke-width="1.6"/></g><rect x="677" y="541" width="22" height="20" rx="6" fill="#7A5AA8"/><text x="688" y="555.5" font-size="12" font-weight="700" fill="#FFFFFF" text-anchor="middle">A</text><text x="706" y="556" font-size="13.5" font-weight="700" fill="#7A5AA8">Build-up loop</text>
+  <g filter="url(#soft)">
+    <rect x="528" y="574" width="58" height="44" rx="12" fill="#FFFFFF" stroke="#D9CFEA"/>
+    <rect x="596" y="574" width="74" height="44" rx="12" fill="#FFFFFF" stroke="#D9CFEA"/>
+    <rect x="680" y="574" width="62" height="44" rx="12" fill="#FFFFFF" stroke="#D9CFEA"/>
+    <rect x="752" y="574" width="62" height="44" rx="12" fill="#7A5AA8"/>
+  </g>
+  <g font-size="12" font-weight="700" fill="#4A3B69" text-anchor="middle">
+    <text x="557" y="593">Feature</text><text x="633" y="593">Executable</text><text x="711" y="593">Checks</text>
+    <text x="783" y="593" fill="#FFFFFF">Screen</text>
+  </g>
+  <g font-size="9.5" fill="#6E6E73" text-anchor="middle">
+    <text x="557" y="609">with code</text><text x="633" y="609">does it run?</text><text x="711" y="609">valid · new</text>
+    <text x="783" y="609" fill="#E9E1F5">Gini gain</text>
+  </g>
+  <g stroke="#7A5AA8" stroke-width="1.6">
+    <line x1="586" y1="596" x2="594" y2="596" marker-end="url(#sm-purple)"/>
+    <line x1="670" y1="596" x2="678" y2="596" marker-end="url(#sm-purple)"/>
+    <line x1="742" y1="596" x2="750" y2="596" marker-end="url(#sm-purple)"/>
+  </g>
+  <!-- retry: code that doesn't run goes back to be rewritten -->
+  <path d="M633,620 C633,646 557,646 557,624" stroke="#A0782E" stroke-width="1.8" fill="none" marker-end="url(#sm-amber)"/>
+  <text x="596" y="660" font-size="10.5" font-weight="600" fill="#A0782E" text-anchor="middle">error → fix &amp; retry</text>
+  <!-- fails drop out to the logging board -->
+  <line x1="783" y1="618" x2="783" y2="664" stroke="#B5523B" stroke-width="1.8"/>
+  <g font-size="10" font-weight="700" fill="#B5523B"><text x="716" y="634">✗</text><text x="788" y="634">✗</text></g>
+  <text x="717" y="654" font-size="10.5" font-weight="600" fill="#B5523B">fail → logged</text>
 
-  <line x1="834" y1="500" x2="884" y2="500" stroke="#7A5AA8" stroke-width="2.4" marker-end="url(#ar-purple)"/>
-  <text x="859" y="474" font-size="11" fill="#7A5AA8" text-anchor="middle" font-weight="600">Quickly</text>
-  <text x="859" y="489" font-size="11" fill="#7A5AA8" text-anchor="middle" font-weight="600">verified</text>
+  <rect x="518" y="700" width="300" height="36" rx="12" fill="#F7F0E2"/>
+  <text x="534" y="723" font-size="13" font-weight="700" fill="#7A5A1E">L3<tspan font-size="11.5" font-weight="400" fill="#8A6A2E"> · ask for data we don't have yet</tspan></text>
+
+  <line x1="814" y1="596" x2="884" y2="596" stroke="#7A5AA8" stroke-width="2.4" marker-end="url(#ar-purple)"/>
+  <text x="852" y="571" font-size="11" fill="#7A5AA8" text-anchor="middle" font-weight="600">Quickly</text>
+  <text x="852" y="586" font-size="11" fill="#7A5AA8" text-anchor="middle" font-weight="600">verified</text>
 
 
   <!-- 2 · Evaluate -->
@@ -179,7 +197,7 @@
 <g transform="translate(0,60)">
 
   <!-- Logging board -->
-  <g filter="url(#soft)"><rect x="502" y="820" width="686" height="210" rx="26" fill="#FFFFFF"/></g>
+  <g filter="url(#soft)"><rect x="502" y="820" width="570" height="210" rx="26" fill="#FFFFFF"/></g>
   <g transform="translate(528,846)">
     <rect width="24" height="24" rx="6" fill="#7A5AA8"/>
     <rect x="5" y="6" width="14" height="2.4" rx="1.2" fill="#FFFFFF"/>
@@ -187,37 +205,36 @@
     <rect x="5" y="16" width="9" height="2.4" rx="1.2" fill="#FFFFFF"/>
   </g>
   <text x="562" y="865" font-size="20" font-weight="700" fill="#1D1D1F" letter-spacing="-0.4">Logging board</text>
-  <text x="1162" y="865" font-size="12" fill="#6E6E73" text-anchor="end">every result is logged — pass or fail</text>
+  <text x="1046" y="865" font-size="12" fill="#6E6E73" text-anchor="end">every result is logged — pass or fail</text>
   <g font-size="10" font-weight="700" fill="#9A9387" letter-spacing="1.2">
-    <text x="528" y="894">IDEA</text><text x="730" y="894">CODE</text><text x="918" y="894">CHECKS</text><text x="1018" y="894">RESULT</text>
+    <text x="528" y="894">IDEA</text><text x="700" y="894">CODE</text><text x="856" y="894">CHECKS</text><text x="950" y="894">RESULT</text>
   </g>
-  <line x1="528" y1="898" x2="1162" y2="898" stroke="#F1EDE3"/>
-  <text x="528" y="916" font-size="12.5" fill="#1D1D1F">Out-of-pattern spend</text><text x="730" y="916" font-size="11" fill="#7A5AA8" font-family="ui-monospace, Menlo, monospace">z(spend,6m)*risk</text><text x="1018" y="916" font-size="12.5" font-weight="600" fill="#3F7D5A">✓ verified</text>
-  <circle cx="922" cy="912" r="4" fill="#3F7D5A"/><circle cx="935" cy="912" r="4" fill="#3F7D5A"/><circle cx="948" cy="912" r="4" fill="#3F7D5A"/><circle cx="961" cy="912" r="4" fill="#3F7D5A"/><circle cx="974" cy="912" r="4" fill="#3F7D5A"/><circle cx="987" cy="912" r="4" fill="#3F7D5A"/>
-  <line x1="528" y1="922" x2="1162" y2="922" stroke="#F1EDE3"/>
-  <text x="528" y="940" font-size="12.5" fill="#1D1D1F">Payment timing drift</text><text x="730" y="940" font-size="11" fill="#7A5AA8" font-family="ui-monospace, Menlo, monospace">days(pay, due)</text><text x="1018" y="940" font-size="12.5" font-weight="600" fill="#B5523B">✕ didn't run</text>
-  <circle cx="922" cy="936" r="4" fill="#3F7D5A"/><circle cx="935" cy="936" r="4" fill="#3F7D5A"/><circle cx="948" cy="936" r="4" fill="#B5523B"/><circle cx="961" cy="936" r="4" fill="#E0DACD"/><circle cx="974" cy="936" r="4" fill="#E0DACD"/><circle cx="987" cy="936" r="4" fill="#E0DACD"/>
-  <line x1="528" y1="946" x2="1162" y2="946" stroke="#F1EDE3"/>
-  <text x="528" y="964" font-size="12.5" fill="#1D1D1F">Spend velocity</text><text x="730" y="964" font-size="11" fill="#7A5AA8" font-family="ui-monospace, Menlo, monospace">spend_1m/spend_3m</text><text x="1018" y="964" font-size="12.5" font-weight="600" fill="#B5523B">✕ already in</text>
-  <circle cx="922" cy="960" r="4" fill="#3F7D5A"/><circle cx="935" cy="960" r="4" fill="#3F7D5A"/><circle cx="948" cy="960" r="4" fill="#3F7D5A"/><circle cx="961" cy="960" r="4" fill="#B5523B"/><circle cx="974" cy="960" r="4" fill="#E0DACD"/><circle cx="987" cy="960" r="4" fill="#E0DACD"/>
-  <line x1="528" y1="970" x2="1162" y2="970" stroke="#F1EDE3"/>
-  <text x="528" y="988" font-size="12.5" fill="#1D1D1F">Missed declines · L3</text><text x="730" y="988" font-size="11" fill="#A0782E" font-family="ui-monospace, Menlo, monospace">SELECT declines…</text><text x="1018" y="988" font-size="12.5" font-weight="600" fill="#3F7D5A">✓ pulled in</text>
-  <text x="918" y="988" font-size="11" fill="#A0782E">request</text>
+  <line x1="528" y1="898" x2="1046" y2="898" stroke="#F1EDE3"/>
+  <text x="528" y="916" font-size="12.5" fill="#1D1D1F">Out-of-pattern spend</text><text x="700" y="916" font-size="11" fill="#7A5AA8" font-family="ui-monospace, Menlo, monospace">z(spend,6m)*risk</text><text x="950" y="916" font-size="12.5" font-weight="600" fill="#3F7D5A">✓ verified</text>
+  <circle cx="860" cy="912" r="4" fill="#3F7D5A"/><circle cx="873" cy="912" r="4" fill="#3F7D5A"/><circle cx="886" cy="912" r="4" fill="#3F7D5A"/><circle cx="899" cy="912" r="4" fill="#3F7D5A"/><circle cx="912" cy="912" r="4" fill="#3F7D5A"/><circle cx="925" cy="912" r="4" fill="#3F7D5A"/>
+  <line x1="528" y1="922" x2="1046" y2="922" stroke="#F1EDE3"/>
+  <text x="528" y="940" font-size="12.5" fill="#1D1D1F">Payment timing drift</text><text x="700" y="940" font-size="11" fill="#7A5AA8" font-family="ui-monospace, Menlo, monospace">days(pay, due)</text><text x="950" y="940" font-size="12.5" font-weight="600" fill="#B5523B">✕ didn't run</text>
+  <circle cx="860" cy="936" r="4" fill="#3F7D5A"/><circle cx="873" cy="936" r="4" fill="#3F7D5A"/><circle cx="886" cy="936" r="4" fill="#B5523B"/><circle cx="899" cy="936" r="4" fill="#E0DACD"/><circle cx="912" cy="936" r="4" fill="#E0DACD"/><circle cx="925" cy="936" r="4" fill="#E0DACD"/>
+  <line x1="528" y1="946" x2="1046" y2="946" stroke="#F1EDE3"/>
+  <text x="528" y="964" font-size="12.5" fill="#1D1D1F">Spend velocity</text><text x="700" y="964" font-size="11" fill="#7A5AA8" font-family="ui-monospace, Menlo, monospace">spend_1m/spend_3m</text><text x="950" y="964" font-size="12.5" font-weight="600" fill="#B5523B">✕ already in</text>
+  <circle cx="860" cy="960" r="4" fill="#3F7D5A"/><circle cx="873" cy="960" r="4" fill="#3F7D5A"/><circle cx="886" cy="960" r="4" fill="#3F7D5A"/><circle cx="899" cy="960" r="4" fill="#B5523B"/><circle cx="912" cy="960" r="4" fill="#E0DACD"/><circle cx="925" cy="960" r="4" fill="#E0DACD"/>
+  <line x1="528" y1="970" x2="1046" y2="970" stroke="#F1EDE3"/>
+  <text x="528" y="988" font-size="12.5" fill="#1D1D1F">Missed declines · L3</text><text x="700" y="988" font-size="11" fill="#A0782E" font-family="ui-monospace, Menlo, monospace">SELECT declines…</text><text x="950" y="988" font-size="12.5" font-weight="600" fill="#3F7D5A">✓ pulled in</text>
+  <text x="856" y="988" font-size="11" fill="#A0782E">request</text>
   <text x="528" y="1016" font-size="11.5" fill="#9A9387" font-style="italic">each result raises or lowers its idea's odds of being drawn next</text>
   </g>
 
   <!-- loops A and B into the board; the board feeds the ideas -->
-  <path d="M548,878 V768" stroke="#7A5AA8" stroke-width="13" stroke-opacity="0.11" fill="none" stroke-linecap="round" stroke-linejoin="round"/><path d="M548,878 V768" stroke="#7A5AA8" stroke-width="3.2" fill="none" stroke-linejoin="round" marker-end="url(#ar-purple)"/>
-  <path d="M740,762 V874" stroke="#7A5AA8" stroke-width="13" stroke-opacity="0.11" fill="none" stroke-linecap="round" stroke-linejoin="round"/><path d="M740,762 V874" stroke="#7A5AA8" stroke-width="3.0" fill="none" stroke-linejoin="round" marker-end="url(#ar-purple)"/>
-  <g filter="url(#soft)"><rect x="683" y="803" width="113" height="30" rx="15" fill="#FFFFFF" stroke="#7A5AA8" stroke-width="1.6"/></g><rect x="688" y="808" width="22" height="20" rx="6" fill="#7A5AA8"/><text x="699" y="822.5" font-size="12" font-weight="700" fill="#FFFFFF" text-anchor="middle">A</text><text x="717" y="823" font-size="13.5" font-weight="700" fill="#7A5AA8">Idea loop</text>
-  <text x="806" y="822" font-size="12" fill="#7A5AA8">how each idea fared</text>
+  <path d="M548,878 V768" stroke="#4A3B69" stroke-width="13" stroke-opacity="0.11" fill="none" stroke-linecap="round" stroke-linejoin="round"/><path d="M548,878 V768" stroke="#4A3B69" stroke-width="3.2" fill="none" stroke-linejoin="round" marker-end="url(#ar-plum)"/>
+  <path d="M711,618 V664 H826 V874" stroke="#4A3B69" stroke-width="13" stroke-opacity="0.11" fill="none" stroke-linecap="round" stroke-linejoin="round"/><path d="M711,618 V664 H826 V874" stroke="#4A3B69" stroke-width="3.0" fill="none" stroke-linejoin="round" marker-end="url(#ar-plum)"/>
+  <g filter="url(#soft)"><rect x="754" y="803" width="144" height="30" rx="15" fill="#FFFFFF" stroke="#4A3B69" stroke-width="1.6"/></g><rect x="759" y="808" width="22" height="20" rx="6" fill="#4A3B69"/><text x="770" y="822.5" font-size="12" font-weight="700" fill="#FFFFFF" text-anchor="middle">B</text><text x="788" y="823" font-size="13.5" font-weight="700" fill="#4A3B69">Evidence loop</text>
+  <rect x="774" y="839" width="104" height="20" rx="6" fill="#F3EFF9"/><text x="826" y="853" font-size="12" fill="#4A3B69" text-anchor="middle">screen results</text>
   <path d="M1038,762 V874" stroke="#4A3B69" stroke-width="13" stroke-opacity="0.11" fill="none" stroke-linecap="round" stroke-linejoin="round"/><path d="M1038,762 V874" stroke="#4A3B69" stroke-width="3.0" fill="none" stroke-linejoin="round" marker-end="url(#ar-plum)"/>
   <g filter="url(#soft)"><rect x="966" y="803" width="144" height="30" rx="15" fill="#FFFFFF" stroke="#4A3B69" stroke-width="1.6"/></g><rect x="971" y="808" width="22" height="20" rx="6" fill="#4A3B69"/><text x="982" y="822.5" font-size="12" font-weight="700" fill="#FFFFFF" text-anchor="middle">B</text><text x="1000" y="823" font-size="13.5" font-weight="700" fill="#4A3B69">Evidence loop</text>
-  <text x="1118" y="822" font-size="12" fill="#4A3B69">verdicts</text>
-  <path d="M1242,1020 H1194" stroke="#4A3B69" stroke-width="13" stroke-opacity="0.11" fill="none" stroke-linecap="round" stroke-linejoin="round"/><path d="M1242,1020 H1194" stroke="#4A3B69" stroke-width="3.0" fill="none" stroke-linejoin="round" marker-end="url(#ar-plum)"/>
-  <text x="1216" y="994" font-size="11" fill="#4A3B69" text-anchor="middle">case</text>
-  <text x="1216" y="1007" font-size="11" fill="#4A3B69" text-anchor="middle">results</text>
-  <rect x="1203" y="1032" width="26" height="20" rx="6" fill="#4A3B69" stroke="#FFFFFF" stroke-width="1.5"/><text x="1216" y="1046.5" font-size="11.5" font-weight="700" fill="#FFFFFF" text-anchor="middle">B</text>
+  <rect x="970" y="839" width="136" height="20" rx="6" fill="#F3EFF9"/><text x="1038" y="853" font-size="12" fill="#4A3B69" text-anchor="middle">evaluation verdicts</text>
+  <path d="M1242,990 H1078" stroke="#4A3B69" stroke-width="13" stroke-opacity="0.11" fill="none" stroke-linecap="round" stroke-linejoin="round"/><path d="M1242,990 H1078" stroke="#4A3B69" stroke-width="3.0" fill="none" stroke-linejoin="round" marker-end="url(#ar-plum)"/>
+  <g filter="url(#soft)"><rect x="1086" y="975" width="144" height="30" rx="15" fill="#FFFFFF" stroke="#4A3B69" stroke-width="1.6"/></g><rect x="1091" y="980" width="22" height="20" rx="6" fill="#4A3B69"/><text x="1102" y="994.5" font-size="12" font-weight="700" fill="#FFFFFF" text-anchor="middle">B</text><text x="1120" y="995" font-size="13.5" font-weight="700" fill="#4A3B69">Evidence loop</text>
+  <rect x="1113" y="1011" width="91" height="20" rx="6" fill="#F3EFF9"/><text x="1158" y="1025" font-size="12" fill="#4A3B69" text-anchor="middle">case results</text>
 
 
   <!-- ===== OUTPUT ===== -->
@@ -271,9 +288,9 @@
   <text x="940" y="1145" font-size="13" fill="#3F7D5A" text-anchor="middle">target cases go straight to inference</text>
   <!-- loop D: the output goes back to the analyst -->
   <path d="M1800,1092 V1170 Q1800,1188 1782,1188 H66 Q48,1188 48,1170 V416 Q48,398 66,398 H96" stroke="#3D6BA8" stroke-width="13" stroke-opacity="0.11" fill="none" stroke-linecap="round" stroke-linejoin="round"/><path d="M1800,1092 V1170 Q1800,1188 1782,1188 H66 Q48,1188 48,1170 V416 Q48,398 66,398 H96" stroke="#3D6BA8" stroke-width="3.2" fill="none" stroke-linejoin="round" marker-end="url(#ar-blue)"/>
-  <rect x="620" y="1170" width="660" height="36" fill="#FAF9F5"/>
-  <g filter="url(#soft)"><rect x="632" y="1173" width="136" height="30" rx="15" fill="#FFFFFF" stroke="#3D6BA8" stroke-width="1.6"/></g><rect x="637" y="1178" width="22" height="20" rx="6" fill="#3D6BA8"/><text x="648" y="1192.5" font-size="12" font-weight="700" fill="#FFFFFF" text-anchor="middle">D</text><text x="666" y="1193" font-size="13.5" font-weight="700" fill="#3D6BA8">Analyst loop</text>
-  <text x="780" y="1193" font-size="13" font-weight="600" fill="#3D6BA8">the analyst investigates the output further and sets the next direction</text>
+  <rect x="620" y="1170" width="696" height="36" fill="#FAF9F5"/>
+  <g filter="url(#soft)"><rect x="628" y="1173" width="167" height="30" rx="15" fill="#FFFFFF" stroke="#3D6BA8" stroke-width="1.6"/></g><rect x="633" y="1178" width="22" height="20" rx="6" fill="#3D6BA8"/><text x="644" y="1192.5" font-size="12" font-weight="700" fill="#FFFFFF" text-anchor="middle">D</text><text x="662" y="1193" font-size="13.5" font-weight="700" fill="#3D6BA8">Analyst feedback</text>
+  <text x="808" y="1193" font-size="13" font-weight="600" fill="#3D6BA8">the analyst investigates the output further and sets the next direction</text>
 
 <g transform="translate(0,60)">
 
@@ -286,10 +303,10 @@
     <path d="M144,1218 A8,8 0 1 1 136,1210" stroke="#7A5AA8" marker-end="url(#sm-purple)"/>
   </g>
   <text x="200" y="1196" font-size="11" font-weight="700" fill="#8A7B5C" letter-spacing="2.5">FOUR LOOPS · FASTEST TO SLOWEST</text>
-  <rect x="200" y="1214" width="26" height="20" rx="6" fill="#7A5AA8" stroke="#FFFFFF" stroke-width="1.5"/><text x="213" y="1228.5" font-size="11.5" font-weight="700" fill="#FFFFFF" text-anchor="middle">A</text><text x="236" y="1230" font-size="15" font-weight="700" fill="#1D1D1F">Idea loop<tspan font-weight="400" fill="#6E6E73"> · every idea</tspan></text><text x="236" y="1252" font-size="12.5" fill="#6E6E73">quick check results re-rank the ideas</text>
-  <rect x="630" y="1214" width="26" height="20" rx="6" fill="#4A3B69" stroke="#FFFFFF" stroke-width="1.5"/><text x="643" y="1228.5" font-size="11.5" font-weight="700" fill="#FFFFFF" text-anchor="middle">B</text><text x="666" y="1230" font-size="15" font-weight="700" fill="#1D1D1F">Evidence loop<tspan font-weight="400" fill="#6E6E73"> · every evaluation</tspan></text><text x="666" y="1252" font-size="12.5" fill="#6E6E73">evaluation and case results sharpen feature generation</text>
+  <rect x="200" y="1214" width="26" height="20" rx="6" fill="#7A5AA8" stroke="#FFFFFF" stroke-width="1.5"/><text x="213" y="1228.5" font-size="11.5" font-weight="700" fill="#FFFFFF" text-anchor="middle">A</text><text x="236" y="1230" font-size="15" font-weight="700" fill="#1D1D1F">Build-up loop<tspan font-weight="400" fill="#6E6E73"> · every feature</tspan></text><text x="236" y="1252" font-size="12.5" fill="#6E6E73">fix and retry until it runs, then check and screen</text>
+  <rect x="630" y="1214" width="26" height="20" rx="6" fill="#4A3B69" stroke="#FFFFFF" stroke-width="1.5"/><text x="643" y="1228.5" font-size="11.5" font-weight="700" fill="#FFFFFF" text-anchor="middle">B</text><text x="666" y="1230" font-size="15" font-weight="700" fill="#1D1D1F">Evidence loop<tspan font-weight="400" fill="#6E6E73"> · every result</tspan></text><text x="666" y="1252" font-size="12.5" fill="#6E6E73">all results re-rank the ideas and sharpen generation</text>
   <rect x="1060" y="1214" width="26" height="20" rx="6" fill="#3F7D5A" stroke="#FFFFFF" stroke-width="1.5"/><text x="1073" y="1228.5" font-size="11.5" font-weight="700" fill="#FFFFFF" text-anchor="middle">C</text><text x="1096" y="1230" font-size="15" font-weight="700" fill="#1D1D1F">Data loop<tspan font-weight="400" fill="#6E6E73"> · every data pull</tspan></text><text x="1096" y="1252" font-size="12.5" fill="#6E6E73">pulled data becomes a new source to build from</text>
-  <rect x="1490" y="1214" width="26" height="20" rx="6" fill="#3D6BA8" stroke="#FFFFFF" stroke-width="1.5"/><text x="1503" y="1228.5" font-size="11.5" font-weight="700" fill="#FFFFFF" text-anchor="middle">D</text><text x="1526" y="1230" font-size="15" font-weight="700" fill="#1D1D1F">Analyst loop<tspan font-weight="400" fill="#6E6E73"> · every review</tspan></text><text x="1526" y="1252" font-size="12.5" fill="#6E6E73">findings inspire the analyst's next direction</text>
+  <rect x="1490" y="1214" width="26" height="20" rx="6" fill="#3D6BA8" stroke="#FFFFFF" stroke-width="1.5"/><text x="1503" y="1228.5" font-size="11.5" font-weight="700" fill="#FFFFFF" text-anchor="middle">D</text><text x="1526" y="1230" font-size="15" font-weight="700" fill="#1D1D1F">Analyst feedback<tspan font-weight="400" fill="#6E6E73"> · every review</tspan></text><text x="1526" y="1252" font-size="12.5" fill="#6E6E73">findings inspire the analyst's next direction</text>
 
   <g font-size="12" fill="#8A8275">
     <text x="80" y="1302">Example rows, scores and counts are illustrative.</text>
