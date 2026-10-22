@@ -1,0 +1,265 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1920 940" font-family="'BentonSans Regular', 'BentonSans', 'Benton Sans', Arial, Helvetica, sans-serif">
+  <defs>
+    <radialGradient id="sig"><stop offset="0" stop-color="#66A9E2" stop-opacity="0.9"/><stop offset="0.55" stop-color="#99C6EC" stop-opacity="0.45"/><stop offset="1" stop-color="#99C6EC" stop-opacity="0"/></radialGradient>
+    <marker id="ar" viewBox="0 0 10 10" refX="8" refY="5" markerUnits="userSpaceOnUse" markerWidth="16" markerHeight="16" orient="auto"><path d="M0,0 L10,5 L0,10 z" fill="#00175A"/></marker>
+    <marker id="ar-s" viewBox="0 0 10 10" refX="8" refY="5" markerUnits="userSpaceOnUse" markerWidth="11" markerHeight="11" orient="auto"><path d="M0,0 L10,5 L0,10 z" fill="#00175A"/></marker>
+    <clipPath id="clip"><rect x="110" y="238" width="1010" height="776" rx="22"/></clipPath>
+  </defs>
+  <rect width="1920" height="940" fill="#FFFFFF"/>
+  <g transform="translate(0,-160)">
+
+
+  <!-- ===== FEATURE SPACE ===== -->
+  <rect x="110" y="238" width="1010" height="776" rx="22" fill="#F3F4F6"/>
+  <text x="134" y="274" font-size="13" fill="#75787B" letter-spacing="2">INFORMATION SPACE</text>
+  <g clip-path="url(#clip)">
+    <path d="M580,696 L986,-107 L1397,319 Z" fill="#00175A" fill-opacity="0.05" stroke="#4781B4" stroke-width="1" stroke-dasharray="5,5" stroke-opacity="0.5"/>
+    <path d="M580,696 L-243,332 L161,-100 Z" fill="#00175A" fill-opacity="0.05" stroke="#4781B4" stroke-width="1" stroke-dasharray="5,5" stroke-opacity="0.5"/>
+    <path d="M580,696 L1442,954 L1096,1434 Z" fill="#00175A" fill-opacity="0.025" stroke="#4781B4" stroke-width="1" stroke-dasharray="5,5" stroke-opacity="0.3"/>
+  </g>
+  <circle cx="775" cy="508" r="47" fill="url(#sig)"/>
+  <circle cx="835" cy="596" r="40" fill="url(#sig)"/>
+  <circle cx="280" cy="416" r="43" fill="url(#sig)"/>
+  <circle cx="200" cy="946" r="36" fill="url(#sig)"/>
+  <circle cx="540" cy="296" r="36" fill="url(#sig)"/>
+  <polygon points="341,834 352,665 877,375 976,531 969,825 900,953 690,988 428,967" fill="#006FCF" fill-opacity="0.08" stroke="#006FCF" stroke-width="2" stroke-dasharray="9,6" stroke-linejoin="round"/>
+  <polygon points="485,691 550,626 650,651 665,706 635,746 535,786 505,731" fill="#00175A" fill-opacity="0.10" stroke="#00175A" stroke-width="2.2" stroke-linejoin="round"/>
+  <circle cx="553" cy="644" r="3.4" fill="#000000"/>
+  <circle cx="631" cy="656" r="3.4" fill="#000000"/>
+  <circle cx="583" cy="666" r="3.4" fill="#000000"/>
+  <circle cx="535" cy="729" r="3.4" fill="#000000"/>
+  <circle cx="597" cy="737" r="3.4" fill="#000000"/>
+  <circle cx="576" cy="648" r="3.4" fill="#000000"/>
+  <circle cx="585" cy="670" r="3.4" fill="#000000"/>
+  <circle cx="577" cy="691" r="3.4" fill="#000000"/>
+  <circle cx="596" cy="694" r="3.4" fill="#000000"/>
+  <circle cx="529" cy="712" r="3.4" fill="#000000"/>
+  <circle cx="569" cy="678" r="3.4" fill="#000000"/>
+  <circle cx="557" cy="652" r="3.4" fill="#000000"/>
+  <circle cx="603" cy="666" r="3.4" fill="#000000"/>
+  <circle cx="545" cy="750" r="3.4" fill="#000000"/>
+  <circle cx="537" cy="717" r="3.4" fill="#000000"/>
+  <circle cx="631" cy="727" r="3.4" fill="#000000"/>
+  <circle cx="520" cy="676" r="3.4" fill="#000000"/>
+  <circle cx="507" cy="699" r="3.4" fill="#000000"/>
+  <circle cx="563" cy="641" r="3.4" fill="#000000"/>
+  <circle cx="635" cy="681" r="3.4" fill="#000000"/>
+  <circle cx="632" cy="690" r="3.4" fill="#000000"/>
+  <circle cx="521" cy="690" r="3.4" fill="#000000"/>
+  <circle cx="645" cy="706" r="3.4" fill="#000000"/>
+  <circle cx="541" cy="734" r="3.4" fill="#000000"/>
+  <circle cx="641" cy="711" r="3.4" fill="#000000"/>
+  <circle cx="607" cy="739" r="3.4" fill="#000000"/>
+  <circle cx="603" cy="718" r="3.4" fill="#000000"/>
+  <circle cx="611" cy="676" r="3.4" fill="#000000"/>
+  <circle cx="569" cy="711" r="3.4" fill="#000000"/>
+  <circle cx="595" cy="704" r="3.4" fill="#000000"/>
+  <circle cx="631" cy="710" r="3.4" fill="#000000"/>
+  <circle cx="584" cy="685" r="3.4" fill="#000000"/>
+  <circle cx="635" cy="672" r="3.4" fill="#000000"/>
+  <circle cx="519" cy="704" r="3.4" fill="#000000"/>
+  <circle cx="533" cy="767" r="3.4" fill="#000000"/>
+  <circle cx="559" cy="760" r="3.4" fill="#000000"/>
+  <circle cx="574" cy="677" r="3.4" fill="#000000"/>
+  <circle cx="535" cy="714" r="3.4" fill="#000000"/>
+  <circle cx="572" cy="745" r="3.4" fill="#000000"/>
+  <circle cx="545" cy="754" r="3.4" fill="#000000"/>
+  <circle cx="612" cy="726" r="3.4" fill="#000000"/>
+  <circle cx="635" cy="726" r="3.4" fill="#000000"/>
+  <circle cx="563" cy="641" r="3.4" fill="#000000"/>
+  <circle cx="632" cy="681" r="3.4" fill="#000000"/>
+  <circle cx="591" cy="679" r="3.4" fill="#000000"/>
+  <circle cx="539" cy="670" r="3.4" fill="#000000"/>
+  <circle cx="593" cy="705" r="3.4" fill="#000000"/>
+  <circle cx="555" cy="724" r="3.4" fill="#000000"/>
+  <circle cx="535" cy="657" r="3.4" fill="#000000"/>
+  <circle cx="539" cy="729" r="3.4" fill="#000000"/>
+  <circle cx="554" cy="688" r="3.4" fill="#000000"/>
+  <circle cx="642" cy="667" r="3.4" fill="#000000"/>
+  <circle cx="509" cy="713" r="3.4" fill="#000000"/>
+  <circle cx="616" cy="727" r="3.4" fill="#000000"/>
+  <circle cx="597" cy="672" r="3.4" fill="#000000"/>
+  <circle cx="613" cy="714" r="3.4" fill="#000000"/>
+  <circle cx="580" cy="644" r="3.4" fill="#000000"/>
+  <circle cx="588" cy="741" r="3.4" fill="#000000"/>
+  <circle cx="622" cy="715" r="3.4" fill="#000000"/>
+  <circle cx="576" cy="644" r="3.4" fill="#000000"/>
+  <rect x="514.5" y="670.5" width="11" height="11" fill="#00175A"/><rect x="564.5" y="715.5" width="11" height="11" fill="#00175A"/><rect x="614.5" y="690.5" width="11" height="11" fill="#00175A"/><rect x="544.5" y="620.5" width="11" height="11" fill="#00175A"/><rect x="589.5" y="635.5" width="11" height="11" fill="#00175A"/><rect x="644.5" y="645.5" width="11" height="11" fill="#00175A"/><rect x="499.5" y="725.5" width="11" height="11" fill="#00175A"/><rect x="579.5" y="760.5" width="11" height="11" fill="#00175A"/><rect x="629.5" y="740.5" width="11" height="11" fill="#00175A"/><rect x="529.5" y="780.5" width="11" height="11" fill="#00175A"/><rect x="659.5" y="700.5" width="11" height="11" fill="#00175A"/><rect x="479.5" y="685.5" width="11" height="11" fill="#00175A"/>
+  <path d="M936,610 l9.0,9.0 M945,610 l-9.0,9.0" stroke="#BBBCBC" stroke-width="1.8"/>
+  <path d="M583,774 l9.0,9.0 M592,774 l-9.0,9.0" stroke="#BBBCBC" stroke-width="1.8"/>
+  <path d="M490,865 l9.0,9.0 M499,865 l-9.0,9.0" stroke="#BBBCBC" stroke-width="1.8"/>
+  <path d="M926,683 l9.0,9.0 M935,683 l-9.0,9.0" stroke="#BBBCBC" stroke-width="1.8"/>
+  <path d="M949,735 l9.0,9.0 M958,735 l-9.0,9.0" stroke="#BBBCBC" stroke-width="1.8"/>
+  <path d="M421,898 l9.0,9.0 M430,898 l-9.0,9.0" stroke="#BBBCBC" stroke-width="1.8"/>
+  <path d="M706,640 l9.0,9.0 M715,640 l-9.0,9.0" stroke="#BBBCBC" stroke-width="1.8"/>
+  <path d="M936,708 l9.0,9.0 M945,708 l-9.0,9.0" stroke="#BBBCBC" stroke-width="1.8"/>
+  <path d="M471,895 l9.0,9.0 M480,895 l-9.0,9.0" stroke="#BBBCBC" stroke-width="1.8"/>
+  <path d="M521,954 l9.0,9.0 M530,954 l-9.0,9.0" stroke="#BBBCBC" stroke-width="1.8"/>
+  <path d="M412,755 l9.0,9.0 M421,755 l-9.0,9.0" stroke="#BBBCBC" stroke-width="1.8"/>
+  <path d="M883,765 l9.0,9.0 M892,765 l-9.0,9.0" stroke="#BBBCBC" stroke-width="1.8"/>
+  <path d="M434,706 l9.0,9.0 M443,706 l-9.0,9.0" stroke="#BBBCBC" stroke-width="1.8"/>
+  <path d="M410,669 l9.0,9.0 M419,669 l-9.0,9.0" stroke="#BBBCBC" stroke-width="1.8"/>
+  <path d="M473,792 l9.0,9.0 M482,792 l-9.0,9.0" stroke="#BBBCBC" stroke-width="1.8"/>
+  <path d="M475,767 l9.0,9.0 M484,767 l-9.0,9.0" stroke="#BBBCBC" stroke-width="1.8"/>
+  <path d="M419,775 l9.0,9.0 M428,775 l-9.0,9.0" stroke="#BBBCBC" stroke-width="1.8"/>
+  <path d="M409,662 l9.0,9.0 M418,662 l-9.0,9.0" stroke="#BBBCBC" stroke-width="1.8"/>
+  <path d="M702,691 l9.0,9.0 M711,691 l-9.0,9.0" stroke="#BBBCBC" stroke-width="1.8"/>
+  <path d="M545,832 l9.0,9.0 M554,832 l-9.0,9.0" stroke="#BBBCBC" stroke-width="1.8"/>
+  <path d="M457,745 l9.0,9.0 M466,745 l-9.0,9.0" stroke="#BBBCBC" stroke-width="1.8"/>
+  <path d="M447,648 l9.0,9.0 M456,648 l-9.0,9.0" stroke="#BBBCBC" stroke-width="1.8"/>
+  <path d="M648,528 l9.0,9.0 M657,528 l-9.0,9.0" stroke="#BBBCBC" stroke-width="1.8"/>
+  <path d="M808,689 l9.0,9.0 M817,689 l-9.0,9.0" stroke="#BBBCBC" stroke-width="1.8"/>
+  <path d="M706,652 l9.0,9.0 M715,652 l-9.0,9.0" stroke="#BBBCBC" stroke-width="1.8"/>
+  <path d="M582,878 l9.0,9.0 M591,878 l-9.0,9.0" stroke="#BBBCBC" stroke-width="1.8"/>
+  <path d="M397,755 l9.0,9.0 M406,755 l-9.0,9.0" stroke="#BBBCBC" stroke-width="1.8"/>
+  <path d="M622,568 l9.0,9.0 M631,568 l-9.0,9.0" stroke="#BBBCBC" stroke-width="1.8"/>
+  <path d="M767,713 l9.0,9.0 M776,713 l-9.0,9.0" stroke="#BBBCBC" stroke-width="1.8"/>
+  <path d="M392,683 l9.0,9.0 M401,683 l-9.0,9.0" stroke="#BBBCBC" stroke-width="1.8"/>
+  <path d="M854,639 l9.0,9.0 M863,639 l-9.0,9.0" stroke="#BBBCBC" stroke-width="1.8"/>
+  <path d="M441,856 l9.0,9.0 M450,856 l-9.0,9.0" stroke="#BBBCBC" stroke-width="1.8"/>
+  <path d="M833,662 l9.0,9.0 M842,662 l-9.0,9.0" stroke="#BBBCBC" stroke-width="1.8"/>
+  <path d="M461,749 l9.0,9.0 M470,749 l-9.0,9.0" stroke="#BBBCBC" stroke-width="1.8"/>
+  <path d="M854,672 l9.0,9.0 M863,672 l-9.0,9.0" stroke="#BBBCBC" stroke-width="1.8"/>
+  <path d="M596,927 l9.0,9.0 M605,927 l-9.0,9.0" stroke="#BBBCBC" stroke-width="1.8"/>
+  <path d="M506,911 l9.0,9.0 M515,911 l-9.0,9.0" stroke="#BBBCBC" stroke-width="1.8"/>
+  <path d="M923,769 l9.0,9.0 M932,769 l-9.0,9.0" stroke="#BBBCBC" stroke-width="1.8"/>
+  <path d="M585,885 l9.0,9.0 M594,885 l-9.0,9.0" stroke="#BBBCBC" stroke-width="1.8"/>
+  <path d="M527,863 l9.0,9.0 M536,863 l-9.0,9.0" stroke="#BBBCBC" stroke-width="1.8"/>
+  <path d="M859,600 l9.0,9.0 M868,600 l-9.0,9.0" stroke="#BBBCBC" stroke-width="1.8"/>
+  <path d="M380,773 l9.0,9.0 M389,773 l-9.0,9.0" stroke="#BBBCBC" stroke-width="1.8"/>
+  <path d="M461,673 l9.0,9.0 M470,673 l-9.0,9.0" stroke="#BBBCBC" stroke-width="1.8"/>
+  <path d="M942,719 l9.0,9.0 M951,719 l-9.0,9.0" stroke="#BBBCBC" stroke-width="1.8"/>
+  <path d="M955,640 l9.0,9.0 M964,640 l-9.0,9.0" stroke="#BBBCBC" stroke-width="1.8"/>
+  <path d="M947,528 l9.0,9.0 M956,528 l-9.0,9.0" stroke="#BBBCBC" stroke-width="1.8"/>
+  <path d="M667,888 l9.0,9.0 M676,888 l-9.0,9.0" stroke="#BBBCBC" stroke-width="1.8"/>
+  <path d="M750,701 l9.0,9.0 M759,701 l-9.0,9.0" stroke="#BBBCBC" stroke-width="1.8"/>
+  <path d="M913,586 l9.0,9.0 M922,586 l-9.0,9.0" stroke="#BBBCBC" stroke-width="1.8"/>
+  <path d="M440,911 l9.0,9.0 M449,911 l-9.0,9.0" stroke="#BBBCBC" stroke-width="1.8"/>
+  <path d="M899,611 l9.0,9.0 M908,611 l-9.0,9.0" stroke="#BBBCBC" stroke-width="1.8"/>
+  <path d="M609,614 l9.0,9.0 M618,614 l-9.0,9.0" stroke="#BBBCBC" stroke-width="1.8"/>
+  <path d="M485,653 l9.0,9.0 M494,653 l-9.0,9.0" stroke="#BBBCBC" stroke-width="1.8"/>
+  <path d="M703,699 l9.0,9.0 M712,699 l-9.0,9.0" stroke="#BBBCBC" stroke-width="1.8"/>
+  <path d="M578,963 l9.0,9.0 M587,963 l-9.0,9.0" stroke="#BBBCBC" stroke-width="1.8"/>
+  <path d="M862,774 l9.0,9.0 M871,774 l-9.0,9.0" stroke="#BBBCBC" stroke-width="1.8"/>
+  <path d="M473,826 l9.0,9.0 M482,826 l-9.0,9.0" stroke="#BBBCBC" stroke-width="1.8"/>
+  <path d="M619,812 l9.0,9.0 M628,812 l-9.0,9.0" stroke="#BBBCBC" stroke-width="1.8"/>
+  <path d="M605,958 l9.0,9.0 M614,958 l-9.0,9.0" stroke="#BBBCBC" stroke-width="1.8"/>
+  <path d="M873,637 l9.0,9.0 M882,637 l-9.0,9.0" stroke="#BBBCBC" stroke-width="1.8"/>
+  <path d="M555,888 l9.0,9.0 M564,888 l-9.0,9.0" stroke="#BBBCBC" stroke-width="1.8"/>
+  <path d="M951,760 l9.0,9.0 M960,760 l-9.0,9.0" stroke="#BBBCBC" stroke-width="1.8"/>
+  <path d="M409,737 l9.0,9.0 M418,737 l-9.0,9.0" stroke="#BBBCBC" stroke-width="1.8"/>
+  <path d="M439,706 l9.0,9.0 M448,706 l-9.0,9.0" stroke="#BBBCBC" stroke-width="1.8"/>
+  <path d="M484,865 l9.0,9.0 M493,865 l-9.0,9.0" stroke="#BBBCBC" stroke-width="1.8"/>
+  <path d="M711,690 l9.0,9.0 M720,690 l-9.0,9.0" stroke="#BBBCBC" stroke-width="1.8"/>
+  <path d="M530,586 l9.0,9.0 M539,586 l-9.0,9.0" stroke="#BBBCBC" stroke-width="1.8"/>
+  <path d="M751,625 l9.0,9.0 M760,625 l-9.0,9.0" stroke="#BBBCBC" stroke-width="1.8"/>
+  <path d="M615,599 l9.0,9.0 M624,599 l-9.0,9.0" stroke="#BBBCBC" stroke-width="1.8"/>
+  <path d="M573,580 l9.0,9.0 M582,580 l-9.0,9.0" stroke="#BBBCBC" stroke-width="1.8"/>
+  <path d="M580,696 L688,592" stroke="#00175A" stroke-width="4" stroke-linecap="round" opacity="1" marker-end="url(#ar)"/>
+  <path d="M688,592 L753,493" stroke="#00175A" stroke-width="1.5" opacity="1"/>
+  <circle cx="755" cy="493" r="3.4" fill="#006FCF"/>
+  <circle cx="745" cy="497" r="3.4" fill="#006FCF"/>
+  <circle cx="751" cy="501" r="3.4" fill="#006FCF"/>
+  <path d="M688,592 L753,529" stroke="#00175A" stroke-width="1.5" opacity="1"/>
+  <circle cx="775" cy="508" r="30" fill="none" stroke="#006FCF" stroke-width="1.6" stroke-dasharray="3,4"/>
+  <circle cx="789" cy="512" r="4.6" fill="#006FCF" stroke="#FFFFFF" stroke-width="1.4"/>
+  <circle cx="779" cy="522" r="4.6" fill="#006FCF" stroke="#FFFFFF" stroke-width="1.4"/>
+  <circle cx="765" cy="518" r="4.6" fill="#006FCF" stroke="#FFFFFF" stroke-width="1.4"/>
+  <circle cx="761" cy="504" r="4.6" fill="#006FCF" stroke="#FFFFFF" stroke-width="1.4"/>
+  <circle cx="771" cy="494" r="4.6" fill="#006FCF" stroke="#FFFFFF" stroke-width="1.4"/>
+  <circle cx="785" cy="498" r="4.6" fill="#006FCF" stroke="#FFFFFF" stroke-width="1.4"/>
+  <path d="M688,592 L791,526" stroke="#00175A" stroke-width="1.5" opacity="1"/>
+  <circle cx="783" cy="527" r="3.4" fill="#006FCF"/>
+  <circle cx="786" cy="529" r="3.4" fill="#006FCF"/>
+  <circle cx="798" cy="530" r="3.4" fill="#006FCF"/>
+  <text x="653" y="605" font-size="22" font-style="italic" fill="#00175A" text-anchor="middle" opacity="1" font-family="'Cambria Math', Cambria, 'Times New Roman', serif">d₁</text>
+  <path d="M580,696 L470,594" stroke="#00175A" stroke-width="4" stroke-linecap="round" opacity="1" marker-end="url(#ar)"/>
+  <path d="M470,594 L317,520" stroke="#00175A" stroke-width="1.5" opacity="1"/>
+  <path d="M319,524 L324,529 L319,535 L313,529 Z" fill="#FDB92D"/>
+  <path d="M311,525 L317,530 L311,536 L306,530 Z" fill="#FDB92D"/>
+  <path d="M316,517 L321,522 L316,528 L310,522 Z" fill="#FDB92D"/>
+  <path d="M470,594 L302,436" stroke="#00175A" stroke-width="1.5" opacity="1"/>
+  <circle cx="280" cy="416" r="30" fill="none" stroke="#006FCF" stroke-width="1.6" stroke-dasharray="3,4"/>
+  <path d="M294,413 L301,420 L294,427 L287,420 Z" fill="#FDB92D" stroke="#FFFFFF" stroke-width="1.5"/>
+  <path d="M284,423 L291,430 L284,437 L277,430 Z" fill="#FDB92D" stroke="#FFFFFF" stroke-width="1.5"/>
+  <path d="M270,419 L277,426 L270,433 L263,426 Z" fill="#FDB92D" stroke="#FFFFFF" stroke-width="1.5"/>
+  <path d="M266,405 L273,412 L266,419 L259,412 Z" fill="#FDB92D" stroke="#FFFFFF" stroke-width="1.5"/>
+  <path d="M276,395 L283,402 L276,409 L269,402 Z" fill="#FDB92D" stroke="#FFFFFF" stroke-width="1.5"/>
+  <path d="M290,399 L297,406 L290,413 L283,406 Z" fill="#FDB92D" stroke="#FFFFFF" stroke-width="1.5"/>
+  <path d="M470,594 L398,462" stroke="#00175A" stroke-width="1.5" opacity="1"/>
+  <path d="M390,446 L396,452 L390,457 L385,452 Z" fill="#FDB92D"/>
+  <path d="M391,457 L396,463 L391,468 L385,463 Z" fill="#FDB92D"/>
+  <path d="M393,463 L398,468 L393,474 L387,468 Z" fill="#FDB92D"/>
+  <text x="479" y="636" font-size="22" font-style="italic" fill="#00175A" text-anchor="middle" opacity="1" font-family="'Cambria Math', Cambria, 'Times New Roman', serif">d₂</text>
+  <path d="M580,696 L702,784" stroke="#00175A" stroke-width="4" stroke-linecap="round" opacity="0.5" marker-end="url(#ar)"/>
+  <path d="M702,784 L814,827" stroke="#00175A" stroke-width="1.5" opacity="0.5"/>
+  <circle cx="806" cy="830" r="4.5" fill="#FFFFFF" stroke="#75787B" stroke-width="1.6"/>
+  <circle cx="822" cy="831" r="4.5" fill="#FFFFFF" stroke="#75787B" stroke-width="1.6"/>
+  <circle cx="823" cy="834" r="4.5" fill="#FFFFFF" stroke="#75787B" stroke-width="1.6"/>
+  <path d="M702,784 L815,866" stroke="#00175A" stroke-width="1.5" opacity="0.5"/>
+  <circle cx="823" cy="856" r="4.5" fill="#FFFFFF" stroke="#75787B" stroke-width="1.6"/>
+  <circle cx="815" cy="861" r="4.5" fill="#FFFFFF" stroke="#75787B" stroke-width="1.6"/>
+  <circle cx="814" cy="871" r="4.5" fill="#FFFFFF" stroke="#75787B" stroke-width="1.6"/>
+  <path d="M702,784 L773,874" stroke="#00175A" stroke-width="1.5" opacity="0.5"/>
+  <circle cx="778" cy="868" r="4.5" fill="#FFFFFF" stroke="#75787B" stroke-width="1.6"/>
+  <circle cx="765" cy="865" r="4.5" fill="#FFFFFF" stroke="#75787B" stroke-width="1.6"/>
+  <circle cx="778" cy="881" r="4.5" fill="#FFFFFF" stroke="#75787B" stroke-width="1.6"/>
+  <text x="689" y="757" font-size="22" font-style="italic" fill="#00175A" text-anchor="middle" opacity="0.5" font-family="'Cambria Math', Cambria, 'Times New Roman', serif">d₃</text>
+  <text x="134" y="596" font-size="13" font-weight="700" fill="#B07A00" letter-spacing="2">L3 · BEYOND</text><text x="134" y="618" font-size="14" fill="#75787B">needs a data pull</text>
+  <text x="134" y="686" font-size="13" font-weight="700" fill="#006FCF" letter-spacing="2" text-anchor="start">L2 · EXTENDED REGION</text><text x="134" y="712" font-size="22" font-style="italic" fill="#006FCF" text-anchor="start" font-family="'Cambria Math', Cambria, 'Times New Roman', serif">σ(X, S)</text><text x="134" y="732" font-size="14" fill="#75787B" text-anchor="start">+ additional sources,</text>
+  <text x="134" y="750" font-size="14" fill="#75787B">more raw data</text>
+  <path d="M364,726 L310,722" stroke="#006FCF" stroke-width="1" fill="none"/><circle cx="364" cy="726" r="2.6" fill="#006FCF"/>
+  <text x="134" y="816" font-size="13" font-weight="700" fill="#00175A" letter-spacing="2" text-anchor="start">L1 · MODEL REGION</text><text x="134" y="842" font-size="22" font-style="italic" fill="#00175A" text-anchor="start" font-family="'Cambria Math', Cambria, 'Times New Roman', serif">σ(X)</text><text x="134" y="862" font-size="14" fill="#75787B" text-anchor="start">the model's dataset</text>
+  <path d="M485,691 L310,852" stroke="#00175A" stroke-width="1" fill="none"/><circle cx="485" cy="691" r="2.6" fill="#00175A"/>
+  <text x="813" y="513" font-size="15" font-style="italic" fill="#006FCF">exploit</text>
+  <text x="737" y="475" font-size="14" font-style="italic" fill="#00175A" text-anchor="end">an idea → features</text>
+  <text x="760" y="922" font-size="14" fill="#75787B" text-anchor="middle">its features fail the checks</text><text x="760" y="946" font-size="19" font-style="italic" fill="#00175A" text-anchor="middle" font-family="'Cambria Math', Cambria, 'Times New Roman', serif">no signal: P(useful | idea) ↓</text>
+  <text x="1196" y="226" font-size="13" font-weight="700" fill="#006FCF" letter-spacing="2.5">LEVELS · WHERE A FEATURE CAN COME FROM</text><line x1="1196" y1="238" x2="1850" y2="238" stroke="#99C6EC" stroke-width="1.4"/>
+  <rect x="1204" y="268" width="11" height="11" fill="#00175A"/><rect x="1220" y="278" width="11" height="11" fill="#00175A"/><rect x="1232" y="266" width="11" height="11" fill="#00175A"/>
+  <text x="1272" y="280" font-size="15" font-weight="700" fill="#00175A" letter-spacing="1.5"></text><text x="1306" y="280" font-size="21" font-style="italic" fill="#00175A" font-family="'Cambria Math', Cambria, 'Times New Roman', serif">X</text><text x="1410" y="280" font-size="16.5" fill="#1D1D1F">the model's original features</text>
+  <text x="1410" y="303" font-size="14" fill="#75787B">the columns it already uses</text>
+  <polygon points="1198,356 1212,334 1236,338 1242,358 1218,362" fill="#00175A" fill-opacity="0.10" stroke="#00175A" stroke-width="2"/><circle cx="1212" cy="346" r="2.6" fill="#000000"/><circle cx="1222" cy="352" r="2.6" fill="#000000"/><circle cx="1228" cy="343" r="2.6" fill="#000000"/><circle cx="1218" cy="341" r="2.6" fill="#000000"/>
+  <text x="1272" y="350" font-size="15" font-weight="700" fill="#00175A" letter-spacing="1.5">L1</text><text x="1306" y="350" font-size="21" font-style="italic" fill="#00175A" font-family="'Cambria Math', Cambria, 'Times New Roman', serif">σ(X)</text><text x="1410" y="350" font-size="16.5" fill="#1D1D1F">model region: the model's dataset</text>
+  <text x="1410" y="380" font-size="21" font-style="italic" fill="#00175A" font-family="'Cambria Math', Cambria, 'Times New Roman', serif">I(Y; f(X)) ≤ I(Y; X)</text>
+  <text x="1410" y="403" font-size="14" fill="#75787B">any f of X reshapes information, never adds it</text>
+  <polygon points="1194,470 1208,442 1244,446 1248,474 1212,478" fill="#006FCF" fill-opacity="0.05" stroke="#006FCF" stroke-width="2" stroke-dasharray="6,4"/><circle cx="1222" cy="460" r="4" fill="#006FCF"/>
+  <text x="1272" y="462" font-size="15" font-weight="700" fill="#006FCF" letter-spacing="1.5">L2</text><text x="1306" y="462" font-size="21" font-style="italic" fill="#006FCF" font-family="'Cambria Math', Cambria, 'Times New Roman', serif">σ(X, S)</text><text x="1410" y="462" font-size="16.5" fill="#1D1D1F">extended region: + additional sources, more raw data</text>
+  <text x="1410" y="485" font-size="14" fill="#75787B">joined by a confirmed linkage</text>
+  <rect x="1192" y="504" width="60" height="44" rx="6" fill="#DADDE2"/><polygon points="1204,532 1214,514 1234,516 1238,534 1218,538" fill="#FFFFFF" stroke="#006FCF" stroke-width="1.6" stroke-dasharray="5,3"/><path d="M1246,509 L1251,514 L1246,519 L1241,514 Z" fill="#FDB92D"/>
+  <text x="1272" y="528" font-size="15" font-weight="700" fill="#B07A00" letter-spacing="1.5">L3</text><text x="1306" y="528" font-size="21" font-style="italic" fill="#B07A00" font-family="'Cambria Math', Cambria, 'Times New Roman', serif">beyond</text><text x="1410" y="528" font-size="16.5" fill="#1D1D1F">outside both: needs a data pull</text>
+  <text x="1410" y="551" font-size="14" fill="#75787B">the agent writes the SQL query</text>
+  <text x="1196" y="604" font-size="13" font-weight="700" fill="#006FCF" letter-spacing="2.5">FROM A DIRECTION TO FEATURES</text><line x1="1196" y1="616" x2="1850" y2="616" stroke="#99C6EC" stroke-width="1.4"/>
+  <text x="1196" y="650" font-size="23" fill="#00175A" font-family="'Guardian Egyp', 'Guardian Egyptian', 'Guardian Egyp Regular', Rockwell, Georgia, serif">Direction</text>
+  <text x="1410" y="650" font-size="23" fill="#00175A" font-family="'Guardian Egyp', 'Guardian Egyptian', 'Guardian Egyp Regular', Rockwell, Georgia, serif">Ideas</text>
+  <text x="1616" y="650" font-size="23" fill="#00175A" font-family="'Guardian Egyp', 'Guardian Egyptian', 'Guardian Egyp Regular', Rockwell, Georgia, serif">Features</text>
+  <path d="M1196,706 L1356,706" stroke="#00175A" stroke-width="4" stroke-linecap="round" marker-end="url(#ar)"/>
+  <path d="M1410,706 L1588,680" stroke="#00175A" stroke-width="1.5"/>
+  <circle cx="1620" cy="680" r="3.6" fill="#000000"/>
+  <circle cx="1634" cy="680" r="3.6" fill="#000000"/>
+  <circle cx="1648" cy="680" r="3.6" fill="#000000"/>
+  <path d="M1410,706 L1588,706" stroke="#00175A" stroke-width="1.5"/>
+  <circle cx="1620" cy="706" r="3.6" fill="#006FCF"/>
+  <circle cx="1634" cy="706" r="3.6" fill="#006FCF"/>
+  <circle cx="1648" cy="706" r="3.6" fill="#006FCF"/>
+  <path d="M1410,706 L1588,732" stroke="#00175A" stroke-width="1.5"/>
+  <circle cx="1620" cy="732" r="3.6" fill="#006FCF"/>
+  <circle cx="1634" cy="732" r="3.6" fill="#006FCF"/>
+  <path d="M1648,726 L1654,732 L1648,738 L1642,732 Z" fill="#FDB92D"/>
+  <text x="1196" y="756" font-size="11.5" font-weight="700" fill="#75787B" letter-spacing="1.5">FROM</text>
+  <text x="1196" y="780" font-size="15.5" fill="#1D1D1F">analyst</text>
+  <text x="1196" y="802" font-size="15.5" fill="#1D1D1F">knowledge base</text>
+  <text x="1196" y="824" font-size="15.5" fill="#1D1D1F">auto (from context)</text>
+  <text x="1410" y="756" font-size="11.5" font-weight="700" fill="#75787B" letter-spacing="1.5">FROM</text>
+  <text x="1410" y="780" font-size="15.5" fill="#1D1D1F">contrastive data</text>
+  <text x="1410" y="802" font-size="15.5" fill="#1D1D1F">domain transfer</text>
+  <text x="1410" y="824" font-size="15.5" fill="#1D1D1F">causal reasoning, …</text>
+  <text x="1616" y="756" font-size="11.5" font-weight="700" fill="#75787B" letter-spacing="1.5">AS</text>
+  <text x="1616" y="780" font-size="15.5" fill="#1D1D1F">L1 / L2: pandas or PySpark code</text>
+  <text x="1616" y="802" font-size="15.5" fill="#1D1D1F">L3: SQL query</text>
+  <text x="1196" y="890" font-size="13" font-weight="700" fill="#006FCF" letter-spacing="2.5">EXPLORE AND EXPLOIT</text><line x1="1196" y1="902" x2="1850" y2="902" stroke="#99C6EC" stroke-width="1.4"/>
+  <circle cx="1200" cy="933" r="3.2" fill="#006FCF"/><text x="1216" y="938" font-size="16.5" font-weight="700" fill="#00175A">Explore</text><text x="1306" y="938" font-size="16.5" fill="#1D1D1F">try many directions, and many ideas in each</text>
+  <circle cx="1200" cy="964" r="3.2" fill="#006FCF"/><text x="1216" y="969" font-size="16.5" font-weight="700" fill="#00175A">Exploit</text><text x="1306" y="969" font-size="16.5" fill="#1D1D1F">dig in where signal appears</text>
+  <circle cx="1200" cy="995" r="3.2" fill="#006FCF"/><text x="1216" y="1000" font-size="16.5" font-weight="700" fill="#00175A">Learn</text><text x="1306" y="1000" font-size="16.5" fill="#1D1D1F">every result updates P(useful | idea)</text>
+  <text x="1850" y="1050" font-size="13" fill="#BBBCBC" text-anchor="end">Conceptual illustration.</text>
+</g>
+</svg>
