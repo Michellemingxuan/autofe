@@ -1,9 +1,10 @@
-import { useMemo, useState } from 'react'
+import { Fragment, useEffect, useMemo, useState } from 'react'
 import { api, usePolled } from '../api'
 import { navigate } from '../App'
-import type { BaseModelCard, EvalResult } from '../types'
+import type { BaseModelCard, EvalResult, InferenceDetail } from '../types'
 import { ConfirmButton } from './ConfirmButton'
 import { EvalPanel, pct, signed } from './EvalPanel'
+import { ahead, OutcomeBar, summarise, type Model } from './InferencePage'
 import s from './ResultsPage.module.css'
 
 const tone = (x: number | null | undefined) => (x == null || x === 0 ? '' : x > 0 ? s.up : s.down)
@@ -16,7 +17,7 @@ const when = (ts: number) => new Date(ts * 1000).toLocaleString([], {
 const identity = (r: EvalResult) =>
   r.kind === 'feature' ? `f:${r.key ?? r.name}` : `c:${r.name}:${[...r.members].sort().join(',')}`
 
-type SortKey = 'gini' | 'screen' | 'evaluated' | 'name' | 'missing' | 'corr' | 'level' | `capture:${string}`
+type SortKey = 'gini' | 'screen' | 'evaluated' | 'name' | 'missing' | 'corr' | 'vgini' | 'level' | `capture:${string}`
 
 // A score level that moves more than this, either way, is marked.
 const LEVEL_SHIFT = 0.05
@@ -30,9 +31,10 @@ export const selection = (id: string | null) => {
 
 /**
  * Every variant evaluated: single features (base + the feature) and combinations
- * (base + every feature in it), each by its latest evaluation. A row opens its
- * details - the verdict gate by gate, the feature, how the evaluation ran - in a
- * panel at the right. Removing a row removes the variant from every evaluation.
+ * (base + every feature in it), each by its latest evaluation. A row expands to
+ * what its model did on the target cases (Inference results); its details - the
+ * verdict gate by gate, how the evaluation ran - open in a panel at the right.
+ * Removing a row removes the variant from every evaluation.
  */
 export function ResultsPage({ selected }: { selected: string | null }) {
   const [results, refreshResults] = usePolled(api.results, [], 15000)
@@ -43,6 +45,15 @@ export function ResultsPage({ selected }: { selected: string | null }) {
     navigate('results', variant ? `${evalId}.${variant}` : evalId)
   const [query, setQuery] = useState('')
   const [sort, setSort] = useState<{ key: SortKey; desc: boolean }>({ key: 'gini', desc: true })
+  const [expanded, setExpanded] = useState<string | null>(null)        // `${eval_id}:${variant}`
+  // Each evaluation's target-case scores, fetched once when a row first expands.
+  const [inferences, setInferences] = useState<Record<string, InferenceDetail | 'none'>>({})
+  useEffect(() => {
+    const evalId = expanded?.split(':')[0]
+    if (!evalId || inferences[evalId]) return
+    api.inference(evalId).then((d) => setInferences((x) => ({ ...x, [evalId]: d })))
+      .catch(() => setInferences((x) => ({ ...x, [evalId]: 'none' })))
+  }, [expanded])  // eslint-disable-line
 
   const captures = useMemo(() => {
     const all = new Set((results ?? []).flatMap((r) => Object.keys(r.capture_gain)))
@@ -67,6 +78,7 @@ export function ResultsPage({ selected }: { selected: string | null }) {
       if (sort.key === 'name') return r.name
       if (sort.key === 'missing') return r.missing_rate ?? -Infinity
       if (sort.key === 'corr') return r.max_corr ?? -Infinity
+      if (sort.key === 'vgini') return r.variable_gini ?? -Infinity
       if (sort.key === 'level') return r.score_change == null ? -Infinity : Math.abs(r.score_change)
       return r.capture_gain[sort.key.slice(8)] ?? -Infinity
     }
@@ -93,10 +105,10 @@ export function ResultsPage({ selected }: { selected: string | null }) {
   const combos = rows.filter((r) => r.kind === 'combination')
   const passed = singles.filter((r) => r.verdict === 'PASS').length
 
-  const Evaluated = ({ r }: { r: Row }) => (
+  const Evaluated = (r: Row) => (
     <td className={`${s.num} ${s.dim}`}>{when(r.evaluated)}</td>
   )
-  const Gains = ({ r }: { r: Row }) => (r.trained === false ? (
+  const Gains = (r: Row) => (r.trained === false ? (
     <td colSpan={2 + captures.length} className={s.notTrained} title={r.not_trained ?? undefined}>
       {r.not_trained?.startsWith('training failed') ? 'training failed' : 'not trained - dropped before modelling'}
     </td>
@@ -106,7 +118,7 @@ export function ResultsPage({ selected }: { selected: string | null }) {
       {captures.map((c) => (
         <td key={c} className={`${s.num} ${tone(r.capture_gain[c])}`}>{signed(r.capture_gain[c], 3)}</td>
       ))}
-      <Level r={r} />
+      {Level(r)}
     </>
   ))
   const GainHeads = () => (
@@ -117,7 +129,7 @@ export function ResultsPage({ selected }: { selected: string | null }) {
             hint="The mean predicted probability on test, base's → this model's, and the relative change. A new feature should not move the level much." />
     </>
   )
-  const Level = ({ r }: { r: Row }) => (
+  const Level = (r: Row) => (
     <td className={s.num}>
       {r.score_change == null ? <span className={s.dim}>–</span> : (
         <>
@@ -129,6 +141,16 @@ export function ResultsPage({ selected }: { selected: string | null }) {
     </td>
   )
   const open = (r: Row) => select(r.eval_id, r.variant)
+  const rowId = (r: Row) => `${r.eval_id}:${r.variant}`
+  const flip = (r: Row) => setExpanded((x) => (x === rowId(r) ? null : rowId(r)))
+  const Chev = (r: Row) => <span className={s.chev}>{expanded === rowId(r) ? '▾' : '▸'}</span>
+  const Expansion = (r: Row) => expanded === rowId(r) ? (
+    <tr className={s.expandRow}>
+      <td colSpan={100}>
+        <CasesInline r={r} detail={inferences[r.eval_id] ?? null} onDetails={() => open(r)} />
+      </td>
+    </tr>
+  ) : null
   const remove = (r: Row) => (
     <td className={s.removeCell}>
       <div className={s.removeAt}>
@@ -211,7 +233,8 @@ export function ResultsPage({ selected }: { selected: string | null }) {
                         <Head k="screen" label="Screen Δ Gini" />
                         <Head k="missing" label="Missing" hint="share of rows with no value, every split" />
                         <Head k="corr" label="Max |corr|" hint="largest |Spearman| with a base feature, on train - and which one" />
-                        <GainHeads />
+                        <Head k="vgini" label="Variable Gini" hint="the feature alone as a score for the target, |2·AUC - 1| on test - check C2's measure" />
+                        {GainHeads()}
                         <th className={s.num}>SHAP rank</th>
                         <th className={s.num} title="The base feature it moves with most (Max |corr|): its SHAP rank in base → in base + this feature">Nearest's SHAP rank</th>
                         <th>Verdict</th>
@@ -221,10 +244,11 @@ export function ResultsPage({ selected }: { selected: string | null }) {
                     </thead>
                     <tbody>
                       {singles.map((r) => (
-                        <tr key={`${r.eval_id}:${r.variant}`} onClick={() => open(r)}
-                            className={isOn(r) ? s.on : ''} title="Show the details">
+                        <Fragment key={rowId(r)}>
+                        <tr onClick={() => flip(r)}
+                            className={isOn(r) || expanded === rowId(r) ? s.on : ''} title="Show its target cases">
                           <td>
-                            <div className={s.variant}>{r.name}</div>
+                            <div className={s.variant}>{Chev(r)}{r.name}</div>
                             <div className={s.sub} title={r.direction}>{r.direction}</div>
                           </td>
                           <td>{r.level ? <span className={s.level}>{r.level}</span> : <span className={s.dim}>–</span>}</td>
@@ -234,7 +258,8 @@ export function ResultsPage({ selected }: { selected: string | null }) {
                             {r.max_corr != null ? r.max_corr.toFixed(3) : <span className={s.dim}>–</span>}
                             {r.max_corr_with && <div className={s.corrWith}>{r.max_corr_with}</div>}
                           </td>
-                          <Gains r={r} />
+                          <td className={s.num}>{r.variable_gini != null ? r.variable_gini.toFixed(3) : <span className={s.dim}>–</span>}</td>
+                          {Gains(r)}
                           <td className={s.num}>
                             {r.shap[0]
                               ? <span title={`${(r.shap[0].share * 100).toFixed(1)}% of SHAP`}>
@@ -253,9 +278,11 @@ export function ResultsPage({ selected }: { selected: string | null }) {
                                       title={r.reason || undefined}>{r.verdict}</span>
                               : <span className={s.dim}>–</span>}
                           </td>
-                          <Evaluated r={r} />
+                          {Evaluated(r)}
                           {remove(r)}
                         </tr>
+                        {Expansion(r)}
+                        </Fragment>
                       ))}
                     </tbody>
                   </table>
@@ -268,13 +295,23 @@ export function ResultsPage({ selected }: { selected: string | null }) {
                 <span className={s.groupTitle}>Combinations</span>
                 <span className={s.meta}>{combos.length} · each is base + every feature in it, in one model</span>
               </div>
+              {/* The latest evaluation that asked for base + its singles together, if that model was not trained. */}
+              {(() => {
+                const asked = (evaluations ?? []).find((e) => e.status === 'done' && e.together)
+                return asked?.together_note ? (
+                  <div className={s.togetherNote}>
+                    ⊕ {asked.together === 'all' ? 'all new features' : 'every passing feature'} (evaluation of {when(asked.started)}):
+                    {' '}{asked.together_note.replace(/^base \+ every [a-z ]+: /, '')}
+                  </div>
+                ) : null
+              })()}
               {combos.length === 0 ? <div className={s.empty}>None yet - combine features on the Evaluate page.</div> : (
                 <div className={s.tableWrap}>
                   <table className={s.table}>
                     <thead>
                       <tr>
                         <Head k="name" label="Combination" num={false} />
-                        <GainHeads />
+                        {GainHeads()}
                         <th>SHAP rank of each feature in the combined model</th>
                         <Head k="evaluated" label="Evaluated" />
                         <th />
@@ -282,13 +319,14 @@ export function ResultsPage({ selected }: { selected: string | null }) {
                     </thead>
                     <tbody>
                       {combos.map((r) => (
-                        <tr key={`${r.eval_id}:${r.variant}`} onClick={() => open(r)}
-                            className={isOn(r) ? s.on : ''} title="Show the details">
+                        <Fragment key={rowId(r)}>
+                        <tr onClick={() => flip(r)}
+                            className={isOn(r) || expanded === rowId(r) ? s.on : ''} title="Show its target cases">
                           <td>
-                            <div className={s.variant}>⊕ {r.name}</div>
-                            <div className={s.sub}>{r.members.length} features</div>
+                            <div className={s.variant}>{Chev(r)}⊕ {r.auto ? (r.name === 'all_passing' ? 'every passing feature' : 'all new features') : r.name}</div>
+                            <div className={s.sub}>{r.members.length} features{r.auto ? ' · added by the evaluation' : ''}</div>
                           </td>
-                          <Gains r={r} />
+                          {Gains(r)}
                           <td>
                             <div className={s.members}>
                               {memberRanks(r).map((m) => (
@@ -302,9 +340,11 @@ export function ResultsPage({ selected }: { selected: string | null }) {
                               ))}
                             </div>
                           </td>
-                          <Evaluated r={r} />
+                          {Evaluated(r)}
                           {remove(r)}
                         </tr>
+                        {Expansion(r)}
+                        </Fragment>
                       ))}
                     </tbody>
                   </table>
@@ -327,6 +367,58 @@ export function ResultsPage({ selected }: { selected: string | null }) {
 }
 
 type Row = EvalResult
+
+/** A metrics row's model on the target cases: how its flags move against base's,
+ *  at each model's own top share of test - the Inference results page's first rule. */
+function CasesInline({ r, detail, onDetails }: {
+  r: Row; detail: InferenceDetail | 'none' | null; onDetails: () => void
+}) {
+  const actions = (
+    <div className={s.casesActions}>
+      <button className={s.casesBtn} onClick={onDetails}>Training details ›</button>
+      {detail && detail !== 'none' && detail.done?.summaries[r.variant] && (
+        <button className={s.casesBtn} onClick={() => navigate('inference', `${r.eval_id}.${r.variant}`)}>
+          Open in Inference results ›</button>
+      )}
+    </div>
+  )
+  let body: React.ReactNode
+  if (detail === null) body = <span className={s.dim}>Loading the target cases…</span>
+  else if (detail === 'none') body = <span className={s.dim}>The target cases were not scored with this evaluation - set them up in Setup, then score them on Inference results.</span>
+  else if (detail.status === 'running') body = <span className={s.dim}>Scoring the target cases…</span>
+  else if (!detail.done) body = <span className={s.dim}>Scoring the target cases {detail.status}{detail.error ? `: ${detail.error}` : ''}.</span>
+  else if (!detail.done.summaries[r.variant]) body = <span className={s.dim}>This model was not scored on the target cases.</span>
+  else {
+    const model: Model = { evalId: r.eval_id, evaluated: r.evaluated, variant: r.variant, columns: r.members,
+                           gini: r.gini_gain, detail }
+    const rule = { mode: 'quantile' as const, share: detail.flag_top, score: 0.1 }
+    const sum = summarise(model, rule)
+    const sooner = sum.rows.filter((c) => c.outcome === 'sooner')
+      .sort((a, b) => (b.rowsSooner ?? 0) - (a.rowsSooner ?? 0)).slice(0, 4)
+    body = !sum.cut ? <span className={s.dim}>No flag cutoff for this model.</span> : (
+      <div className={s.cases}>
+        <div className={s.casesHead}>
+          <b>Target cases</b>
+          <span className={s.dim}>{sum.rows.length} cases · each model flags its own top {+(rule.share * 100).toFixed(1)}% of test scores</span>
+        </div>
+        <div className={s.casesGrid}>
+          <OutcomeBar counts={sum.counts} total={sum.rows.length} />
+          <div className={s.casesFact}><span className={s.dim}>Cases flagged</span>
+            <b>{sum.base} → <span className={sum.model > sum.base ? s.up : sum.model < sum.base ? s.down : ''}>{sum.model}</span></b></div>
+          <div className={s.casesFact}><span className={s.dim}>Total rows earlier</span>
+            <b className={sum.total != null ? s.up : ''}>{sum.total ?? '–'}</b></div>
+        </div>
+        {sooner.length > 0 && (
+          <div className={s.casesSooner}>
+            <span className={s.dim}>Flagged sooner:</span>
+            {sooner.map((c) => <span key={c.case} className={s.caseChip}><code>{c.case}</code> {ahead(c)}</span>)}
+          </div>
+        )}
+      </div>
+    )
+  }
+  return <div className={s.casesWrap} onClick={(e) => e.stopPropagation()}>{body}{actions}</div>
+}
 
 /** Every member of a combination with its rank in that model - best first, unranked last. */
 function memberRanks(r: EvalResult) {

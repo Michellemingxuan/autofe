@@ -1,12 +1,13 @@
 import { useEffect, useState } from 'react'
 import { api, rerunDraft, usePolled, type RerunDraft } from '../api'
 import { navigate } from '../App'
-import type { Level, Params, Workspace } from '../types'
+import type { Level, Params, RunSummary, Workspace } from '../types'
 import { SOURCE_STATE } from './Rail'
 import s from './NewDirection.module.css'
 
 type Props = {
   workspace: Workspace | null
+  runs: RunSummary[]
   initialDirection: string | null
   busy: string | null          // why a run cannot start now: it is queued instead
   onStarted: (runId: string) => void
@@ -25,14 +26,24 @@ const LEVELS: { level: Level; title: string; text: string }[] = [
   { level: 'L3', title: 'L3 · request data', text: 'SQL for data the model lacks. Alone: a data-request run, nothing screened' },
 ]
 
+// Two directions are the same when only case, spacing or a closing stop differ.
+const sameText = (x: string) => x.toLowerCase().replace(/[\s.!?。]+$/, '').replace(/\s+/g, ' ').trim()
+const when = (ts: number) => new Date(ts * 1000).toLocaleString([], {
+  month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit', hour12: false,
+})
+
 /** Start a direction: the idea in words, and the run's parameters. */
-export function NewDirection({ workspace, initialDirection, busy, onStarted, onQueued }: Props) {
+export function NewDirection({ workspace, runs, initialDirection, busy, onStarted, onQueued }: Props) {
   const [direction, setDirection] = useState(initialDirection ?? '')
   const [themePool] = usePolled(api.themes, [], 5000)
   const [params, setParams] = useState<Params | null>(null)
   const [error, setError] = useState<string | null>(null)
   const [starting, setStarting] = useState(false)
   const [queued, setQueued] = useState<number | null>(null)   // its place in line, once queued
+  // A direction run before: asked about once per wording - on arrival, or on Start.
+  const [asking, setAsking] = useState(false)
+  const [answered, setAnswered] = useState<string | null>(null)
+  const [arrived, setArrived] = useState(false)      // asked on arriving by a link, not on Start
   // "Edit & re-run" lands here with the earlier run's direction and settings.
   const [rerun] = useState<RerunDraft | null>(() => {
     const draft = rerunDraft.take()
@@ -59,6 +70,16 @@ export function NewDirection({ workspace, initialDirection, busy, onStarted, onQ
     if (!only && params.engine === 'sql') setParams({ ...params, engine: workspace.defaults.engine })
   }, [params?.levels.join(',')])  // eslint-disable-line
 
+  // The latest earlier run of the same direction - not when re-running it on purpose.
+  const earlier = !rerun && direction.trim()
+    ? runs.find((r) => !r.explore && sameText(r.direction) === sameText(direction)) ?? null
+    : null
+  const unanswered = !!earlier && answered !== sameText(direction)
+  // Arriving with a direction (a link) that was run before: ask straight away.
+  useEffect(() => {
+    if (initialDirection && unanswered) { setArrived(true); setAsking(true) }
+  }, [initialDirection, !!earlier])  // eslint-disable-line
+
   if (!workspace || !params) return <div className={s.wrap}>Loading…</div>
   const pool = themePool?.themes ?? []
   const open = !direction.trim()                // no direction: an open exploration
@@ -67,7 +88,8 @@ export function NewDirection({ workspace, initialDirection, busy, onStarted, onQ
   const toggle = <T,>(list: T[], item: T) =>
     list.includes(item) ? list.filter((x) => x !== item) : [...list, item]
 
-  const start = async () => {
+  const start = async (anyway = false) => {
+    if (!anyway && unanswered) { setArrived(false); setAsking(true); return }
     setError(null)
     setQueued(null)
     setStarting(true)
@@ -113,6 +135,14 @@ export function NewDirection({ workspace, initialDirection, busy, onStarted, onQ
           <textarea className={s.text} rows={6} value={direction}
                     placeholder="e.g. customers who pay back less of what they spend are riskier"
                     onChange={(e) => setDirection(e.target.value)} />
+          {earlier && (
+            <div className={s.seen}>
+              You explored this direction on {when(earlier.started)} ({earlier.mode === 'l3'
+                ? `${earlier.requests} data request${earlier.requests === 1 ? '' : 's'}`
+                : `${earlier.verified} verified`}).
+              <button className={s.seenLink} onClick={() => navigate('discover', earlier.run_id)}>Open that run ›</button>
+            </div>
+          )}
           <div className={s.hint}>
             {pool.length
               ? <>Or leave it empty for an open exploration: each round the agent draws a theme from
@@ -253,7 +283,7 @@ export function NewDirection({ workspace, initialDirection, busy, onStarted, onQ
 
           <div className={s.startRow}>
             <button className={s.start} disabled={(open && !pool.length) || starting || noFeatureLevel}
-                    onClick={start}>
+                    onClick={() => start()}>
               {starting ? 'Starting…'
                 : busy ? 'Add to the queue'
                 : rerun ? 'Re-run, replacing the earlier run'
@@ -280,6 +310,32 @@ export function NewDirection({ workspace, initialDirection, busy, onStarted, onQ
           </p>
         </section>
       </div>
+      {asking && earlier && (
+        <div className={s.backdrop} onClick={() => setAsking(false)}>
+          <div className={s.dialog} role="dialog" aria-modal="true" aria-labelledby="seen-title"
+               onClick={(e) => e.stopPropagation()}>
+            <h2 id="seen-title" className={s.dialogTitle}>You have explored this direction before</h2>
+            <p className={s.dialogText}>“{earlier.direction}”</p>
+            <p className={s.dialogMeta}>
+              Run {when(earlier.started)} · {earlier.status === 'running' ? 'still running'
+                : earlier.status === 'done' ? 'finished' : 'unfinished'} · {earlier.mode === 'l3'
+                ? `${earlier.requests} data request${earlier.requests === 1 ? '' : 's'} kept`
+                : `${earlier.verified} feature${earlier.verified === 1 ? '' : 's'} verified`}
+            </p>
+            <p className={s.dialogText}>Would you like to open that run, or start a fresh one?</p>
+            <div className={s.dialogActions}>
+              <button className={s.cancel} onClick={() => setAsking(false)}>Edit the direction</button>
+              <button className={s.cancel} onClick={() => {
+                setAnswered(sameText(direction))
+                setAsking(false)
+                if (!arrived) void start(true)
+              }}>{arrived ? 'Set up a new run' : 'Start a new run'}</button>
+              <button className={s.start} autoFocus onClick={() => navigate('discover', earlier.run_id)}>
+                Open the earlier run</button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   )
 }

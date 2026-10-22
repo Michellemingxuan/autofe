@@ -33,7 +33,7 @@
 .sorted { color: var(--j-accent-deep); }
 .num { font-family: var(--j-font-mono); text-align: right; white-space: nowrap; }
 .table th.num { text-align: right; }
-.variant { font-family: var(--j-font-mono); font-size: var(--j-fs-sm); }
+.variant { font-family: var(--j-font-mono); font-size: var(--j-fs-sm); display: flex; align-items: baseline; }
 .sub { font-size: var(--j-fs-meta); color: var(--j-ink-4); margin-top: 2px; min-width: 220px; max-width: 360px; line-height: 1.4;
        display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
 .level { font-size: 9.5px; font-weight: 700; padding: 1px 6px; border-radius: 4px; background: var(--j-chip); color: var(--j-ink-3); }
@@ -102,3 +102,21 @@
 /* A variant with no model: the gates dropped it, or its training failed. */
 .notTrained { color: var(--j-warn-ink); font-size: var(--j-fs-meta); font-style: italic; }
 .levelShift { color: var(--j-warn-ink); font-weight: 700; }
+
+/* ── a row expanded: its model on the target cases ──────────────────── */
+.chev { color: var(--j-ink-mute); display: inline-block; width: 13px; font-size: 10px; }
+.table tbody tr.expandRow { cursor: default; background: var(--j-surface-soft); }
+.table tbody tr.expandRow:hover { background: var(--j-surface-soft); }
+/* stays in view while the wide table scrolls sideways */
+.casesWrap { position: sticky; left: 0; box-sizing: border-box; width: min(1100px, calc(100vw - 360px)); display: flex; justify-content: space-between; align-items: flex-start; gap: 16px; padding: 6px 8px 8px 19px; font-size: var(--j-fs-sm); }
+.cases { display: flex; flex-direction: column; gap: 8px; flex: 1; min-width: 0; max-width: 820px; }
+.casesHead { display: flex; gap: 10px; align-items: baseline; flex-wrap: wrap; }
+.casesGrid { display: grid; grid-template-columns: minmax(220px, 1fr) auto auto; gap: 22px; align-items: start; }
+.casesFact { display: flex; flex-direction: column; gap: 2px; white-space: nowrap; }
+.casesFact b { font-size: 14px; }
+.casesSooner { display: flex; flex-wrap: wrap; gap: 6px 10px; align-items: center; }
+.caseChip { font-size: var(--j-fs-meta); color: var(--j-good-ink); }
+.caseChip code { font-family: var(--j-font-mono); color: var(--j-ink-2); }
+.casesActions { display: flex; flex-direction: column; gap: 6px; align-items: flex-end; flex-shrink: 0; }
+.casesBtn { background: var(--j-surface); color: var(--j-accent-deep); border: 1px solid var(--j-accent-line); border-radius: var(--j-radius-pill); padding: 4px 12px; font-weight: 600; font-size: var(--j-fs-sm); white-space: nowrap; }
+.togetherNote { font-size: var(--j-fs-sm); color: var(--j-warn-ink); background: var(--j-warn-bg); border-radius: 8px; padding: 6px 10px; }

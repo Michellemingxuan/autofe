@@ -52,7 +52,7 @@ from validation.pipeline import Pipeline
 from validation.stages.analysis import _pct_label
 
 __all__ = ["Evaluation", "EvaluationProcess", "base_model_card", "feature_pool", "list_evaluations",
-           "evaluation_results", "removed_variants", "score_cutoffs", "untrained", "FLAG_SHARES",
+           "evaluation_results", "evaluation_status", "removed_variants", "combinations_of", "TOGETHER", "score_cutoffs", "untrained", "FLAG_SHARES",
            "run_linkage",
            "CAPTURE_PERCENTS"]
 
@@ -136,9 +136,40 @@ def list_evaluations(ws: Workspace) -> list[dict[str, Any]]:
         status = ("done" if "eval_done" in ended else "stopped" if "eval_stopped" in ended
                   else "error" if ended else "running")
         out.append({"eval_id": folder.name, "started": started["ts"],
-                    "features": started["features"], "combinations": started["combinations"],
+                    "features": started["features"], "combinations": combinations_of(events),
+                    "together": started.get("together"),
+                    "together_note": next((e.get("together_note") for e in events
+                                           if e["event"] == "eval_done"), None),
                     "status": status})
     return out
+
+
+def evaluation_status(ws: Workspace) -> dict[str, dict[str, Any]]:
+    """Per pool feature, what its evaluations found: the latest of it alone - its
+    verdict and gain, or why it was not trained - and the combinations it was in."""
+    out: dict[str, dict[str, Any]] = {}
+    for r in evaluation_results(ws):                  # newest first
+        if r["kind"] == "feature" and r["key"]:
+            out.setdefault(r["key"], {"single": None, "combinations": []})
+            if out[r["key"]]["single"] is None:
+                out[r["key"]]["single"] = {k: r.get(k) for k in (
+                    "eval_id", "evaluated", "verdict", "reason", "gini_gain", "trained",
+                    "not_trained")}
+        elif r["kind"] == "combination":
+            for key in r.get("member_keys") or []:
+                entry = out.setdefault(key, {"single": None, "combinations": []})
+                if r["name"] not in entry["combinations"]:
+                    entry["combinations"].append(r["name"])
+    return out
+
+
+def combinations_of(events: list[dict[str, Any]]) -> dict[str, dict[str, Any]]:
+    """An evaluation's combinations: the chosen ones, and the one it added itself
+    (base + every passing feature)."""
+    started = next((e for e in events if e["event"] == "eval_started"), {})
+    done = next((e for e in reversed(events) if e["event"] == "eval_done"), {})
+    return {**(started.get("combinations") or {}),
+            **{n: {**c, "auto": True} for n, c in (done.get("added_combinations") or {}).items()}}
 
 
 def removed_variants(events: list[dict[str, Any]]) -> set[str]:
@@ -220,13 +251,15 @@ def evaluation_results(ws: Workspace) -> list[dict[str, Any]]:
             column = variant.split("__", 1)[1] if "__" in variant else variant
             feature = {} if combo else by_column.get(column, {})
             members = summary["combinations"].get(column, {}).get("columns", []) if combo else []
+            member_keys = summary["combinations"].get(column, {}).get("keys", []) if combo else []
             verdict = verdicts.get(column, {})
             stats = {} if combo else (done.get("feature_stats") or {}).get(column, {})
             nearest = stats.get("max_corr_with")
             rows.append({
                 "eval_id": summary["eval_id"], "evaluated": summary["started"],
                 "variant": variant, "kind": "combination" if combo else "feature",
-                "name": column, "members": members,
+                "name": column, "members": members, "member_keys": member_keys,
+                "auto": bool(combo and summary["combinations"].get(column, {}).get("auto")),
                 "key": feature.get("key"), "run_id": feature.get("run_id"),
                 "direction": feature.get("direction", ""), "level": feature.get("level"),
                 "description": feature.get("description", ""),
@@ -303,6 +336,9 @@ class Evaluation:
     combinations: dict[str, list[str]] = field(default_factory=dict)   # name -> keys
     eval_id: str = field(default_factory=lambda: time.strftime("%Y%m%d_%H%M%S_")
                          + uuid.uuid4().hex[:4])
+    # Then one more model, base + the single features together: "all" of them (each
+    # that reached modelling) or only the "passing" ones; None: no such model.
+    together: str | None = None
 
     def __post_init__(self):
         self.folder = Path(self.ws.cfg.agent.run_dir) / "evaluations" / self.eval_id
@@ -392,7 +428,9 @@ class Evaluation:
         starts and ends (``eval_status``), and the pipeline's own log lines
         (``eval_log``) - which variant is training, SHAP progress, the verdict.
         """
-        self.emit("eval_started",
+        if self.together is True:                       # older callers: the passing ones
+            self.together = "passing"
+        self.emit("eval_started", together=self.together or None,
                   features=[{**{k: f[k] for k in ("key", "column", "name", "run_id", "direction",
                                                   "level", "delta", "description")},
                              "single": f["key"] in self.features}
@@ -435,6 +473,7 @@ class Evaluation:
             if "test" not in cfg.analysis.metrics_on:
                 cfg.analysis.metrics_on = [*cfg.analysis.metrics_on, "test"]
             result = Pipeline(cfg, on_status=self._on_status).run(frames=frames)
+            added = self._together(cfg, frames, result) if self.together else None
         except Exception as error:  # noqa: BLE001 - shown to the user, then re-raised
             self.emit("eval_error", error=f"{type(error).__name__}: {error}")
             raise
@@ -443,6 +482,22 @@ class Evaluation:
 
         comparison = result.analysis.comparison if result.analysis else pd.DataFrame()
         shap = result.analysis.shap_ranking if result.analysis else pd.DataFrame()
+        models = list(result.models)
+        if added and added.get("result") is not None:
+            # The together model joins the evaluation's own, as one more combination.
+            extra, variant = added.pop("result"), f"combo__{added['name']}"
+            if extra.analysis is not None:
+                rows = extra.analysis.comparison.reset_index()
+                comparison = pd.concat([comparison.reset_index(), rows[rows["variant"] == variant]],
+                                       ignore_index=True).set_index("variant")
+                more = extra.analysis.shap_ranking
+                if not more.empty:
+                    shap = pd.concat([shap, more[more["variant"] == variant]], ignore_index=True)
+            models += [m for m in extra.models if m.name == variant]
+            kept = Path(extra.output_dir) / "models" / f"{variant}.json"
+            if kept.exists():
+                (Path(result.output_dir) / "models").mkdir(parents=True, exist_ok=True)
+                shutil.copy(kept, Path(result.output_dir) / "models" / kept.name)
         payload = {
             "output_dir": str(result.output_dir),
             "comparison": comparison.reset_index().to_dict("records"),
@@ -451,24 +506,71 @@ class Evaluation:
             "gates": cfg.run.gates,
             "shap_ranks": self._shap_ranks(shap),
             "feature_stats": stats,
-            "model_errors": {m.name: m.error for m in result.models if m.error},
-            "mean_scores": {m.name: float(m.predictions["test"].mean()) for m in result.models
+            "model_errors": {m.name: m.error for m in models if m.error},
+            "mean_scores": {m.name: float(m.predictions["test"].mean()) for m in models
                             if not m.error and len((m.predictions or {}).get("test", []))},
-            "score_cutoffs": score_cutoffs(result.models),
+            "score_cutoffs": score_cutoffs(models),
+            # Combinations made by the evaluation itself: the together model.
+            "added_combinations": ({added["name"]: {k: added[k] for k in ("keys", "columns")}}
+                                   if added and added.get("columns") else {}),
+            "together_note": (added or {}).get("note"),
         }
         self.emit("eval_done", **payload)
         return payload
 
+    def _together(self, cfg: Any, frames: dict[str, pd.DataFrame], result: Any) -> dict[str, Any]:
+        """Base + the single features in one model - every one that reached modelling
+        ("all"), or only those that passed ("passing") - trained after the verdicts,
+        beside the evaluation's own. Fewer than two: none, and a note says why."""
+        singles = {self.column[k]: k for k in self.features}
+        name = TOGETHER[self.together]
+        if self.together == "passing":
+            verdicts = result.verdicts.to_dict("records") if not result.verdicts.empty else []
+            passed = [v["feature"] for v in verdicts
+                      if v.get("verdict") == "PASS" and v["feature"] in singles]
+            what = "passing feature"
+        else:
+            trained = {m.name for m in result.models if not m.error}
+            passed = [c for c in singles if f"loi__{c}" in trained]
+            what = "new feature"
+        if len(passed) < 2:
+            note = (f"base + every {what}: not trained - {len(passed)} "
+                    f"{'passed' if self.together == 'passing' else 'reached modelling'}, "
+                    "a model of them together needs two")
+            self.emit("eval_log", message=note)
+            return {"note": note}
+        self.emit("eval_log", message=f"base + the {len(passed)} {what}s, together")
+        again = copy.deepcopy(cfg)
+        again.features.new = passed
+        again.model.variants = ["base"]
+        again.model.combinations = {name: passed}
+        again.model.single = []
+        again.run.name = "together"
+        again.run.gates = "open"                       # they passed already
+        try:
+            extra = Pipeline(again, on_status=self._on_status).run(frames=frames)
+        except Exception as error:  # noqa: BLE001 - the singles stand; say why it is missing
+            note = f"base + every {what}: training failed - {type(error).__name__}: {error}"
+            self.emit("eval_log", message=note)
+            return {"note": note}
+        return {"name": name, "keys": [singles[c] for c in passed], "columns": passed,
+                "result": extra, "note": None}
+
     def _feature_stats(self, frames: dict[str, pd.DataFrame]) -> dict[str, dict[str, Any]]:
         """Per chosen feature: its missing rate over every row, and the base feature it
         moves with most - the largest |Spearman| on train (a sample of it, when train is
-        large). Against base only, so the number does not depend on what else was chosen."""
+        large) - and its variable Gini on test: the feature alone as a score for the
+        target, |2·AUC - 1|, as check C2 reads it on the screen rows. Against base only,
+        so the numbers do not depend on what else was chosen."""
         ws = self.ws
         everything = pd.concat(frames.values(), ignore_index=True)
         train = frames.get("train", everything)
         if len(train) > STATS_ROWS:
             train = train.sample(STATS_ROWS, random_state=0)
         base = train[list(ws.base_features)].apply(pd.to_numeric, errors="coerce").rank()
+        test = frames.get("test", everything)
+        if len(test) > STATS_ROWS:
+            test = test.sample(STATS_ROWS, random_state=0)
         out = {}
         for column in (f["column"] for f in self.chosen):
             rho = base.corrwith(train[column].rank()).abs().dropna()
@@ -476,6 +578,8 @@ class Evaluation:
                 "missing_rate": float(everything[column].isna().mean()),
                 "max_corr": float(rho.max()) if len(rho) else None,
                 "max_corr_with": str(rho.idxmax()) if len(rho) else None,
+                "variable_gini": (variable_gini(test[column], test[ws.target])
+                                  if ws.target in test else None),
             }
         return out
 
@@ -514,7 +618,7 @@ class Evaluation:
 
 
 def _evaluate_in_child(cfg: Any, features: list[str], combinations: dict[str, list[str]],
-                       eval_id: str) -> None:
+                       eval_id: str, together: str | None = None) -> None:
     """The evaluation's own process. A session of its own, so a stop ends it and
     every script and worker it started, at once. Once it is done, the target cases
     are scored with every model it trained (agent.infer), if they are set up."""
@@ -522,7 +626,7 @@ def _evaluate_in_child(cfg: Any, features: list[str], combinations: dict[str, li
 
     os.setsid()
     ws = Workspace.from_config(cfg)
-    Evaluation(ws, features, combinations, eval_id=eval_id).run()
+    Evaluation(ws, features, combinations, eval_id=eval_id, together=together).run()
     infer_after_evaluation(ws, eval_id)
 
 
@@ -546,7 +650,8 @@ class EvaluationProcess:
         ctx = multiprocessing.get_context("spawn")
         self.process = ctx.Process(
             target=_evaluate_in_child, name=f"evaluation-{self.eval_id}",
-            args=(self.job.ws.cfg, self.job.features, self.job.combinations, self.eval_id))
+            args=(self.job.ws.cfg, self.job.features, self.job.combinations, self.eval_id,
+                  self.job.together))
         self.process.start()
         while self.process.is_alive():
             self._read()
@@ -610,10 +715,27 @@ class EvaluationProcess:
 # The shares of test a model's flag cutoff may be set at (inference): the score
 # above which a model puts that share of the test rows.
 FLAG_SHARES = (0.01, 0.02, 0.05, 0.10, 0.20)
+# The combination an evaluation adds itself: base + every single feature that passed.
+TOGETHER = {"all": "all_new", "passing": "all_passing"}
 
 
 def share_key(share: float) -> str:
     return f"{share:g}"
+
+
+def variable_gini(values: pd.Series, target: pd.Series) -> float | None:
+    """The feature alone as a score for the target: |2·AUC - 1|, AUC from ranks
+    (Mann-Whitney), a missing value ranked in the middle - check C2's measure
+    (agent.checks.Sketch.variable_gini). None for a constant feature or one class."""
+    f = pd.to_numeric(values, errors="coerce").astype(float).reset_index(drop=True)
+    f = f.fillna(f.median()) if f.notna().any() else f
+    positive = (pd.to_numeric(target, errors="coerce") == 1).to_numpy()
+    n1, n0 = int(positive.sum()), int((~positive).sum())
+    if f.isna().all() or f.nunique() < 2 or not n1 or not n0:
+        return None
+    ranks = f.rank().to_numpy()
+    auc = (ranks[positive].sum() - n1 * (n1 + 1) / 2) / (n1 * n0)
+    return round(abs(2 * auc - 1), 4)
 
 
 def score_cutoffs(models: list[Any], shares: tuple[float, ...] = FLAG_SHARES) -> dict[str, dict[str, float]]:

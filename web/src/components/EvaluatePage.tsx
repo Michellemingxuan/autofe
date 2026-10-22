@@ -11,14 +11,25 @@ import s from './EvaluatePage.module.css'
  * base + each on the full splits and scores them on test, the out-of-time
  * hold-out. The run and its results open on the Results page.
  */
+/** A combination being built: its members, and the name it is evaluated under. */
+type Combo = { id: string; name: string; keys: string[] }
+
+// What a dragged feature carries: its pool key.
+const DRAG = 'application/x-autofe-feature'
+const dragged = (e: React.DragEvent) => e.dataTransfer.types.includes(DRAG)
+const startDrag = (key: string) => (e: React.DragEvent) => {
+  e.dataTransfer.setData(DRAG, key)
+  e.dataTransfer.effectAllowed = 'copy'
+}
+const slug = (name: string) => name.trim().replace(/\W+/g, '_').replace(/^_+|_+$/g, '')
+
 export function EvaluatePage({ onStarted }: { onStarted: (id: string) => void }) {
   const [pool, refreshPool] = usePolled(api.features, [], 10000)
-  const [picked, setPicked] = useState<string[]>([])
-  const [combos, setCombos] = useState<Record<string, string[]>>({})
-  const [building, setBuilding] = useState<string[]>([])
-  // Chosen features evaluated only inside their combinations, with no model alone.
-  const [groupOnly, setGroupOnly] = useState<string[]>([])
-  const [comboName, setComboName] = useState('')
+  const [picked, setPicked] = useState<string[]>([])           // evaluated alone
+  const [combos, setCombos] = useState<Combo[]>([])
+  // Then base + the singles together: every one that reached modelling, or the passing ones.
+  const [together, setTogether] = useState<'all' | 'passing' | 'off'>('all')
+  const [over, setOver] = useState<string | null>(null)        // the drop zone under the drag
   const [opened, setOpened] = useState<string | null>(null)
   const [error, setError] = useState<string | null>(null)
   const [starting, setStarting] = useState(false)
@@ -42,32 +53,59 @@ export function EvaluatePage({ onStarted }: { onStarted: (id: string) => void })
     if (!pool) return
     const alive = new Set(pool.map((f) => f.key))
     setPicked((p) => p.filter((k) => alive.has(k)))
-    setBuilding((b) => b.filter((k) => alive.has(k)))
-    setGroupOnly((g) => g.filter((k) => alive.has(k)))
-    setCombos((c) => Object.fromEntries(Object.entries(c).filter(([, ks]) => ks.every((k) => alive.has(k)))))
+    setCombos((cs) => cs.map((c) => ({ ...c, keys: c.keys.filter((k) => alive.has(k)) }))
+      .filter((c) => c.keys.length))
   }, [pool])
 
-  const toggle = (key: string) => {
+  const usable = (key: string) => !!byKey[key] && !byKey[key].missing_linkage.length
+  const toggle = (key: string) =>
     setPicked((p) => (p.includes(key) ? p.filter((k) => k !== key) : [...p, key]))
-    setBuilding((b) => b.filter((k) => k !== key))
-    setGroupOnly((g) => g.filter((k) => k !== key))
+  /** Into a combination - a new one when `id` is null. */
+  const addTo = (id: string | null, key: string) => {
+    if (!usable(key)) return
+    setCombos((cs) => {
+      if (id === null) {
+        let n = cs.length + 1
+        while (cs.some((c) => c.name === `combo_${n}`)) n++
+        return [...cs, { id: `c${Date.now()}`, name: `combo_${n}`, keys: [key] }]
+      }
+      return cs.map((c) => (c.id === id && !c.keys.includes(key) ? { ...c, keys: [...c.keys, key] } : c))
+    })
   }
-  // Alone: base + the feature, a model of its own; off, it is evaluated only in its
-  // combinations - so a combination can be evaluated by itself.
-  const inCombo = new Set(Object.values(combos).flat())
-  const singles = picked.filter((k) => !(groupOnly.includes(k) && inCombo.has(k)))
-  const nCombos = Object.keys(combos).length
-  const addCombo = () => {
-    const name = comboName.trim().replace(/\W+/g, '_') || `combo_${Object.keys(combos).length + 1}`
-    setCombos({ ...combos, [name]: building })
-    setBuilding([])
-    setComboName('')
-  }
+  const takeOut = (id: string, key: string) =>
+    setCombos((cs) => cs.map((c) => (c.id === id ? { ...c, keys: c.keys.filter((k) => k !== key) } : c))
+      .filter((c) => c.keys.length))
+  const rename = (id: string, name: string) => setCombos((cs) => cs.map((c) => (c.id === id ? { ...c, name } : c)))
+
+  /** Drop-zone props: highlighted while a feature is over it. */
+  const zone = (id: string, onDrop: (key: string) => void) => ({
+    onDragOver: (e: React.DragEvent) => { if (dragged(e)) { e.preventDefault(); setOver(id) } },
+    onDragLeave: () => setOver((o) => (o === id ? null : o)),
+    onDrop: (e: React.DragEvent) => {
+      e.preventDefault()
+      setOver(null)
+      const key = e.dataTransfer.getData(DRAG)
+      if (key) onDrop(key)
+    },
+  })
+
+  // A combination needs two features; names are made unique as they are sent.
+  const ready = combos.filter((c) => c.keys.length >= 2)
+  const named = (() => {
+    const out: Record<string, string[]> = {}
+    ready.forEach((c, i) => {
+      let name = slug(c.name) || `combo_${i + 1}`
+      while (out[name]) name += '_2'
+      out[name] = c.keys
+    })
+    return out
+  })()
+  const withTogether = together !== 'off' && picked.length >= 2
   const run = async () => {
     setError(null)
     setStarting(true)
     try {
-      const { eval_id } = await api.evaluate(singles, combos)
+      const { eval_id } = await api.evaluate(picked, named, withTogether ? together : null)
       onStarted(eval_id)
     } catch (e: any) {
       setError(e.message)
@@ -75,6 +113,9 @@ export function EvaluatePage({ onStarted }: { onStarted: (id: string) => void })
       setStarting(false)
     }
   }
+  const plural = (n: number, word: string) => `${n} ${word}${n === 1 ? '' : 's'}`
+  const label = [picked.length ? plural(picked.length, 'feature') : '',
+                 ready.length ? plural(ready.length, 'combination') : ''].filter(Boolean).join(' + ')
 
   return (
     <div className={s.page}>
@@ -87,7 +128,7 @@ export function EvaluatePage({ onStarted }: { onStarted: (id: string) => void })
         <section className={s.pool}>
           <div className={s.panelHead}>
             <span className={`eyebrow ${s.panelTitle}`}>Feature pool</span>
-            <span className={s.meta}>{pool?.length ?? 0} verified · {groups.length} directions · click a feature for its code</span>
+            <span className={s.meta}>{pool?.length ?? 0} verified · {groups.length} directions · tick, or drag into a combination</span>
           </div>
           <SearchBox value={query} onChange={setQuery} shown={shown.length} total={pool?.length ?? 0}
                      placeholder="Search name, description, direction, source or code" />
@@ -124,62 +165,91 @@ export function EvaluatePage({ onStarted }: { onStarted: (id: string) => void })
         <div className={s.side}>
           <section className={s.card}>
             <div className={`eyebrow ${s.panelTitle}`}>Evaluation set</div>
-            {picked.length === 0
-              ? <div className={s.hint}>Tick features in the pool - from any direction.</div>
-              : (
+            <ol className={s.howto}>
+              <li><b>Alone</b> - tick a feature in the pool: base + it, a model of its own.</li>
+              <li><b>Together</b> - drag features from the pool onto <i>New combination</i>: base + all of them,
+                one model. Drop more onto a combination to add them, and name it if you like.</li>
+              <li>Then one more model with the singles together - all of them, or only those that pass.</li>
+            </ol>
+
+            <div className={`${s.zone} ${over === 'alone' ? s.zoneOver : ''}`}
+                 {...zone('alone', (k) => { if (usable(k) && !picked.includes(k)) setPicked((p) => [...p, k]) })}>
+              <div className={s.zoneHead}>
+                <span className={s.zoneTitle}>Alone</span>
+                <span className={s.meta}>{picked.length ? `${picked.length} · base + each` : 'tick features in the pool'}</span>
+              </div>
+              {picked.length > 0 && (
                 <div className={s.chips}>
-                  {picked.map((k) => {
-                    const alone = !groupOnly.includes(k)
-                    return (
-                      <span key={k} className={`${s.chip} ${building.includes(k) ? s.chipOn : ''} ${alone ? '' : s.chipGroup}`}>
-                        <label className={s.chipPick} title="tick to put it in a combination">
-                          <input type="checkbox" checked={building.includes(k)}
-                                 onChange={() => setBuilding((b) => b.includes(k) ? b.filter((x) => x !== k) : [...b, k])} />
-                          {byKey[k]?.name ?? k}
-                        </label>
-                        {inCombo.has(k) && (
-                          <button className={s.alone}
-                                  title={alone ? 'Evaluated alone too (base + it). Click to evaluate it only in its combinations'
-                                               : 'Evaluated only in its combinations. Click to evaluate it alone too'}
-                                  onClick={() => setGroupOnly((g) => alone ? [...g, k] : g.filter((x) => x !== k))}>
-                            {alone ? 'alone ✓' : 'in combo only'}
-                          </button>
-                        )}
-                      </span>
-                    )
-                  })}
+                  {picked.map((k) => (
+                    <span key={k} className={s.chip} draggable onDragStart={startDrag(k)}
+                          title="Drag onto a combination to evaluate it there too">
+                      <span className={s.grip} aria-hidden>⠿</span>{byKey[k]?.name ?? k}
+                      <button className={s.chipX} title="Not alone" onClick={() => toggle(k)}>×</button>
+                    </span>
+                  ))}
                 </div>
               )}
-            <div className={s.comboRow}>
-              <input className={s.input} value={comboName} placeholder="combination name"
-                     onChange={(e) => setComboName(e.target.value)} />
-              <button className={s.secondary} disabled={building.length < 2} onClick={addCombo}>
-                Combine {building.length >= 2 ? building.length : ''}
-              </button>
             </div>
-            <div className={s.hint}>Tick two or more chips to evaluate them together as base + the group.
-              A feature in a combination is also evaluated alone unless you switch it to “in combo only”.</div>
-            {Object.entries(combos).map(([name, keys]) => (
-              <div key={name} className={s.combo}>
-                <span className={s.comboName}>⊕ {name}</span>
-                <span className={s.comboMembers}>base + {keys.map((k) => byKey[k]?.name ?? k).join(' + ')}</span>
-                <button className={s.remove} onClick={() => {
-                  const { [name]: _, ...rest } = combos
-                  setCombos(rest)
-                }}>×</button>
+
+            {combos.map((c) => (
+              <div key={c.id} className={`${s.zone} ${s.comboZone} ${over === c.id ? s.zoneOver : ''}`}
+                   {...zone(c.id, (k) => addTo(c.id, k))}>
+                <div className={s.zoneHead}>
+                  <span className={s.comboName}>⊕</span>
+                  <input className={s.comboInput} value={c.name} aria-label="Combination name"
+                         onChange={(e) => rename(c.id, e.target.value)} />
+                  <button className={s.remove} title="Remove this combination"
+                          onClick={() => setCombos((cs) => cs.filter((x) => x.id !== c.id))}>×</button>
+                </div>
+                <div className={s.chips}>
+                  <span className={s.basePill}>base +</span>
+                  {c.keys.map((k) => (
+                    <span key={k} className={`${s.chip} ${s.chipOn}`} draggable onDragStart={startDrag(k)}>
+                      {byKey[k]?.name ?? k}
+                      <button className={s.chipX} title="Take it out" onClick={() => takeOut(c.id, k)}>×</button>
+                    </span>
+                  ))}
+                  <select className={s.addSelect} value="" aria-label="Add a feature"
+                          onChange={(e) => { if (e.target.value) addTo(c.id, e.target.value) }}>
+                    <option value="">+ add…</option>
+                    {(pool ?? []).filter((f) => !c.keys.includes(f.key) && usable(f.key)).map((f) => (
+                      <option key={f.key} value={f.key}>{f.name}</option>
+                    ))}
+                  </select>
+                </div>
+                {c.keys.length < 2 && <div className={s.hint}>Add one more feature - a combination needs two.</div>}
               </div>
             ))}
+
+            <div className={`${s.zone} ${s.newZone} ${over === 'new' ? s.zoneOver : ''}`}
+                 {...zone('new', (k) => addTo(null, k))}>
+              <span>⊕ New combination</span>
+              <span className={s.meta}>drag a feature here</span>
+            </div>
+
+            <div className={`${s.together} ${picked.length < 2 ? s.togetherOff : ''}`}>
+              <span>Then, one more model:</span>
+              <select className={s.togetherSelect} value={together} disabled={picked.length < 2}
+                      onChange={(e) => setTogether(e.target.value as typeof together)}>
+                <option value="all">base + all new features</option>
+                <option value="passing">base + only the features that pass</option>
+                <option value="off">none</option>
+              </select>
+              <span className={s.hint}>
+                {picked.length < 2 ? 'needs two features alone'
+                  : together === 'all' ? 'every feature evaluated alone, together - trained after them; it shows under Combinations'
+                  : together === 'passing' ? 'trained after the verdicts, if two or more pass; it shows under Combinations'
+                  : ''}
+              </span>
+            </div>
+
             {error && <div className={s.error}>{error}</div>}
-            <div className={s.hint}>Base + each feature, and base + each combination, train on the full
-              splits and are scored on test. Progress and results open on the Results page.</div>
-            <button className={s.primary} disabled={(!singles.length && !nCombos) || starting} onClick={run}>
-              {starting ? 'Starting…' : [
-                singles.length ? `${singles.length} feature${singles.length === 1 ? '' : 's'}` : '',
-                nCombos ? `${nCombos} combination${nCombos === 1 ? '' : 's'}` : '',
-              ].filter(Boolean).join(' + ').replace(/^/, 'Evaluate ') || 'Evaluate'}
+            <div className={s.hint}>Every model trains on the full splits and is scored on test; progress and
+              results open on Metrics results, the target cases on Inference results.</div>
+            <button className={s.primary} disabled={(!picked.length && !ready.length) || starting} onClick={run}>
+              {starting ? 'Starting…' : label ? `Evaluate ${label}${withTogether ? (together === 'all' ? ' + all together' : ' + the passing together') : ''}` : 'Evaluate'}
             </button>
           </section>
-
         </div>
       </div>
     </div>
@@ -215,7 +285,8 @@ function PoolRow({ feature: f, picked, open, onPick, onOpen, onRemove }: {
 }) {
   const blocked = f.missing_linkage.length > 0
   return (
-    <div className={`${s.feature} ${picked ? s.on : ''} ${open ? s.featureOpen : ''}`}>
+    <div className={`${s.feature} ${picked ? s.on : ''} ${open ? s.featureOpen : ''}`}
+         draggable={!blocked} onDragStart={startDrag(f.key)}>
       <div className={s.featureRow}>
         <input type="checkbox" checked={picked} onChange={onPick} disabled={blocked}
                title={blocked ? `No linkage recorded for ${f.missing_linkage.join(', ')}` : 'select for evaluation'} />
@@ -229,6 +300,7 @@ function PoolRow({ feature: f, picked, open, onPick, onOpen, onRemove }: {
           <span className={s.desc}>{f.description}</span>
           {f.sources.length > 0 && <span className={s.sources}>{f.sources.join(' + ')}</span>}
           {blocked && <span className={s.missing}>no linkage recorded for {f.missing_linkage.join(', ')}</span>}
+          <Evaluated status={f.evaluation} />
         </button>
       </div>
       {open && (
@@ -247,5 +319,25 @@ function PoolRow({ feature: f, picked, open, onPick, onOpen, onRemove }: {
         </div>
       )}
     </div>
+  )
+}
+
+/** What evaluations made of a pool feature: alone - its verdict, or why it was not
+ *  trained - and the combinations it was in. */
+function Evaluated({ status }: { status?: PoolFeature['evaluation'] }) {
+  if (!status) return <span className={s.notYet}>not evaluated yet</span>
+  const one = status.single
+  return (
+    <span className={s.evalLine}>
+      {one && (one.trained === false
+        ? <span className={`${s.evalTag} ${s.evalDropped}`} title={one.not_trained ?? undefined}>
+            {one.not_trained?.startsWith('training failed') ? 'training failed' : 'dropped before modelling'}</span>
+        : <span className={`${s.evalTag} ${one.verdict === 'PASS' ? s.evalPass : s.evalFail}`}
+                title={one.reason || undefined}>
+            evaluated · {one.verdict ?? '–'}{one.gini_gain != null ? ` · test Δ ${signed(one.gini_gain)}` : ''}</span>)}
+      {status.combinations.length > 0 && (
+        <span className={s.evalCombo}>in ⊕ {status.combinations.join(', ⊕ ')}</span>
+      )}
+    </span>
   )
 }

@@ -39,7 +39,7 @@ from typing import Any
 import numpy as np
 import pandas as pd
 
-from agent.evaluate import FLAG_SHARES, feature_pool, list_evaluations, removed_variants, share_key
+from agent.evaluate import FLAG_SHARES, combinations_of, feature_pool, list_evaluations, removed_variants, share_key
 from agent.events import EventLog, finite, read_events, run_logged
 from agent.tools.linkage import engine_of
 from agent.workspace import Workspace
@@ -219,7 +219,7 @@ def scored_variants(ws: Workspace, eval_id: str) -> list[dict[str, Any]]:
         name = v.split("__", 1)[1]
         combo = v.startswith("combo__")
         out.append({"variant": v, "kind": "combination" if combo else "feature", "name": name,
-                    "columns": list(started["combinations"][name]["columns"]) if combo else [name],
+                    "columns": list(combinations_of(events)[name]["columns"]) if combo else [name],
                     "gini_gain": r.get("gini_gain_test")})
     return out
 

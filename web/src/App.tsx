@@ -97,7 +97,7 @@ export function App() {
           <SetupPage workspace={workspace} onChange={refreshWorkspace} />
         )}
         {route.page === 'discover' && !route.id && (
-          <NewDirection key={route.direction} workspace={workspace}
+          <NewDirection key={route.direction} workspace={workspace} runs={runs ?? []}
                         initialDirection={route.direction}
                         busy={startBlocked(workspace)}
                         onStarted={(id) => { refreshRuns(); navigate('discover', id) }}
@@ -113,7 +113,7 @@ export function App() {
         )}
         {route.page === 'requests' && <RequestsPage />}
         {route.page === 'results' && <ResultsPage selected={route.id} />}
-        {route.page === 'inference' && <InferencePage />}
+        {route.page === 'inference' && <InferencePage selected={route.id} />}
       </main>
       {board && <LoggingBoard onClose={() => setBoard(false)} />}
       {intro && <Intro onEnter={closeIntro} onLeave={() => setEmerging(true)} />}

@@ -93,3 +93,15 @@
 .cancel { border: 1px solid var(--j-border-strong); background: var(--j-surface); color: var(--j-ink-3); border-radius: var(--j-radius-ctl); padding: 0 16px; font-weight: 600; }
 .cancel:hover:not(:disabled) { background: var(--j-surface-soft); color: var(--j-ink); }
 .queued { font-size: var(--j-fs-sm); color: var(--j-accent-deep); background: var(--j-accent-soft); border: 1px solid var(--j-accent-line); border-radius: 8px; padding: 7px 11px; }
+
+/* ── a direction run before ─────────────────────────────────────────── */
+.seen { font-size: var(--j-fs-sm); color: var(--j-accent-deep); background: var(--j-accent-soft); border: 1px solid var(--j-accent-line); padding: 6px 10px; border-radius: 8px; display: flex; flex-wrap: wrap; gap: 4px 10px; align-items: center; }
+.seenLink { border: none; background: transparent; color: var(--j-accent); font-weight: 600; padding: 0; }
+.backdrop { position: fixed; inset: 0; z-index: 50; background: rgba(10, 20, 40, 0.35); display: grid; place-items: center; padding: 16px; }
+.dialog { width: min(480px, 100%); background: var(--j-surface); border-radius: 14px; box-shadow: 0 20px 60px rgba(10, 20, 40, 0.3); padding: 20px 22px; display: flex; flex-direction: column; gap: 10px; }
+.dialogTitle { font-size: 17px; font-weight: 600; margin: 0; }
+.dialogText { margin: 0; color: var(--j-ink-2); line-height: 1.5; }
+.dialogMeta { margin: 0; font-size: var(--j-fs-sm); color: var(--j-ink-4); }
+.dialogActions { display: flex; justify-content: flex-end; gap: 8px; margin-top: 6px; flex-wrap: wrap; }
+.dialogActions button { padding: 8px 14px; }
+.dialogActions .start { flex: none; }

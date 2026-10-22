@@ -9,6 +9,7 @@ point-in-time linkage, and that the second cannot get through.
 from __future__ import annotations
 
 import json
+from pathlib import Path
 
 import pytest
 import yaml
@@ -365,6 +366,8 @@ def build(spark, sources, base):
     col_a = "pay_to_spend_90d"                      # names are unique across runs: no suffix
     assert {"base", f"loi__{col_a}", "combo__both"} <= set(variants)
     assert variants[f"loi__{col_a}"]["gini_gain_test"] > 0.03
+    # The variable Gini on test: the feature alone as a score, as check C2 reads it.
+    assert 0.05 < out["feature_stats"][col_a]["variable_gini"] <= 1
     assert evaluation.events[-1]["event"] == "eval_done"
 
     # A combination by itself: its members get no model alone, and no row says
@@ -376,6 +379,34 @@ def build(spark, sources, base):
     assert trained == {"base", "combo__both"}
     rows = [r for r in evaluation_results(workspace) if r["eval_id"] == alone.eval_id]
     assert [r["variant"] for r in rows] == ["combo__both"]
+
+    # Base + every passing feature, together: one more combination, added by the
+    # evaluation itself after the verdicts.
+    from agent.evaluate import TOGETHER, evaluation_status, list_evaluations
+
+    verdict = workspace.cfg.verdict
+    kept = verdict.min_gini_gain, verdict.max_shap_rank_pct
+    verdict.min_gini_gain, verdict.max_shap_rank_pct = -1.0, 1.0      # both pass
+    try:
+        together = Evaluation(workspace, [a, b], {}, together="passing")
+        done = together.run()
+    finally:
+        verdict.min_gini_gain, verdict.max_shap_rank_pct = kept
+    passed = [v["feature"] for v in done["verdicts"] if v["verdict"] == "PASS"]
+    assert len(passed) == 2 and not done["together_note"]
+    name = TOGETHER["passing"]
+    assert f"combo__{name}" in {r["variant"] for r in done["comparison"]}
+    assert f"combo__{name}" in done["score_cutoffs"]
+    assert (Path(done["output_dir"]) / "models" / f"combo__{name}.json").exists()
+    listed = next(e for e in list_evaluations(workspace) if e["eval_id"] == together.eval_id)
+    assert listed["combinations"][name]["auto"] and listed["combinations"][name]["columns"] == passed
+    # "all": every single that reached modelling - here without lowering any bar.
+    latest = Evaluation(workspace, [a, b], {}, together="all")
+    every = latest.run()
+    assert f"combo__{TOGETHER['all']}" in {r["variant"] for r in every["comparison"]}
+    # The pool knows what became of each feature.
+    status = evaluation_status(workspace)
+    assert status[a]["single"]["eval_id"] == latest.eval_id and "both" in status[a]["combinations"]
 
     # The board: an evaluated feature says so, with its verdict; a removed one too.
     from agent.board import board_rows

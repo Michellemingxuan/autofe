@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react'
+import { Fragment, useEffect, useMemo, useState } from 'react'
 import { api, usePolled } from '../api'
 import { navigate } from '../App'
 import type { InferenceDetail, TargetCases, TimelinePoint } from '../types'
@@ -15,18 +15,18 @@ const variantName = (v: string) => (v.startsWith('combo__') ? `⊕ ${v.slice(7)}
 
 // Sooner: base + new flags the case at an earlier row - or base never does.
 // Later: at a later row - or base + new never does.
-type Outcome = 'sooner' | 'same' | 'later' | 'neither'
+export type Outcome = 'sooner' | 'same' | 'later' | 'neither'
 const OUTCOME: Record<Outcome, string> = {
   sooner: 'sooner', same: 'same row', later: 'later', neither: 'neither flags',
 }
-const ORDER: Outcome[] = ['sooner', 'same', 'later', 'neither']
+export const ORDER: Outcome[] = ['sooner', 'same', 'later', 'neither']
 
 /** How a row is flagged: each model at its own top share of test, both at base's,
  *  or both at a fixed score. */
-type Rule = { mode: 'quantile' | 'base' | 'score'; share: number; score: number }
+export type Rule = { mode: 'quantile' | 'base' | 'score'; share: number; score: number }
 
 /** A model of an evaluation, with every case scored by it and by base. */
-type Model = { evalId: string; evaluated: number; variant: string; columns: string[]
+export type Model = { evalId: string; evaluated: number; variant: string; columns: string[]
                gini: number | null; detail: InferenceDetail }
 
 type CaseView = {
@@ -39,7 +39,7 @@ type CaseView = {
   daysSooner: number | null
 }
 
-function cutoffsOf(model: Model, rule: Rule): { base: number; model: number } | null {
+export function cutoffsOf(model: Model, rule: Rule): { base: number; model: number } | null {
   const done = model.detail.done!
   const q = done.quantiles
   const key = String(rule.share)
@@ -51,7 +51,7 @@ function cutoffsOf(model: Model, rule: Rule): { base: number; model: number } | 
   return base == null || mine == null ? null : { base, model: mine }
 }
 
-function casesOf(model: Model, cut: { base: number; model: number }): CaseView[] {
+export function casesOf(model: Model, cut: { base: number; model: number }): CaseView[] {
   return Object.entries(model.detail.timelines ?? {}).map(([name, points]) => {
     const base = points.find((p) => p.scores.base >= cut.base) ?? null
     const mine = points.find((p) => p.scores[model.variant] >= cut.model) ?? null
@@ -65,9 +65,24 @@ function casesOf(model: Model, cut: { base: number; model: number }): CaseView[]
   })
 }
 
+/** A model's cases under a rule, counted: by outcome, flagged by each, and the
+ *  rows earlier in all, over the cases it flags sooner. */
+export function summarise(model: Model, rule: Rule) {
+  const cut = cutoffsOf(model, rule)
+  const rows = cut ? casesOf(model, cut) : []
+  const count = (o: Outcome) => rows.filter((c) => c.outcome === o).length
+  const flagged = (who: 'base' | 'model') => rows.filter((c) => c.first[who]).length
+  const early = rows.filter((c) => c.outcome === 'sooner').map((c) => c.rowsSooner ?? 0).sort((a, b) => a - b)
+  return {
+    cut, rows, counts: ORDER.map((o) => [o, count(o)] as [Outcome, number]),
+    base: flagged('base'), model: flagged('model'),
+    total: early.length ? early.reduce((a, b) => a + b, 0) : null,
+  }
+}
+
 const worse = (o: Outcome) => o === 'later'
 /** How far ahead base + new is on a case, in words; "+" where a model never flags it. */
-const ahead = (c: CaseView) => {
+export const ahead = (c: CaseView) => {
   const n = Math.abs(c.rowsSooner ?? 0), plus = c.first.base && c.first.model ? '' : '+'
   return c.outcome === 'sooner' ? `${n}${plus} row${n === 1 ? '' : 's'} earlier`
     : c.outcome === 'later' ? `${n}${plus} row${n === 1 ? '' : 's'} later` : OUTCOME[c.outcome]
@@ -79,13 +94,15 @@ const ahead = (c: CaseView) => {
  * it trained. Pick how a row is flagged; for each model, which cases it flags
  * sooner than base, and each case's scores row by row.
  */
-export function InferencePage() {
+export function InferencePage({ selected }: { selected?: string | null }) {
   const [cases] = usePolled(api.targetCases, [], 30000)
   const [list, refreshList] = usePolled(api.inferences, [], 3000)
   const [details, setDetails] = useState<Record<string, InferenceDetail>>({})
   const [error, setError] = useState<string | null>(null)
   const [rule, setRule] = useState<Rule>({ mode: 'quantile', share: 0.05, score: 0.1 })
-  const [pick, setPick] = useState<string | null>(null)          // `${evalId}|${variant}`
+  // `${evalId}|${variant}` - opened from a metrics row as `${evalId}.${variant}`.
+  const [pick, setPick] = useState<string | null>(selected ? selected.replace('.', '|') : null)
+  useEffect(() => { if (selected) setPick(selected.replace('.', '|')) }, [selected])
 
   useEffect(() => { if (cases) setRule((r) => ({ ...r, share: cases.flag_top })) }, [cases?.flag_top])
   // Each scored evaluation's scores - again while one is being scored.
@@ -127,7 +144,29 @@ export function InferencePage() {
     try { for (const e of unscored) await api.infer(e.eval_id) } catch (err: any) { setError(err.message) }
     refreshList()
   }
-  const current = models.find((m) => `${m.evalId}|${m.variant}` === pick) ?? models[0]
+  // Best first: the most rows earlier in all (over the cases flagged sooner), then
+  // the most cases flagged sooner, then the test gain.
+  const ranked = useMemo(() => {
+    const score = new Map(models.map((m) => {
+      const sum = summarise(m, rule)
+      return [m, [sum.total ?? -Infinity, sum.counts.find(([o]) => o === 'sooner')?.[1] ?? 0, m.gini ?? -Infinity]]
+    }))
+    return [...models].sort((a, b) => {
+      const x = score.get(a)!, y = score.get(b)!
+      return y[0] - x[0] || y[1] - x[1] || y[2] - x[2]
+    })
+  }, [models, rule])
+  // Opened from a metrics row: bring that model into view once it is loaded.
+  const target = selected ? selected.replace('.', '|') : null
+  const loaded = models.some((m) => `${m.evalId}|${m.variant}` === target)
+  useEffect(() => {
+    if (target && loaded) {
+      document.querySelector(`[data-model="${CSS.escape(target)}"]`)?.scrollIntoView({ block: 'start', behavior: 'smooth' })
+    }
+  }, [target, loaded])
+  // The row open, its cases inside it: the one picked - or none, once closed.
+  const current = pick === 'none' ? undefined
+    : ranked.find((m) => `${m.evalId}|${m.variant}` === pick) ?? ranked[0]
 
   return (
     <div className={s.page}>
@@ -151,10 +190,9 @@ export function InferencePage() {
 
         {models.length > 0 && (
           <>
-            <RulePicker rule={rule} onChange={setRule} model={current} />
-            <ModelTable models={models} rule={rule} current={current}
-                        onPick={(m) => setPick(`${m.evalId}|${m.variant}`)} />
-            {current && <CaseExplorer key={`${current.evalId}|${current.variant}`} model={current} rule={rule} />}
+            <RulePicker rule={rule} onChange={setRule} model={current ?? ranked[0]} />
+            <ModelTable models={ranked} rule={rule} current={current}
+                        onPick={(m) => setPick(current === m ? 'none' : `${m.evalId}|${m.variant}`)} />
           </>
         )}
       </div>
@@ -251,39 +289,42 @@ function ModelTable({ models, rule, current, onPick }: {
     <section className={s.card}>
       <div className={s.cardHead}>
         <span className={`eyebrow ${s.label}`}>Each model against base</span>
-        <span className={s.meta}>click a model for its cases</span>
+        <span className={s.meta}>ranked by total rows earlier · click a model for its cases</span>
       </div>
       <table className={s.table}>
         <thead>
           <tr>
             <th>Model</th><th className={s.num}>Test Δ Gini</th><th className={s.barHead}>Cases, by when base + new flags them against base</th>
             <th className={s.num} title="Cases flagged at some row: base → base + new">Cases flagged</th>
-            <th className={s.num} title="Over the cases base + new flags sooner: the median rows earlier">Median rows earlier</th>
+            <th className={s.num} title="Over the cases base + new flags sooner: their rows earlier, added up (a case base never flags counts the rows to its end - at least that many)">Total rows earlier</th>
           </tr>
         </thead>
         <tbody>
           {models.map((m) => {
-            const cut = cutoffsOf(m, rule)
-            const rows = cut ? casesOf(m, cut) : []
-            const count = (o: Outcome) => rows.filter((c) => c.outcome === o).length
-            const flagged = (who: 'base' | 'model') => rows.filter((c) => c.first[who]).length
-            const early = rows.filter((c) => c.outcome === 'sooner').map((c) => c.rowsSooner ?? 0).sort((a, b) => a - b)
-            const median = early.length ? (early[(early.length - 1) >> 1] + early[early.length >> 1]) / 2 : null
+            const { cut, rows, counts, total, ...flags } = summarise(m, rule)
+            const flagged = (who: 'base' | 'model') => flags[who]
             const on = current && m.evalId === current.evalId && m.variant === current.variant
             return (
-              <tr key={`${m.evalId}|${m.variant}`} className={on ? s.rowOn : s.row} onClick={() => onPick(m)}>
+              <Fragment key={`${m.evalId}|${m.variant}`}>
+              <tr className={on ? s.rowOn : s.row} onClick={() => onPick(m)} data-model={`${m.evalId}|${m.variant}`}>
                 <td>
-                  <div className={s.mono}>base + {variantName(m.variant)}</div>
+                  <div className={s.mono}><span className={s.chev}>{on ? '▾' : '▸'}</span>base + {variantName(m.variant)}</div>
                   <div className={s.meta}>evaluated {when(m.evaluated)}</div>
                 </td>
                 <td className={s.num}>{signed(m.gini)}</td>
-                <td>{cut ? <OutcomeBar counts={ORDER.map((o) => [o, count(o)] as [Outcome, number])} total={rows.length} />
+                <td>{cut ? <OutcomeBar counts={counts} total={rows.length} />
                          : <span className={s.meta}>no cutoff at this share</span>}</td>
                 <td className={s.num}>{flagged('base')} → <b className={flagged('model') > flagged('base') ? s.goodInk
                   : flagged('model') < flagged('base') ? s.warnInk : ''}>{flagged('model')}</b>
                   <span className={s.meta}> / {rows.length}</span></td>
-                <td className={s.num}>{median != null ? <b className={s.goodInk}>{median}</b> : '–'}</td>
+                <td className={s.num}>{total != null ? <b className={s.goodInk}>{total}</b> : '–'}</td>
               </tr>
+              {on && (
+                <tr className={s.expandRow}>
+                  <td colSpan={5}><CaseExplorer model={m} rule={rule} /></td>
+                </tr>
+              )}
+              </Fragment>
             )
           })}
         </tbody>
@@ -292,7 +333,7 @@ function ModelTable({ models, rule, current, onPick }: {
   )
 }
 
-function OutcomeBar({ counts, total }: { counts: [Outcome, number][]; total: number }) {
+export function OutcomeBar({ counts, total }: { counts: [Outcome, number][]; total: number }) {
   return (
     <div className={s.barCell}>
       <div className={s.bar}>

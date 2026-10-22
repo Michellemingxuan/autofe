@@ -40,17 +40,39 @@
 .chips { display: flex; flex-wrap: wrap; gap: 6px; }
 .chip { display: inline-flex; align-items: center; gap: 5px; font-family: var(--j-font-mono); font-size: var(--j-fs-meta); padding: 3px 9px; border-radius: var(--j-radius-pill); border: 1px solid var(--j-border-strong); cursor: pointer; }
 .chipOn { border-color: var(--j-accent); background: var(--j-accent-soft); color: var(--j-accent-deep); }
-.chip input { width: 11px; height: 11px; }
-.chipPick { display: inline-flex; align-items: center; gap: 5px; cursor: pointer; }
-.chipGroup { border-style: dashed; }
-.alone { border: none; background: var(--j-chip); color: var(--j-ink-3); border-radius: var(--j-radius-pill); padding: 0 6px; font-size: 10px; font-family: var(--j-font-sans, inherit); }
-.alone:hover { color: var(--j-accent-deep); }
+.chip { cursor: grab; background: var(--j-surface); }
+.chipX { border: none; background: transparent; color: var(--j-ink-4); padding: 0 0 0 2px; font-size: 13px; line-height: 1; }
+.chipX:hover { color: var(--j-danger); }
+.grip { color: var(--j-ink-mute); font-size: 10px; }
 
-.comboRow { display: flex; gap: 6px; }
-.input { flex: 1; border: 1px solid var(--j-border-strong); border-radius: var(--j-radius-ctl); padding: 6px 9px; }
-.combo { display: flex; align-items: center; gap: 8px; padding: 6px 9px; border-radius: 8px; background: var(--j-accent-soft); }
+/* ── the evaluation set: drop zones ────────────────────────────────── */
+.howto { margin: 0; padding-left: 18px; display: flex; flex-direction: column; gap: 4px; font-size: var(--j-fs-sm); color: var(--j-ink-3); line-height: 1.45; }
+.howto b { color: var(--j-ink-2); }
+.zone { border: 1px solid var(--j-border); border-radius: 10px; padding: 9px 10px; display: flex; flex-direction: column; gap: 7px; transition: border-color 0.15s, background 0.15s; }
+.zoneHead { display: flex; align-items: center; gap: 8px; }
+.zoneTitle { font-weight: 600; color: var(--j-ink-2); flex: 1; }
+.comboZone { background: var(--j-accent-soft); border-color: var(--j-accent-line); }
+.newZone { border-style: dashed; border-color: var(--j-border-strong); align-items: center; flex-direction: row; justify-content: center; gap: 10px; color: var(--j-accent-deep); font-weight: 600; padding: 14px 10px; }
+.zoneOver { border-color: var(--j-accent); border-style: solid; background: var(--j-accent-soft); box-shadow: 0 0 0 3px var(--j-accent-line); }
+.comboInput { flex: 1; min-width: 0; border: 1px solid transparent; background: transparent; border-radius: 6px; padding: 2px 6px; font-weight: 600; color: var(--j-accent-deep); font-family: var(--j-font-mono); }
+.comboInput:hover, .comboInput:focus { border-color: var(--j-accent-line); background: var(--j-surface); outline: none; }
+.basePill { font-family: var(--j-font-mono); font-size: var(--j-fs-meta); color: var(--j-ink-4); align-self: center; }
+.addSelect { border: 1px dashed var(--j-accent-line); background: var(--j-surface); color: var(--j-accent-deep); border-radius: var(--j-radius-pill); font-size: var(--j-fs-meta); padding: 2px 6px; max-width: 150px; }
+.together { display: flex; gap: 8px; align-items: flex-start; font-size: var(--j-fs-sm); color: var(--j-ink-2); line-height: 1.4; cursor: pointer; }
+.together { flex-wrap: wrap; align-items: center; cursor: default; }
+.togetherSelect { border: 1px solid var(--j-border-strong); border-radius: var(--j-radius-ctl); padding: 4px 7px; background: var(--j-surface); font-size: var(--j-fs-sm); }
+.togetherOff { color: var(--j-ink-4); cursor: default; }
+
+/* ── a pool feature's evaluations ─────────────────────────────────── */
+.notYet { font-size: var(--j-fs-meta); color: var(--j-ink-mute); }
+.evalLine { display: flex; flex-wrap: wrap; gap: 4px 8px; align-items: center; }
+.evalTag { font-size: var(--j-fs-meta); padding: 1px 7px; border-radius: var(--j-radius-pill); font-weight: 600; }
+.evalPass { background: var(--j-good-soft); color: var(--j-good-ink); }
+.evalFail { background: var(--j-chip); color: var(--j-ink-3); }
+.evalDropped { background: var(--j-warn-bg); color: var(--j-warn-ink); }
+.evalCombo { font-size: var(--j-fs-meta); color: var(--j-accent-deep); font-family: var(--j-font-mono); }
+
 .comboName { font-weight: 600; color: var(--j-accent-deep); white-space: nowrap; }
-.comboMembers { flex: 1; font-family: var(--j-font-mono); font-size: var(--j-fs-meta); color: var(--j-ink-3); }
 .remove { border: none; background: transparent; color: var(--j-ink-4); font-size: 15px; }
 
 .primary { background: var(--j-accent); color: white; border: none; border-radius: var(--j-radius-ctl); padding: 9px 12px; font-weight: 600; }

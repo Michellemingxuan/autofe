@@ -283,6 +283,12 @@ export type PoolFeature = {
   code: string
   missing_linkage: string[]
   linkage: Record<string, string>
+  // What evaluations made of it: the latest alone, and the combinations it was in.
+  evaluation?: {
+    single: { eval_id: string; evaluated: number; verdict: string | null; reason: string
+              gini_gain: number | null; trained: boolean; not_trained: string | null } | null
+    combinations: string[]
+  } | null
 }
 
 // One row of the logging board (GET /api/board): a feature or a data request
@@ -359,7 +365,9 @@ export type EvalSummary = {
   status: 'running' | 'done' | 'error' | 'stopped'
   features: { key: string; column: string; name: string; direction: string
               level?: string; delta?: number | null; description?: string }[]
-  combinations: Record<string, { keys: string[]; columns: string[] }>
+  combinations: Record<string, { keys: string[]; columns: string[]; auto?: boolean }>
+  together?: 'all' | 'passing' | null      // then base + those singles in one model
+  together_note?: string | null            // why that model was not trained
 }
 
 export type EvalStage = {
@@ -418,6 +426,8 @@ export type EvalResult = {
   kind: 'feature' | 'combination'
   name: string
   members: string[]
+  member_keys?: string[]
+  auto?: boolean                      // the combination the evaluation added: every passing feature
   key: string | null
   run_id: string | null
   direction: string
@@ -432,6 +442,7 @@ export type EvalResult = {
   missing_rate?: number | null    // share of rows with no value, every split
   max_corr?: number | null        // largest |Spearman| with a base feature, on train
   max_corr_with?: string | null   // that base feature
+  variable_gini?: number | null   // the feature alone as a score for the target, |2·AUC - 1| on test
   trained?: boolean               // false: no model - its reason in not_trained
   not_trained?: string | null
   score_base?: number | null      // mean predicted probability on test: base's
@@ -517,7 +528,7 @@ export type InferenceDetail = {
   timelines?: Record<string, TimelinePoint[]>
 }
 
-export type FeatureStats = { missing_rate: number | null; max_corr: number | null; max_corr_with: string | null }
+export type FeatureStats = { missing_rate: number | null; max_corr: number | null; max_corr_with: string | null; variable_gini?: number | null }
 
 /** A kept data request in the request set - from any run. */
 export type RequestItem = DataRequest & {

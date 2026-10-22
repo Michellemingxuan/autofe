@@ -60,7 +60,9 @@ The contract, page by page (``web/src/api.ts`` calls exactly these;
    GET    /api/requests                       every kept data request of every run
    GET    /api/requests.md                    all of them as one document, to download
    GET    /api/evaluations
-   POST   /api/evaluations        {features: [run_id:name], combinations}
+   POST   /api/evaluations        {features: [run_id:name], combinations, together?}
+                                               together: "all" | "passing" - then base + those
+                                               single features in one model
    DELETE /api/evaluations/<id>
    DELETE /api/evaluations/<id>/variants/<variant>   one row off the results
    GET    /api/results                       every evaluated variant, every evaluation
@@ -92,8 +94,8 @@ from typing import Any, Callable
 
 from flask import Flask, Response, jsonify, request, send_from_directory
 
-from agent.evaluate import (Evaluation, EvaluationProcess, base_model_card, evaluation_results, feature_pool,
-                            list_evaluations, removed_variants, untrained)
+from agent.evaluate import (Evaluation, EvaluationProcess, base_model_card, evaluation_results, evaluation_status,
+                            feature_pool, list_evaluations, removed_variants, untrained)
 from agent.events import EventLog, read_events
 from agent.infer import Inference, inference_result, list_inferences, preview as target_cases_preview
 from agent.board import board_rows
@@ -736,7 +738,8 @@ def create_app(config_path: str, static_dir: str | None = None,
     # ---------------------------------------------------------- 3. evaluate
     @app.get("/api/features")
     def features():
-        return jsonify(feature_pool(ctx["ws"]))
+        status = evaluation_status(ctx["ws"])
+        return jsonify([{**f, "evaluation": status.get(f["key"])} for f in feature_pool(ctx["ws"])])
 
     @app.get("/api/requests")
     def requests_set():
@@ -789,7 +792,8 @@ def create_app(config_path: str, static_dir: str | None = None,
         body = request.get_json(force=True)
         try:
             job = Evaluation(ctx["ws"], list(body.get("features") or []),
-                             dict(body.get("combinations") or {}))
+                             dict(body.get("combinations") or {}),
+                             together=body.get("together") or None)
         except (KeyError, ValueError) as exc:
             return error(str(exc))
         process = EvaluationProcess(job)

@@ -92,8 +92,8 @@ export const api = {
   results: () => call<EvalResult[]>('/api/results'),
   baseModel: () => call<BaseModelCard | null>('/api/base_model'),
   clearResults: () => del('/api/results'),
-  evaluate: (features: string[], combinations: Record<string, string[]>) =>
-    post<{ eval_id: string }>('/api/evaluations', { features, combinations }),
+  evaluate: (features: string[], combinations: Record<string, string[]>, together: 'all' | 'passing' | null = null) =>
+    post<{ eval_id: string }>('/api/evaluations', { features, combinations, together }),
   deleteEvaluation: (id: string) => del(`/api/evaluations/${id}`),
   stopEvaluation: (id: string) => post(`/api/evaluations/${id}/cancel`),
   removeResult: (id: string, variant: string) =>

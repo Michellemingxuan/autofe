@@ -77,6 +77,9 @@
 .b_neither { background: #e7ecf3; }
 
 /* ── the cases: list at the left, curves at the right ──────────────── */
+.chev { color: var(--j-ink-mute); display: inline-block; width: 14px; font-size: 10px; }
+.table .expandRow td { padding: 4px 0 12px; background: var(--j-surface-soft); cursor: default; }
+.expandRow .caseList, .expandRow .chartPane { box-shadow: none; }
 .explorer { display: grid; grid-template-columns: minmax(300px, 380px) minmax(0, 1fr); gap: 14px; min-height: 460px; }
 .caseList { display: flex; flex-direction: column; min-height: 0; max-height: 640px; padding: 12px 10px 8px; gap: 8px; }
 .caseList .cardHead { padding: 0 4px; }
