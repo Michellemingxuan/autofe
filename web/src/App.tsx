@@ -88,7 +88,10 @@ export function App() {
     if (!window.location.hash && workspace?.active_run) navigate('discover', workspace.active_run)
   }, [workspace?.active_run])
 
+  // The opening sits outside the shell: the shell's emerge animation sets a transform and a
+  // filter, which would otherwise re-anchor the fixed overlay and make it jump as it leaves.
   return (
+    <>
     <div className={`${s.shell} ${emerging ? s.emerging : ''}`}>
       <Rail route={route} workspace={workspace} runs={runs ?? []} queue={queue ?? []} onUnqueue={refreshQueue} evaluations={evaluations ?? []}
             onBoard={() => setBoard(true)} onLogo={() => setIntro(true)} />
@@ -116,7 +119,8 @@ export function App() {
         {route.page === 'inference' && <InferencePage selected={route.id} />}
       </main>
       {board && <LoggingBoard onClose={() => setBoard(false)} />}
-      {intro && <Intro onEnter={closeIntro} onLeave={() => setEmerging(true)} />}
     </div>
+    {intro && <Intro onEnter={closeIntro} onLeave={() => setEmerging(true)} />}
+    </>
   )
 }
