@@ -1,4 +1,4 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1920 940" font-family="'BentonSans Regular', 'BentonSans', 'Benton Sans', Arial, Helvetica, sans-serif">
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 44 1920 856" font-family="'BentonSans Regular', 'BentonSans', 'Benton Sans', Arial, Helvetica, sans-serif">
   <defs>
     <radialGradient id="sig"><stop offset="0" stop-color="#66A9E2" stop-opacity="0.9"/><stop offset="0.55" stop-color="#99C6EC" stop-opacity="0.45"/><stop offset="1" stop-color="#99C6EC" stop-opacity="0"/></radialGradient>
     <marker id="ar" viewBox="0 0 10 10" refX="8" refY="5" markerUnits="userSpaceOnUse" markerWidth="16" markerHeight="16" orient="auto"><path d="M0,0 L10,5 L0,10 z" fill="#00175A"/></marker>
@@ -260,6 +260,6 @@
   <circle cx="1200" cy="933" r="3.2" fill="#006FCF"/><text x="1216" y="938" font-size="16.5" font-weight="700" fill="#00175A">Explore</text><text x="1306" y="938" font-size="16.5" fill="#1D1D1F">try many directions, and many ideas in each</text>
   <circle cx="1200" cy="964" r="3.2" fill="#006FCF"/><text x="1216" y="969" font-size="16.5" font-weight="700" fill="#00175A">Exploit</text><text x="1306" y="969" font-size="16.5" fill="#1D1D1F">dig in where signal appears</text>
   <circle cx="1200" cy="995" r="3.2" fill="#006FCF"/><text x="1216" y="1000" font-size="16.5" font-weight="700" fill="#00175A">Learn</text><text x="1306" y="1000" font-size="16.5" fill="#1D1D1F">every result updates P(useful | idea)</text>
-  <text x="1850" y="1050" font-size="13" fill="#BBBCBC" text-anchor="end">Conceptual illustration.</text>
+  <text x="110" y="1046" font-size="13" fill="#BBBCBC">Conceptual illustration.</text>
 </g>
 </svg>
