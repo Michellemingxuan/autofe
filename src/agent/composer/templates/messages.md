@@ -42,6 +42,14 @@ Sent back: {error}. Fix it and answer again.
 ## nudge
 You stopped without calling report_findings, so the run is not done. Carry on with the next step - call the tools you need - and finish by calling report_findings. Do not stop with a message alone.
 
+## rethink
+Not yet. Before you call this direction exhausted, take stock of where it stands.
+So far: {budget}.
+Verified: {worked}.
+Why the other attempts failed: {failed}. The latest:
+{examples}
+This is a quite challenging task. Think out of the box: analyse why the earlier trials failed, and how each could be changed to lift the performance - a different signal rather than another window of the same one, a source or interaction not tried yet, a transformation of what the model already explains, the opposite of an assumption the failures share. Write that analysis in a few lines; a new round of ideas built on it comes next.
+
 ## next_round
 Round {round} of ideas. So far: {budget}.
 Worked: {worked}.

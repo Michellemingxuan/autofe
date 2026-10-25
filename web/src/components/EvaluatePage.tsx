@@ -322,6 +322,9 @@ function PoolRow({ feature: f, picked, open, onPick, onOpen, onRemove }: {
   )
 }
 
+// The combinations an evaluation adds itself, by what they hold.
+const AUTO_COMBO: Record<string, string> = { all_new: 'all new features', all_passing: 'every passing feature' }
+
 /** What evaluations made of a pool feature: alone - its verdict, or why it was not
  *  trained - and the combinations it was in. */
 function Evaluated({ status }: { status?: PoolFeature['evaluation'] }) {
@@ -336,7 +339,7 @@ function Evaluated({ status }: { status?: PoolFeature['evaluation'] }) {
                 title={one.reason || undefined}>
             evaluated · {one.verdict ?? '–'}{one.gini_gain != null ? ` · test Δ ${signed(one.gini_gain)}` : ''}</span>)}
       {status.combinations.length > 0 && (
-        <span className={s.evalCombo}>in ⊕ {status.combinations.join(', ⊕ ')}</span>
+        <span className={s.evalCombo}>in ⊕ {status.combinations.map((c) => AUTO_COMBO[c] ?? c).join(', ⊕ ')}</span>
       )}
     </span>
   )

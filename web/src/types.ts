@@ -295,6 +295,7 @@ export type PoolFeature = {
 // with the idea it tests - or an idea that made nothing yet. Written by the
 // server from the run's records, not from the agent's account of them.
 export type BoardRow = {
+  feature_id: string        // <run_id>:<name> for a feature - the key Metrics results carries; '' otherwise
   run_id: string
   direction: string
   idea: string
@@ -326,7 +327,6 @@ export type BoardRow = {
   evidence: 'signal' | 'none' | null
   // A verified feature only: '' for a failed feature, a request or an idea alone.
   sent: '' | 'not evaluated' | 'evaluated' | 'evaluated · removed' | 'removed'
-  verdict: string          // the evaluation's verdict, PASS or FAIL, when evaluated
 }
 
 // One model call of a run (GET /api/runs/<id>/llm_calls): where in the run, how
@@ -443,6 +443,8 @@ export type EvalResult = {
   max_corr?: number | null        // largest |Spearman| with a base feature, on train
   max_corr_with?: string | null   // that base feature
   variable_gini?: number | null   // the feature alone as a score for the target, |2·AUC - 1| on test
+  variable_gini_note?: string | null   // why there is none on test: empty, or one value there
+  screen_variable_gini?: number | null // the same on the screen rows - check C2 in discovery
   trained?: boolean               // false: no model - its reason in not_trained
   not_trained?: string | null
   score_base?: number | null      // mean predicted probability on test: base's

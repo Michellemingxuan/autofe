@@ -243,6 +243,10 @@ def _next_round(session: Session) -> str:
                      "request: " + ", ".join(f"`{v}`" for v in taken) + ".")
     if session.explore:
         text += "\nThis round's theme first: call draw_theme, then give ideas about it."
+    if session.rethink:
+        # The run was nearly given up: the analysis of its failures leads this round.
+        text = session.rethink + "\n\n" + text
+        session.rethink = ""
     return text
 
 

@@ -17,7 +17,7 @@ const when = (ts: number) => new Date(ts * 1000).toLocaleString([], {
 const identity = (r: EvalResult) =>
   r.kind === 'feature' ? `f:${r.key ?? r.name}` : `c:${r.name}:${[...r.members].sort().join(',')}`
 
-type SortKey = 'gini' | 'screen' | 'evaluated' | 'name' | 'missing' | 'corr' | 'vgini' | 'level' | `capture:${string}`
+type SortKey = 'gini' | 'screen' | 'evaluated' | 'name' | 'missing' | 'corr' | 'vgini' | 'vgini_screen' | 'level' | `capture:${string}`
 
 // A score level that moves more than this, either way, is marked.
 const LEVEL_SHIFT = 0.05
@@ -46,6 +46,15 @@ export function ResultsPage({ selected }: { selected: string | null }) {
   const [query, setQuery] = useState('')
   const [sort, setSort] = useState<{ key: SortKey; desc: boolean }>({ key: 'gini', desc: true })
   const [expanded, setExpanded] = useState<string | null>(null)        // `${eval_id}:${variant}`
+  const [downloading, setDownloading] = useState(false)
+  // Discovery's screen figures beside the out-of-time ones - hidden unless asked for.
+  const [screen, setScreen] = useState(() => {
+    try { return localStorage.getItem('autofe.results.screen') === '1' } catch { return false }
+  })
+  const showScreen = (on: boolean) => {
+    setScreen(on)
+    try { localStorage.setItem('autofe.results.screen', on ? '1' : '0') } catch { /* not kept */ }
+  }
   // Each evaluation's target-case scores, fetched once when a row first expands.
   const [inferences, setInferences] = useState<Record<string, InferenceDetail | 'none'>>({})
   useEffect(() => {
@@ -79,6 +88,7 @@ export function ResultsPage({ selected }: { selected: string | null }) {
       if (sort.key === 'missing') return r.missing_rate ?? -Infinity
       if (sort.key === 'corr') return r.max_corr ?? -Infinity
       if (sort.key === 'vgini') return r.variable_gini ?? -Infinity
+      if (sort.key === 'vgini_screen') return r.screen_variable_gini ?? -Infinity
       if (sort.key === 'level') return r.score_change == null ? -Infinity : Math.abs(r.score_change)
       return r.capture_gain[sort.key.slice(8)] ?? -Infinity
     }
@@ -181,6 +191,21 @@ export function ResultsPage({ selected }: { selected: string | null }) {
           <input className={s.search} value={query} placeholder="Filter by feature, combination or direction"
                  onChange={(e) => setQuery(e.target.value)} />
           <span className={s.meta}>the latest evaluation of each · from {evaluated} evaluation{evaluated === 1 ? '' : 's'}</span>
+          <label className={s.screenToggle}
+                 title="Discovery's screen results - Δ Gini and variable Gini on the screen rows - beside each feature, to compare with test (data shift)">
+            <input type="checkbox" checked={screen} onChange={(e) => showScreen(e.target.checked)} />
+            Show screen results
+          </label>
+          {rows.length > 0 && (
+            <button className={s.download} disabled={downloading}
+                    title="Every row shown - the filter applies - with its metrics and its target cases, as CSV"
+                    onClick={async () => {
+                      setDownloading(true)
+                      try { await downloadResults([...singles, ...combos], captures) } finally { setDownloading(false) }
+                    }}>
+              {downloading ? 'Preparing…' : `Download CSV (${rows.length})`}
+            </button>
+          )}
           {(results?.length ?? 0) > 0 && (
             <ConfirmButton label="Clear all" confirm="Clear every result?"
                            title="Delete every finished evaluation - a running one stays"
@@ -229,12 +254,20 @@ export function ResultsPage({ selected }: { selected: string | null }) {
                     <thead>
                       <tr>
                         <Head k="name" label="Feature" num={false} />
+                        {screen && (
+                          <>
+                            <Head k="screen" label="Δ Gini screen"
+                                  hint="The Gini gain discovery's screen measured, on the screen rows - compare with Test Δ Gini for a data shift" />
+                            <Head k="vgini_screen" label="Var. Gini screen"
+                                  hint="The feature alone as a score for the target, |2·AUC - 1|, on the screen rows (check C2) - compare with Var. Gini OOT" />
+                          </>
+                        )}
                         <th>Level</th>
-                        <Head k="screen" label="Screen Δ Gini" />
                         <Head k="missing" label="Missing" hint="share of rows with no value, every split" />
-                        <Head k="corr" label="Max |corr|" hint="largest |Spearman| with a base feature, on train - and which one" />
-                        <Head k="vgini" label="Variable Gini" hint="the feature alone as a score for the target, |2·AUC - 1| on test - check C2's measure" />
                         {GainHeads()}
+                        <Head k="vgini" label="Var. Gini OOT"
+                              hint={`The feature alone as a score for the target, |2·AUC - 1|, on test, out of time.${screen ? ' Amber: below half the screen\'s' : ''}`} />
+                        <Head k="corr" label="Max |corr|" hint="largest |Spearman| with a base feature, on train - and which one" />
                         <th className={s.num}>SHAP rank</th>
                         <th className={s.num} title="The base feature it moves with most (Max |corr|): its SHAP rank in base → in base + this feature">Nearest's SHAP rank</th>
                         <th>Verdict</th>
@@ -251,15 +284,29 @@ export function ResultsPage({ selected }: { selected: string | null }) {
                             <div className={s.variant}>{Chev(r)}{r.name}</div>
                             <div className={s.sub} title={r.direction}>{r.direction}</div>
                           </td>
+                          {screen && (
+                            <>
+                              <td className={`${s.num} ${s.screenCol}`}>{signed(r.screen_gain)}</td>
+                              <td className={`${s.num} ${s.screenCol}`}>
+                                {r.screen_variable_gini != null ? r.screen_variable_gini.toFixed(3) : <span className={s.dim}>–</span>}</td>
+                            </>
+                          )}
                           <td>{r.level ? <span className={s.level}>{r.level}</span> : <span className={s.dim}>–</span>}</td>
-                          <td className={`${s.num} ${s.dim}`}>{signed(r.screen_gain)}</td>
                           <td className={s.num}>{pct(r.missing_rate)}</td>
+                          {Gains(r)}
+                          <td className={s.num}>
+                            {r.variable_gini != null
+                              ? <span className={screen && r.screen_variable_gini && r.variable_gini < r.screen_variable_gini / 2 ? s.levelShift : ''}>
+                                  {r.variable_gini.toFixed(3)}</span>
+                              : r.variable_gini_note
+                                ? <span className={s.noSignal} title={r.variable_gini_note}>
+                                    {r.variable_gini_note.startsWith('empty') ? 'empty' : 'constant'}</span>
+                                : <span className={s.dim}>–</span>}
+                          </td>
                           <td className={s.num}>
                             {r.max_corr != null ? r.max_corr.toFixed(3) : <span className={s.dim}>–</span>}
                             {r.max_corr_with && <div className={s.corrWith}>{r.max_corr_with}</div>}
                           </td>
-                          <td className={s.num}>{r.variable_gini != null ? r.variable_gini.toFixed(3) : <span className={s.dim}>–</span>}</td>
-                          {Gains(r)}
                           <td className={s.num}>
                             {r.shap[0]
                               ? <span title={`${(r.shap[0].share * 100).toFixed(1)}% of SHAP`}>
@@ -367,6 +414,61 @@ export function ResultsPage({ selected }: { selected: string | null }) {
 }
 
 type Row = EvalResult
+
+/** The results as shown - every row, its metrics, and what its model did on the
+ *  target cases (each model flagging its own top share of test, as on Inference
+ *  results) - as a CSV file. */
+async function downloadResults(rows: Row[], captures: string[]) {
+  const details: Record<string, InferenceDetail | null> = {}
+  await Promise.all([...new Set(rows.map((r) => r.eval_id))].map((id) =>
+    api.inference(id).then((d) => { details[id] = d }).catch(() => { details[id] = null })))
+  const cases = (r: Row) => {
+    const d = details[r.eval_id]
+    if (!d?.done?.summaries[r.variant]) return null
+    const sum = summarise({ evalId: r.eval_id, evaluated: r.evaluated, variant: r.variant,
+                            columns: r.members, gini: r.gini_gain, detail: d },
+                          { mode: 'quantile', share: d.flag_top, score: 0.1 })
+    const n = (o: string) => sum.counts.find(([x]) => x === o)?.[1] ?? 0
+    return { share: d.flag_top, total: sum.rows.length, sooner: n('sooner'), same: n('same'),
+             later: n('later'), neither: n('neither'), base: sum.base, model: sum.model, rows: sum.total }
+  }
+  // feature_id (member_feature_ids for a combination) is the logging board's
+  // feature_id: <run_id>:<name>, the same feature in both downloads.
+  const head = ['feature_id', 'member_feature_ids', 'kind', 'name', 'members', 'direction', 'level',
+    'run_id', 'eval_id', 'evaluated', 'test_gini_gain',
+    ...captures.map((c) => `capture_gain_${c}_test`),
+    'screen_gini_gain', 'variable_gini_screen', 'variable_gini_oot', 'variable_gini_oot_note',
+    'missing_rate', 'max_corr', 'max_corr_with',
+    'score_mean_base', 'score_mean_model', 'score_level_change', 'shap_rank', 'shap_of', 'shap_share',
+    'nearest_feature', 'nearest_shap_rank_base', 'nearest_shap_rank_model', 'verdict', 'reason',
+    'trained', 'not_trained', 'cases_flag_top_share', 'cases', 'cases_sooner', 'cases_same',
+    'cases_later', 'cases_neither', 'cases_flagged_base', 'cases_flagged_model', 'cases_total_rows_earlier']
+  const lines = rows.map((r) => {
+    const c = cases(r)
+    return [r.kind === 'feature' ? r.key : '', r.kind === 'combination' ? (r.member_keys ?? []).join(' | ') : '',
+      r.kind, r.auto ? (r.name === 'all_passing' ? 'every passing feature' : 'all new features') : r.name,
+      r.members.join(' + '), r.direction, r.level, r.run_id, r.eval_id,
+      new Date(r.evaluated * 1000).toISOString(), r.gini_gain,
+      ...captures.map((p) => r.capture_gain[p]),
+      r.screen_gain, r.screen_variable_gini, r.variable_gini, r.variable_gini_note,
+      r.missing_rate, r.max_corr, r.max_corr_with,
+      r.score_base, r.score_mean, r.score_change, r.shap[0]?.rank, r.shap[0]?.of, r.shap[0]?.share,
+      r.nearest_shap?.feature, r.nearest_shap?.base, r.nearest_shap?.variant, r.verdict, r.reason,
+      r.trained, r.not_trained, c?.share, c?.total, c?.sooner, c?.same, c?.later, c?.neither,
+      c?.base, c?.model, c?.rows]
+  })
+  const cell = (v: unknown) => {
+    const text = v === null || v === undefined ? '' : String(v)
+    return /[",\n\r]/.test(text) ? `"${text.replace(/"/g, '""')}"` : text
+  }
+  const csv = [head, ...lines].map((l) => l.map(cell).join(',')).join('\r\n')
+  const url = URL.createObjectURL(new Blob([csv], { type: 'text/csv;charset=utf-8' }))
+  const a = document.createElement('a')
+  a.href = url
+  a.download = `evaluation_results_${new Date().toISOString().slice(0, 10)}.csv`
+  a.click()
+  URL.revokeObjectURL(url)
+}
 
 /** A metrics row's model on the target cases: how its flags move against base's,
  *  at each model's own top share of test - the Inference results page's first rule. */

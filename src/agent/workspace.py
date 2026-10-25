@@ -59,6 +59,16 @@ class Source:
     def usable(self) -> bool:
         return self.data_path is not None
 
+    @property
+    def discovery_path(self) -> Path | None:
+        """What discovery reads: ``<data>_fe`` beside the data when it is there - a
+        cut down to the screen's rows, to save time - else the data itself.
+        Evaluation and inference always read the data."""
+        if self.data_path is None:
+            return None
+        cut = self.data_path.with_name(f"{self.data_path.stem}_fe{self.data_path.suffix}")
+        return cut if cut.exists() else self.data_path
+
     def summary(self) -> dict[str, Any]:
         return {"name": self.name, "usable": self.usable,
                 "data": str(self.data_path) if self.data_path else None,

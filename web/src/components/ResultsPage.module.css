@@ -101,6 +101,8 @@
 
 /* A variant with no model: the gates dropped it, or its training failed. */
 .notTrained { color: var(--j-warn-ink); font-size: var(--j-fs-meta); font-style: italic; }
+.screenToggle { display: inline-flex; align-items: center; gap: 6px; font-size: var(--j-fs-sm); color: var(--j-ink-mute); white-space: nowrap; cursor: pointer; }
+.screenCol { color: var(--j-ink-mute); background: var(--j-surface-2, rgba(0, 0, 0, 0.02)); }
 .levelShift { color: var(--j-warn-ink); font-weight: 700; }
 
 /* ── a row expanded: its model on the target cases ──────────────────── */
@@ -120,3 +122,6 @@
 .casesActions { display: flex; flex-direction: column; gap: 6px; align-items: flex-end; flex-shrink: 0; }
 .casesBtn { background: var(--j-surface); color: var(--j-accent-deep); border: 1px solid var(--j-accent-line); border-radius: var(--j-radius-pill); padding: 4px 12px; font-weight: 600; font-size: var(--j-fs-sm); white-space: nowrap; }
 .togetherNote { font-size: var(--j-fs-sm); color: var(--j-warn-ink); background: var(--j-warn-bg); border-radius: 8px; padding: 6px 10px; }
+.noSignal { color: var(--j-warn-ink); background: var(--j-warn-bg); border-radius: var(--j-radius-pill); padding: 1px 7px; font-size: var(--j-fs-meta); font-weight: 600; cursor: help; }
+.download { background: var(--j-surface); color: var(--j-accent-deep); border: 1px solid var(--j-accent-line); border-radius: var(--j-radius-pill); padding: 4px 12px; font-weight: 600; font-size: var(--j-fs-sm); white-space: nowrap; }
+.download:disabled { opacity: 0.6; }

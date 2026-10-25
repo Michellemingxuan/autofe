@@ -368,6 +368,11 @@ def build(spark, sources, base):
     assert variants[f"loi__{col_a}"]["gini_gain_test"] > 0.03
     # The variable Gini on test: the feature alone as a score, as check C2 reads it.
     assert 0.05 < out["feature_stats"][col_a]["variable_gini"] <= 1
+    from agent.evaluate import evaluation_results
+    # Beside it on the results, the same on the screen rows, as discovery measured it.
+    row = next(r for r in evaluation_results(workspace)
+               if r["eval_id"] == evaluation.eval_id and r["variant"] == f"loi__{col_a}")
+    assert 0 < row["screen_variable_gini"] <= 1 and row["variable_gini"] is not None
     assert evaluation.events[-1]["event"] == "eval_done"
 
     # A combination by itself: its members get no model alone, and no row says
@@ -404,17 +409,23 @@ def build(spark, sources, base):
     latest = Evaluation(workspace, [a, b], {}, together="all")
     every = latest.run()
     assert f"combo__{TOGETHER['all']}" in {r["variant"] for r in every["comparison"]}
+    # It trains in the evaluation's own run, beside the singles - no second run.
+    assert not (latest.folder / "together").exists()
+    assert (Path(every["output_dir"]) / "models" / f"combo__{TOGETHER['all']}.json").exists()
     # The pool knows what became of each feature.
     status = evaluation_status(workspace)
     assert status[a]["single"]["eval_id"] == latest.eval_id and "both" in status[a]["combinations"]
 
-    # The board: an evaluated feature says so, with its verdict; a removed one too.
+    # The board: an evaluated feature says so - and nothing measured out of time;
+    # a removed one too. Its id is the one the metrics results carry.
     from agent.board import board_rows
 
     def board(name, run):
         return next(r for r in board_rows(workspace) if r["name"] == name and r["run_id"] == run)
-    assert board("pay_to_spend_90d", first.run_id)["sent"] == "evaluated"
-    assert board("pay_to_spend_90d", first.run_id)["verdict"] in ("PASS", "FAIL")
+    row = board("pay_to_spend_90d", first.run_id)
+    assert row["sent"] == "evaluated" and "verdict" not in row
+    assert not any(k.startswith("oot") for k in row)
+    assert row["feature_id"] in {r["key"] for r in evaluation_results(workspace)}
     assert first.delete_intent("pay_to_spend_90d")
     assert board("pay_to_spend_90d", first.run_id)["sent"] == "evaluated · removed"
 
@@ -459,6 +470,24 @@ def test_a_dropped_source_is_seen_schema_first_then_usable(workspace):
     finally:
         for name in ("declines_data_sample.json", "declines.parquet"):
             (extra / name).unlink(missing_ok=True)
+
+
+def test_discovery_reads_a_sources_fe_cut_and_evaluation_the_whole(workspace):
+    import pandas as pd
+
+    extra = workspace.extra_dir
+    whole = workspace.sources()["payments"].data_path
+    cut = extra / f"payments_fe{whole.suffix}"
+    session = _session(workspace, "payments cut")
+    assert session.raw_paths()["payments"] == str(whole)
+    pd.read_parquet(whole).head(10).to_parquet(cut)
+    try:
+        src = workspace.sources()["payments"]
+        assert "payments_fe" not in workspace.sources()          # not a source of its own
+        assert src.data_path == whole and src.discovery_path == cut
+        assert session.raw_paths()["payments"] == str(cut)
+    finally:
+        cut.unlink(missing_ok=True)
 
 
 def test_the_analysts_capture_gate_can_hold_back_a_gini_win(no_history):
@@ -1369,14 +1398,12 @@ def test_a_request_on_the_board_is_kept_or_dropped_and_says_why():
     assert _request_outcome({"approved": True}, True)[0] == "kept"
     assert _request_outcome({"status": "proposed"}, True)[0] == "dropped"     # the run ended first
     assert _request_outcome({"status": "proposed"}, False)[0] == "pending"    # still running
-    # Evaluation is for verified features only.
-    assert _evaluation({"verified": False}, "r:f", {}) == ("", "")
-    assert _evaluation({"verified": True}, "r:f", {}) == ("not evaluated", "")
-    assert _evaluation({"verified": True, "deleted": True}, "r:f", {}) == ("removed", "")
-    done = {"r:f": {"verdict": "PASS", "removed": False}}
-    assert _evaluation({"verified": True}, "r:f", done) == ("evaluated", "PASS")
-    assert _evaluation({"verified": True}, "r:f", {"r:f": {"verdict": "FAIL", "removed": True}}) == (
-        "evaluated · removed", "FAIL")
+    # Evaluation is for verified features only - whether it was evaluated, not how it did.
+    assert _evaluation({"verified": False}, "r:f", {}) == ""
+    assert _evaluation({"verified": True}, "r:f", {}) == "not evaluated"
+    assert _evaluation({"verified": True, "deleted": True}, "r:f", {}) == "removed"
+    assert _evaluation({"verified": True}, "r:f", {"r:f": {"removed": False}}) == "evaluated"
+    assert _evaluation({"verified": True}, "r:f", {"r:f": {"removed": True}}) == "evaluated · removed"
 
 
 def test_a_round_that_keeps_missing_the_spread_still_keeps_its_ideas(no_history):
@@ -1714,3 +1741,48 @@ def test_ids_repeated_in_the_full_data_are_built_once_and_go_to_every_row(no_his
     assert twice[value].iloc[-50:].tolist() == pytest.approx(once[value].iloc[:50].tolist(), nan_ok=True)
     assert twice[value].iloc[:len(train)].tolist() == pytest.approx(once[value].tolist(), nan_ok=True)
     assert any("repeat an id" in e.get("message", "") for e in evaluation.events)
+
+
+def test_a_feature_with_no_data_out_of_time_says_so():
+    """A feature that varies on train but is one value on valid and test - its data
+    stops before them - has no variable Gini there, and the reason says why."""
+    import pandas as pd
+
+    from agent.evaluate import _no_signal, variable_gini
+
+    frames = {"train": pd.DataFrame({"x": [0.1, 0.5, 0.9, 0.0], "y": [0, 1, 1, 0]}),
+              "valid": pd.DataFrame({"x": [0.0] * 4, "y": [0, 1, 0, 0]}),
+              "test": pd.DataFrame({"x": [0.0] * 4, "y": [0, 1, 0, 0]})}
+    assert variable_gini(frames["test"]["x"], frames["test"]["y"]) is None
+    note = _no_signal("x", frames)
+    assert note.startswith("one value (0) on valid and test") and "varies on train" in note
+
+
+def test_exhaustion_at_half_the_target_is_sent_back_once_to_rethink(workspace):
+    """The agent insists the direction is exhausted at half the target or less: once a
+    run, it is sent back with where the run stands and why its attempts failed - and
+    that analysis leads the next round of ideas. The second time, the run ends."""
+    from agent.agent import _next_round
+    from agent.tools import report_findings
+
+    session = _session(workspace, "x", params=RunParams(K=4, levels=["L1"]))
+    session.gated, session.ideas_required = True, True
+    session.ledger = [
+        {"name": "good_one", "level": "L1", "verified": True, "delta": 0.012, "reason": ""},
+        {"name": "flat_one", "level": "L1", "verified": False, "delta": -0.002,
+         "reason": "Gini gain -0.0020 is not above +0.0000"},
+        {"name": "broken_one", "level": "L1", "verified": False, "reason": "script failed: KeyError"}]
+    session.round_results = session.results()           # this round found nothing
+    for _ in range(2):                                   # the usual early-report refusals
+        assert not report_findings(session, "exhausted")["ok"]
+    back = report_findings(session, "exhausted")
+    assert not back["ok"] and session.round_spent and not session.finished
+    text = back["error"]
+    assert "quite challenging" in text and "`good_one` (L1, +0.0120)" in text
+    assert "1 did not beat base on the screen" in text and "1 the script failed" in text
+    # The analysis leads the next round's request, once.
+    assert _next_round(session).startswith("Not yet.") and not session.rethink
+    # Insisting again ends the run.
+    session.round_spent = False
+    report_findings(session, "still exhausted")
+    assert session.finished

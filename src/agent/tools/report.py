@@ -10,6 +10,7 @@ from __future__ import annotations
 from typing import Any
 
 from agent.tools.data_pull import request_scope
+from agent.composer import message
 from agent.session import Session
 
 __all__ = ["report_findings", "validated_sql"]
@@ -46,9 +47,54 @@ def report_findings(session: Session, summary: str) -> dict[str, Any]:
             f"Not yet: {left} more result(s) wanted ({session.budget()}), and this round "
             "still found some. This round is closed - a new round of ideas comes next, "
             "with what worked and what failed in front of you.")}
+    if left and session.ideas_required and not session.rethought \
+            and session.results() <= RETHINK_SHARE * session.K:
+        # Exhausted, the agent says - with half the target or less. Once a run, it is
+        # sent back to take stock: where the run stands and why the attempts failed,
+        # then a new round of ideas built on that analysis.
+        session.rethought = True
+        session.round_spent = True
+        session.rethink = rethink(session)
+        session.emit("agent_nudged", attempt=0, reason="exhausted at half the target or less: "
+                                                       "a round to rethink")
+        return {"ok": False, "error": session.rethink}
     if session.data_requests:
         summary = summary.strip() + "\n\n" + validated_sql(session)
     return session.end(summary)
+
+
+# A report of exhaustion at this share of the target or less is sent back - once a
+# run - to rethink: a summary of the run, and a new round of ideas.
+RETHINK_SHARE = 0.5
+
+_FAILURE_KINDS = (
+    ("did not beat base on the screen", r"is not above|gain"),
+    ("redundant with what the model has", r"redundan|explained|model column|existing column|seen before|same as"),
+    ("the script failed", r"script failed|build\(\) returned|timed out"),
+)
+
+
+def rethink(session: Session) -> str:
+    """Where the run stands - what verified, why the rest failed - and the push to
+    think again, for the agent that would stop at half the target or less."""
+    import re
+    from collections import Counter
+
+    entries = [e for e in session.ledger if not e.get("deleted")]
+    good = [f"`{e['name']}` ({e['level']}, {e['delta']:+.4f})" if isinstance(e.get("delta"), (int, float))
+             else f"`{e['name']}` ({e['level']})" for e in entries if e.get("verified")]
+    kept = [f"`{r['source_name']}` (L3)" for r in session.data_requests if r.get("status") == "kept"]
+    failed = [e for e in entries if not e.get("verified")]
+    kinds: Counter = Counter()
+    for e in failed:
+        reason = str(e.get("reason") or "")
+        kinds[next((k for k, pat in _FAILURE_KINDS if re.search(pat, reason, re.I)), "other reasons")] += 1
+    examples = [f"`{e['name']}` - {str(e.get('reason') or '').splitlines()[0][:120]}" for e in failed[-4:]]
+    return message(
+        "rethink", budget=session.budget(),
+        worked=", ".join(good + kept) or "nothing yet",
+        failed=("; ".join(f"{n} {k}" for k, n in kinds.most_common()) or "none"),
+        examples=("\n".join(f"* {x}" for x in examples) or "* none"))
 
 
 # How often a report short of the target is sent back, in a round, before the

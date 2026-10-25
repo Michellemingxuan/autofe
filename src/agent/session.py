@@ -234,6 +234,10 @@ class Session:
         self.focus: list[str] = []            # the upcoming round's focus engines
         self.focus_drawn: dict[int, list[str]] = {}   # per round, as drawn (agent.engines)
         self.report_refusals = 0              # early reports sent back (agent.tools.report)
+        # Exhaustion reported at half the target or less: sent back once a run to
+        # rethink (agent.tools.report.rethink); its words lead the next round's request.
+        self.rethought = False
+        self.rethink = ""
         self.gated = False                    # the runner's checks on reports (agent.tools.report)
         # Ideas in rounds (agent.tools.ideas): this round's ideas, the attempts made
         # on them, and whether the round is spent - the runner then asks for more.
@@ -376,7 +380,9 @@ class Session:
         return None
 
     def raw_paths(self) -> dict[str, str]:
-        return {n: str(s.data_path) for n, s in self.ws.sources().items()
+        """Each allowed source's file for discovery's code - its ``_fe`` cut when
+        there is one (Source.discovery_path)."""
+        return {n: str(s.discovery_path) for n, s in self.ws.sources().items()
                 if s.usable and n in self.params.sources}
 
     def run(self, code: str, mode: str, *, intent: str, level: str | None = None,

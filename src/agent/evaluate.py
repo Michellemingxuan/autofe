@@ -226,6 +226,8 @@ def evaluation_results(ws: Workspace) -> list[dict[str, Any]]:
     ranking, and its verdict.
     """
     rows = []
+    # C2 on the screen rows, for evaluations that did not record it.
+    screen_gini = {f["key"]: (f.get("checks") or {}).get("variable_gini") for f in feature_pool(ws)}
     for summary in list_evaluations(ws):
         if summary["status"] != "done":
             continue
@@ -264,6 +266,11 @@ def evaluation_results(ws: Workspace) -> list[dict[str, Any]]:
                 "direction": feature.get("direction", ""), "level": feature.get("level"),
                 "description": feature.get("description", ""),
                 "screen_gain": feature.get("delta"),
+                # The feature alone as a score: on the screen rows (C2) and on test,
+                # out of time (variable_gini, in stats) - a gap says it does not hold up.
+                "screen_variable_gini": (None if combo else feature.get("screen_variable_gini")
+                                         if feature.get("screen_variable_gini") is not None
+                                         else screen_gini.get(feature.get("key"))),
                 "gini_gain": r.get("gini_gain_test"),
                 "capture_gain": {p: r.get(f"capture_gain_{p}_test") for p in percents},
                 "shap": (done.get("shap_ranks") or {}).get(variant, []),
@@ -433,6 +440,8 @@ class Evaluation:
         self.emit("eval_started", together=self.together or None,
                   features=[{**{k: f[k] for k in ("key", "column", "name", "run_id", "direction",
                                                   "level", "delta", "description")},
+                             # C2 on the screen rows, as discovery measured it
+                             "screen_variable_gini": (f.get("checks") or {}).get("variable_gini"),
                              "single": f["key"] in self.features}
                             for f in self.chosen],
                   combinations={n: {"keys": ks, "columns": [self.column[k] for k in ks]}
@@ -466,6 +475,14 @@ class Evaluation:
                                       for n, ks in self.combinations.items()}
             # A feature chosen only inside a combination gets no model of its own.
             cfg.model.single = [self.column[k] for k in self.features]
+            # Base + all the singles is known before anything trains: it trains in
+            # this same run, beside them. Only the passing ones need the verdicts
+            # first, so only they take a second run (_together).
+            together_now = None
+            if self.together == "all" and len(self.features) >= 2:
+                together_now = {"name": TOGETHER["all"], "keys": list(self.features),
+                                "columns": [self.column[k] for k in self.features], "note": None}
+                cfg.model.combinations[TOGETHER["all"]] = together_now["columns"]
             percents = sorted(set(cfg.analysis.capture_rate_percents or CAPTURE_PERCENTS),
                               reverse=True)
             cfg.analysis.capture_rate_percents = percents
@@ -473,7 +490,8 @@ class Evaluation:
             if "test" not in cfg.analysis.metrics_on:
                 cfg.analysis.metrics_on = [*cfg.analysis.metrics_on, "test"]
             result = Pipeline(cfg, on_status=self._on_status).run(frames=frames)
-            added = self._together(cfg, frames, result) if self.together else None
+            added = (together_now if self.together == "all"
+                     else self._together(cfg, frames, result) if self.together else None)
         except Exception as error:  # noqa: BLE001 - shown to the user, then re-raised
             self.emit("eval_error", error=f"{type(error).__name__}: {error}")
             raise
@@ -519,23 +537,17 @@ class Evaluation:
         return payload
 
     def _together(self, cfg: Any, frames: dict[str, pd.DataFrame], result: Any) -> dict[str, Any]:
-        """Base + the single features in one model - every one that reached modelling
-        ("all"), or only those that passed ("passing") - trained after the verdicts,
-        beside the evaluation's own. Fewer than two: none, and a note says why."""
+        """Base + the single features that passed, in one model - trained after the
+        verdicts, in a second run beside the evaluation's own (base + all of them
+        trains in the first). Fewer than two passing: none, and a note says why."""
         singles = {self.column[k]: k for k in self.features}
-        name = TOGETHER[self.together]
-        if self.together == "passing":
-            verdicts = result.verdicts.to_dict("records") if not result.verdicts.empty else []
-            passed = [v["feature"] for v in verdicts
-                      if v.get("verdict") == "PASS" and v["feature"] in singles]
-            what = "passing feature"
-        else:
-            trained = {m.name for m in result.models if not m.error}
-            passed = [c for c in singles if f"loi__{c}" in trained]
-            what = "new feature"
+        name = TOGETHER["passing"]
+        verdicts = result.verdicts.to_dict("records") if not result.verdicts.empty else []
+        passed = [v["feature"] for v in verdicts
+                  if v.get("verdict") == "PASS" and v["feature"] in singles]
+        what = "passing feature"
         if len(passed) < 2:
-            note = (f"base + every {what}: not trained - {len(passed)} "
-                    f"{'passed' if self.together == 'passing' else 'reached modelling'}, "
+            note = (f"base + every {what}: not trained - {len(passed)} passed, "
                     "a model of them together needs two")
             self.emit("eval_log", message=note)
             return {"note": note}
@@ -581,6 +593,9 @@ class Evaluation:
                 "variable_gini": (variable_gini(test[column], test[ws.target])
                                   if ws.target in test else None),
             }
+            if out[column]["variable_gini"] is None:
+                out[column]["variable_gini_note"] = note = _no_signal(column, frames)
+                self.emit("eval_log", message=f"warning: {column} is {note}")
         return out
 
     def _on_status(self, board: dict[str, Any]) -> None:
@@ -736,6 +751,28 @@ def variable_gini(values: pd.Series, target: pd.Series) -> float | None:
     ranks = f.rank().to_numpy()
     auc = (ranks[positive].sum() - n1 * (n1 + 1) / 2) / (n1 * n0)
     return round(abs(2 * auc - 1), 4)
+
+
+def _no_signal(column: str, frames: dict[str, pd.DataFrame]) -> str:
+    """Why a feature has no variable Gini on test: no value there, or one value -
+    with the other out-of-time split's state, as a feature whose data stops before
+    them is constant on both."""
+    def state(split: str) -> str | None:
+        x = frames[split][column] if split in frames else None
+        if x is None:
+            return None
+        if x.notna().sum() == 0:
+            return "empty"
+        if x.nunique() < 2:
+            return f"one value ({x.dropna().iloc[0]:g})"
+        return None
+    test, valid = state("test"), state("valid")
+    train = frames.get("train")
+    varied = train is not None and train[column].nunique() > 1
+    where = "valid and test" if valid and test else "test"
+    hint = (", though it varies on train - its data may not cover the later period"
+            if varied else "")
+    return f"{test or 'no signal'} on {where}{hint}"
 
 
 def score_cutoffs(models: list[Any], shares: tuple[float, ...] = FLAG_SHARES) -> dict[str, dict[str, float]]:

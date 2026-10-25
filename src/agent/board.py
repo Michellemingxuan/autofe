@@ -9,8 +9,9 @@ Results (agent.evaluate).
 
     Outcome      a feature: verified or failed (the reason says where)
                  a request: kept or dropped (dropped by its challenge, or by the analyst)
-    Evaluation   a verified feature only: not evaluated, evaluated (with the
-                 verdict), evaluated · removed (taken off by the analyst), removed
+    Evaluation   a verified feature only: not evaluated, evaluated, evaluated ·
+                 removed (taken off by the analyst), removed - never its verdict or
+                 any measure from it, which stay on Metrics results
 
 An idea's standing comes from its features (and, at L3, its requests):
 
@@ -190,9 +191,10 @@ def round_board(session: "Session") -> list[dict[str, Any]]:
 
 # --------------------------------------------------------------- the board
 def _evaluations(ws: "Workspace") -> dict[str, dict[str, Any]]:
-    """Per feature key, how its evaluation went: the verdict of the newest finished
-    evaluation that measured it, and whether the analyst took it off the results.
-    One the analyst kept anywhere counts as kept."""
+    """Per feature key, whether a finished evaluation measured it, and whether the
+    analyst took it off the results. One the analyst kept anywhere counts as kept.
+    No verdict and no measure from it: the board shows what happened before
+    evaluation, and the out-of-time results stay on Metrics results."""
     from agent.evaluate import list_evaluations, read_events, removed_variants
 
     out: dict[str, dict[str, Any]] = {}
@@ -204,7 +206,6 @@ def _evaluations(ws: "Workspace") -> dict[str, dict[str, Any]]:
                                  / "events.jsonl")
             done = next(e for e in reversed(events) if e["event"] == "eval_done")
             removed = removed_variants(events)
-            verdicts = {v["feature"]: v for v in done.get("verdicts") or []}
             by_column = {f["column"]: f for f in summary["features"]}
             for row in done.get("comparison") or []:
                 variant = row["variant"]
@@ -214,23 +215,21 @@ def _evaluations(ws: "Workspace") -> dict[str, dict[str, Any]]:
                 key = by_column.get(column, {}).get("key")
                 if not key or (key in out and not out[key]["removed"]):
                     continue
-                out[key] = {"verdict": verdicts.get(column, {}).get("verdict") or "",
-                            "removed": variant in removed}
+                out[key] = {"removed": variant in removed}
     except Exception:  # noqa: BLE001 - a broken evaluation must not hide the board
         return out
     return out
 
 
-def _evaluation(entry: dict[str, Any], key: str, evaluations: dict[str, dict[str, Any]]) -> tuple[str, str]:
-    """A feature's Evaluation column - and its verdict. Only a verified feature can be
-    evaluated; a failed one has none."""
+def _evaluation(entry: dict[str, Any], key: str, evaluations: dict[str, dict[str, Any]]) -> str:
+    """A feature's Evaluation column. Only a verified feature can be evaluated; a
+    failed one has none."""
     if not entry.get("verified"):
-        return "", ""
+        return ""
     done = evaluations.get(key)
     if done:
-        removed = done["removed"] or entry.get("deleted")
-        return ("evaluated · removed" if removed else "evaluated"), done["verdict"]
-    return ("removed" if entry.get("deleted") else "not evaluated"), ""
+        return "evaluated · removed" if done["removed"] or entry.get("deleted") else "evaluated"
+    return "removed" if entry.get("deleted") else "not evaluated"
 
 
 def _request_outcome(r: dict[str, Any], finished: bool) -> tuple[str, str]:
@@ -278,9 +277,9 @@ def board_rows(ws: "Workspace") -> list[dict[str, Any]]:
             name = _of(e, ideas)
             used.add(name)
             checks = e.get("checks") or {}
-            sent, verdict = _evaluation(e, f"{folder.name}:{e['name']}", evaluations)
-            rows.append({"run_id": folder.name, "direction": direction, **idea_cols(name),
-                         "kind": "feature", "name": e["name"], "level": e.get("level"),
+            key = f"{folder.name}:{e['name']}"
+            rows.append({"feature_id": key, "run_id": folder.name, "direction": direction,
+                         **idea_cols(name), "kind": "feature", "name": e["name"], "level": e.get("level"),
                          "description": e.get("description") or "", "differs": e.get("differs") or "",
                          "code": e.get("code") or "", "attempt": e.get("intent"),
                          "seen_before": checks.get("seen_before") or "",
@@ -294,29 +293,29 @@ def board_rows(ws: "Workspace") -> list[dict[str, Any]]:
                          "gini_gain": e.get("delta"), "capture_gain": e.get("capture_gain"),
                          "status": ("verified" if e.get("verified") else "failed"),
                          "reason": e.get("reason") or "", "evidence": feature_evidence(e),
-                         "sent": sent, "verdict": verdict})
+                         "sent": _evaluation(e, key, evaluations)})
         finished = _finished(folder)
         for r in requests:
             name = _of(r, ideas)
             used.add(name)
             outcome, why = _request_outcome(r, finished)
-            rows.append({"run_id": folder.name, "direction": direction, **idea_cols(name),
-                         "kind": "request", "name": r.get("source_name") or r.get("intent"),
+            rows.append({"feature_id": "", "run_id": folder.name, "direction": direction,
+                         **idea_cols(name), "kind": "request", "name": r.get("source_name") or r.get("intent"),
                          "level": "L3", "description": r.get("gap") or "", "differs": "",
                          "code": r.get("sql") or r.get("data") or "", "attempt": r.get("intent"),
                          "seen_before": "", "max_model_rho": None, "nearest": "", "nearest_rho": None,
                          "residual_rho": None, "variable_gini": None, "note": "",
                          "gini_gain": None, "capture_gain": None, "status": outcome, "reason": why,
-                         "evidence": feature_evidence(r), "sent": "", "verdict": ""})
+                         "evidence": feature_evidence(r), "sent": ""})
         for name, i in standings.items():
             if name not in used:
-                rows.append({"run_id": folder.name, "direction": direction, **idea_cols(name),
+                rows.append({"feature_id": "", "run_id": folder.name, "direction": direction, **idea_cols(name),
                              "kind": "idea", "name": "", "level": i.get("level"), "description": "",
                              "differs": "", "code": "", "attempt": None, "seen_before": "",
                              "max_model_rho": None, "nearest": "", "nearest_rho": None,
                              "residual_rho": None, "variable_gini": None, "note": "",
                              "gini_gain": None, "capture_gain": None, "status": "not tried",
-                             "reason": "", "evidence": None, "sent": "", "verdict": ""})
+                             "reason": "", "evidence": None, "sent": ""})
     return rows
 
 

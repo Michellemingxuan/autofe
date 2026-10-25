@@ -39,7 +39,7 @@ const COLUMNS: { key: Key; label: string; hint?: string; numeric?: boolean }[] =
   { key: 'variable_gini', label: 'C2 (variable Gini)', hint: 'Information only: the Gini of the feature alone as a score for the outcome, |2·AUC − 1| on the screen rows', numeric: true },
   { key: 'gini_gain', label: 'C3 (screen gain)', hint: 'The screen\'s Gini gain, base vs base + the feature - against your gates', numeric: true },
   { key: 'status', label: 'Status', hint: 'Feature: verified (passed C0-C1 and the screen gates) or failed (the reason says where: script, C1, guards, gates). Request: kept, or dropped - by its challenge (the current data supplies it) or by the analyst. Idea alone: not tried' },
-  { key: 'sent', label: 'C4 (evaluation)', hint: 'Verified features only - the full verdict on the splits. not evaluated · evaluated (PASS or FAIL) · evaluated · removed (the analyst took it off) · removed (taken off before any evaluation)' },
+  { key: 'sent', label: 'C4 (evaluation)', hint: 'Verified features only - whether it was evaluated: not evaluated · evaluated · evaluated · removed (the analyst took it off) · removed (taken off before any evaluation). Its results are on Metrics results' },
 ]
 const IDEA_COLS = 4                       // direction, engine, idea, idea status: merged per idea
 const N_COLS = COLUMNS.length + 1         // + code
@@ -75,10 +75,10 @@ function compare(a: BoardRow, b: BoardRow, key: Key, dir: 1 | -1): number {
 // ── Download ────────────────────────────────────────────────────────────
 // The columns of the download, in order - every field the board holds, code included.
 const CSV_COLUMNS: (keyof BoardRow)[] = [
-  'run_id', 'direction', 'round', 'engine', 'lens', 'idea', 'idea_status', 'p_useful',
+  'feature_id', 'run_id', 'direction', 'round', 'engine', 'lens', 'idea', 'idea_status', 'p_useful',
   'idea_description', 'idea_measures', 'kind', 'name', 'level', 'description', 'differs', 'attempt',
   'seen_before', 'max_model_rho', 'nearest', 'nearest_rho', 'residual_rho', 'variable_gini', 'note', 'gini_gain', 'capture_gain',
-  'status', 'reason', 'evidence', 'sent', 'verdict', 'code',
+  'status', 'reason', 'evidence', 'sent', 'code',
 ]
 
 function toCsv(rows: BoardRow[]): string {
@@ -136,7 +136,7 @@ function Schema() {
         <h4>Evaluation <span>(verified features only)</span></h4>
         <dl>
           <dt>not evaluated</dt><dd>In the feature set, not evaluated yet.</dd>
-          <dt>evaluated · PASS / FAIL</dt><dd>Measured on the full splits; the verdict of the newest evaluation.</dd>
+          <dt>evaluated</dt><dd>Measured on the full splits. Its results - verdict, out-of-time Gini - are on Metrics results, under the same feature id; the board stays with what discovery saw.</dd>
           <dt>evaluated · removed</dt><dd>Evaluated, then taken off by the analyst.</dd>
           <dt>removed</dt><dd>Taken off the feature set before any evaluation.</dd>
         </dl>
@@ -156,7 +156,7 @@ function Schema() {
           <dt>C1 (redundancy)</dt><dd>The largest |Spearman ρ| with any one model column, and that column. Fails above 0.9, unless its |ρ| with the base model's residual (y − ŷ) reaches 0.05.</dd>
           <dt>C2 (variable Gini)</dt><dd>The Gini of the feature alone as a score for the outcome, |2·AUC − 1| on the screen rows. Information only - set agent.checks.min_variable_gini to make it a gate.</dd>
           <dt>C3 (screen gain)</dt><dd>The screen's Gini gain, base vs base + the feature, against your gates.</dd>
-          <dt>C4 (evaluation)</dt><dd>The full verdict on the splits - see Evaluation.</dd>
+          <dt>C4 (evaluation)</dt><dd>Whether it was evaluated - see Evaluation.</dd>
         </dl>
       </div>
     </div>
@@ -344,7 +344,7 @@ export function LoggingBoard({ onClose }: Props) {
                                 <td>
                                   {r.sent && (
                                     <span className={`${s.sent} ${s[EVAL_CLASS[r.sent] ?? '']}`}>
-                                      {r.sent}{r.verdict ? ` · ${r.verdict}` : ''}
+                                      {r.sent}
                                     </span>
                                   )}
                                 </td>
