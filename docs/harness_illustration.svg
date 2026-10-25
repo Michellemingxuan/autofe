@@ -1,0 +1,105 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1640 1068" font-family="-apple-system, 'SF Pro Display', 'SF Pro Text', ui-sans-serif, 'Segoe UI', system-ui, Helvetica, sans-serif">
+  <defs>
+    <filter id="soft" x="-10%" y="-10%" width="120%" height="125%">
+      <feGaussianBlur in="SourceAlpha" stdDeviation="8"/><feOffset dy="4"/>
+      <feComponentTransfer><feFuncA type="linear" slope="0.08"/></feComponentTransfer>
+      <feMerge><feMergeNode/><feMergeNode in="SourceGraphic"/></feMerge>
+    </filter>
+  </defs>
+  <rect width="1640" height="1068" fill="#FAF9F5"/>
+  <g transform="translate(28,26) scale(1.0)"><line x1="16" y1="2" x2="16" y2="9" stroke="#7A5AA8" stroke-width="2.2" stroke-linecap="round"/><circle cx="16" cy="3" r="3" fill="#7A5AA8"/><rect x="1" y="9" width="30" height="27" rx="9" fill="#7A5AA8"/><rect x="-3" y="17" width="4" height="11" rx="2" fill="#7A5AA8"/><rect x="31" y="17" width="4" height="11" rx="2" fill="#7A5AA8"/><circle cx="10.5" cy="21" r="3.3" fill="#FFF"/><circle cx="21.5" cy="21" r="3.3" fill="#FFF"/><rect x="11" y="28" width="10" height="2.6" rx="1.3" fill="#FFF" opacity="0.85"/></g><text x="72" y="44" font-size="19" font-weight="700" fill="#7A5AA8">Agent</text><text x="148" y="44" font-size="17" fill="#6E6E73">the LLM: proposes, writes code, decides</text>
+  <g transform="translate(836.0,25) scale(1.0)"><path d="M16,1 L30,6 V17 C30,27 23,33 16,36 C9,33 2,27 2,17 V6 Z" fill="#3D6BA8"/><path d="M10,18 l4.5,4.5 L23,13" stroke="#FFF" stroke-width="3" fill="none" stroke-linecap="round" stroke-linejoin="round"/></g><text x="880.0" y="44" font-size="19" font-weight="700" fill="#3D6BA8">Harness</text><text x="976.0" y="44" font-size="17" fill="#6E6E73">rules in code: check every step, answer at once</text>
+  <g filter="url(#soft)"><rect x="24" y="92" width="784" height="462" rx="22" fill="#FFFFFF"/></g>
+  <circle cx="64.0" cy="130" r="17" fill="#3D6BA8"/><circle cx="62.0" cy="128" r="6.5" fill="none" stroke="#FFF" stroke-width="2.4"/><path d="M67.0,133 l6,6" stroke="#FFF" stroke-width="2.6" stroke-linecap="round"/>
+  <text x="92" y="137" font-size="20" font-weight="700" fill="#1D1D1F">Two failures in a row → look at the data first</text>
+  <line x1="48" y1="162" x2="784" y2="162" stroke="#EEEAE2"/>
+  <g transform="translate(44.0,181.0) scale(0.82)"><line x1="16" y1="2" x2="16" y2="9" stroke="#7A5AA8" stroke-width="2.2" stroke-linecap="round"/><circle cx="16" cy="3" r="3" fill="#7A5AA8"/><rect x="1" y="9" width="30" height="27" rx="9" fill="#7A5AA8"/><rect x="-3" y="17" width="4" height="11" rx="2" fill="#7A5AA8"/><rect x="31" y="17" width="4" height="11" rx="2" fill="#7A5AA8"/><circle cx="10.5" cy="21" r="3.3" fill="#FFF"/><circle cx="21.5" cy="21" r="3.3" fill="#FFF"/><rect x="11" y="28" width="10" height="2.6" rx="1.3" fill="#FFF" opacity="0.85"/></g>
+  <rect x="88" y="178" width="341" height="38" rx="14" fill="#F3EFF9"/>
+  <text x="104" y="203" font-size="15.5" fill="#4A3B69" font-family="ui-monospace, 'SF Mono', Menlo, monospace">screen_feature(pay_to_spend_90d)</text>
+  <g transform="translate(758.0,231.0) scale(0.86)"><path d="M16,1 L30,6 V17 C30,27 23,33 16,36 C9,33 2,27 2,17 V6 Z" fill="#3D6BA8"/><path d="M10,18 l4.5,4.5 L23,13" stroke="#FFF" stroke-width="3" fill="none" stroke-linecap="round" stroke-linejoin="round"/></g>
+  <rect x="374" y="228" width="370" height="38" rx="14" fill="#F7E6E1"/>
+  <text x="390" y="253" font-size="16.5" fill="#1D1D1F"><tspan font-weight="700" fill="#B5523B">✕ </tspan>script failed: KeyError 'spend_90d'</text>
+  <g transform="translate(44.0,281.0) scale(0.82)"><line x1="16" y1="2" x2="16" y2="9" stroke="#7A5AA8" stroke-width="2.2" stroke-linecap="round"/><circle cx="16" cy="3" r="3" fill="#7A5AA8"/><rect x="1" y="9" width="30" height="27" rx="9" fill="#7A5AA8"/><rect x="-3" y="17" width="4" height="11" rx="2" fill="#7A5AA8"/><rect x="31" y="17" width="4" height="11" rx="2" fill="#7A5AA8"/><circle cx="10.5" cy="21" r="3.3" fill="#FFF"/><circle cx="21.5" cy="21" r="3.3" fill="#FFF"/><rect x="11" y="28" width="10" height="2.6" rx="1.3" fill="#FFF" opacity="0.85"/></g>
+  <rect x="88" y="278" width="293" height="38" rx="14" fill="#F3EFF9"/>
+  <text x="104" y="303" font-size="15.5" fill="#4A3B69" font-family="ui-monospace, 'SF Mono', Menlo, monospace">screen_feature(…) # patched</text>
+  <g transform="translate(758.0,342.0) scale(0.86)"><path d="M16,1 L30,6 V17 C30,27 23,33 16,36 C9,33 2,27 2,17 V6 Z" fill="#3D6BA8"/><path d="M10,18 l4.5,4.5 L23,13" stroke="#FFF" stroke-width="3" fill="none" stroke-linecap="round" stroke-linejoin="round"/></g>
+  <rect x="155" y="328" width="589" height="60" rx="14" fill="#F7E6E1"/>
+  <text x="171" y="353" font-size="16.5" fill="#1D1D1F"><tspan font-weight="700" fill="#B5523B">✕ </tspan>failed again: 2 in a row. Stop patching. Run a probe first;</text>
+  <text x="171" y="375" font-size="16.5" fill="#1D1D1F">the next screen waits for it.</text>
+  <g transform="translate(44.0,403.0) scale(0.82)"><line x1="16" y1="2" x2="16" y2="9" stroke="#7A5AA8" stroke-width="2.2" stroke-linecap="round"/><circle cx="16" cy="3" r="3" fill="#7A5AA8"/><rect x="1" y="9" width="30" height="27" rx="9" fill="#7A5AA8"/><rect x="-3" y="17" width="4" height="11" rx="2" fill="#7A5AA8"/><rect x="31" y="17" width="4" height="11" rx="2" fill="#7A5AA8"/><circle cx="10.5" cy="21" r="3.3" fill="#FFF"/><circle cx="21.5" cy="21" r="3.3" fill="#FFF"/><rect x="11" y="28" width="10" height="2.6" rx="1.3" fill="#FFF" opacity="0.85"/></g>
+  <rect x="88" y="400" width="380" height="38" rx="14" fill="#F3EFF9"/>
+  <text x="104" y="425" font-size="15.5" fill="#4A3B69" font-family="ui-monospace, 'SF Mono', Menlo, monospace">run_probe(): columns, dtypes, 5 rows</text>
+  <g transform="translate(44.0,453.0) scale(0.82)"><line x1="16" y1="2" x2="16" y2="9" stroke="#7A5AA8" stroke-width="2.2" stroke-linecap="round"/><circle cx="16" cy="3" r="3" fill="#7A5AA8"/><rect x="1" y="9" width="30" height="27" rx="9" fill="#7A5AA8"/><rect x="-3" y="17" width="4" height="11" rx="2" fill="#7A5AA8"/><rect x="31" y="17" width="4" height="11" rx="2" fill="#7A5AA8"/><circle cx="10.5" cy="21" r="3.3" fill="#FFF"/><circle cx="21.5" cy="21" r="3.3" fill="#FFF"/><rect x="11" y="28" width="10" height="2.6" rx="1.3" fill="#FFF" opacity="0.85"/></g>
+  <rect x="88" y="450" width="351" height="38" rx="14" fill="#F3EFF9"/>
+  <text x="104" y="475" font-size="15.5" fill="#4A3B69" font-family="ui-monospace, 'SF Mono', Menlo, monospace">screen_feature(…) # spend_90d_amt</text>
+  <g transform="translate(758.0,503.0) scale(0.86)"><path d="M16,1 L30,6 V17 C30,27 23,33 16,36 C9,33 2,27 2,17 V6 Z" fill="#3D6BA8"/><path d="M10,18 l4.5,4.5 L23,13" stroke="#FFF" stroke-width="3" fill="none" stroke-linecap="round" stroke-linejoin="round"/></g>
+  <rect x="483" y="500" width="261" height="38" rx="14" fill="#E7F0EA"/>
+  <text x="499" y="525" font-size="16.5" fill="#1D1D1F"><tspan font-weight="700" fill="#3F7D5A">✓ </tspan>verified · ΔGini +0.006</text>
+  <g filter="url(#soft)"><rect x="832" y="92" width="784" height="462" rx="22" fill="#FFFFFF"/></g>
+  <circle cx="872.0" cy="130" r="17" fill="#A0782E"/><path d="M879.0,136 V129 a5,5 0 0 0 -5,-5 H865.0" stroke="#FFF" stroke-width="2.4" fill="none" stroke-linecap="round"/><path d="M869.0,120 l-5,4 l5,4" stroke="#FFF" stroke-width="2.4" fill="none" stroke-linecap="round" stroke-linejoin="round"/>
+  <text x="900" y="137" font-size="20" font-weight="700" fill="#1D1D1F">Repeats are sent back, nothing spent</text>
+  <line x1="856" y1="162" x2="1592" y2="162" stroke="#EEEAE2"/>
+  <g transform="translate(852.0,181.0) scale(0.82)"><line x1="16" y1="2" x2="16" y2="9" stroke="#7A5AA8" stroke-width="2.2" stroke-linecap="round"/><circle cx="16" cy="3" r="3" fill="#7A5AA8"/><rect x="1" y="9" width="30" height="27" rx="9" fill="#7A5AA8"/><rect x="-3" y="17" width="4" height="11" rx="2" fill="#7A5AA8"/><rect x="31" y="17" width="4" height="11" rx="2" fill="#7A5AA8"/><circle cx="10.5" cy="21" r="3.3" fill="#FFF"/><circle cx="21.5" cy="21" r="3.3" fill="#FFF"/><rect x="11" y="28" width="10" height="2.6" rx="1.3" fill="#FFF" opacity="0.85"/></g>
+  <rect x="896" y="178" width="370" height="38" rx="14" fill="#F3EFF9"/>
+  <text x="912" y="203" font-size="15.5" fill="#4A3B69" font-family="ui-monospace, 'SF Mono', Menlo, monospace">screen_feature(min_pay_share_trend)</text>
+  <g transform="translate(1566.0,242.0) scale(0.86)"><path d="M16,1 L30,6 V17 C30,27 23,33 16,36 C9,33 2,27 2,17 V6 Z" fill="#3D6BA8"/><path d="M10,18 l4.5,4.5 L23,13" stroke="#FFF" stroke-width="3" fill="none" stroke-linecap="round" stroke-linejoin="round"/></g>
+  <rect x="954" y="228" width="598" height="60" rx="14" fill="#F7F0E2"/>
+  <text x="970" y="253" font-size="16.5" fill="#1D1D1F"><tspan font-weight="700" fill="#A0782E">↩ </tspan>same code as min_pay_ratio_3m. Say what differs. Nothing was</text>
+  <text x="970" y="275" font-size="16.5" fill="#1D1D1F">spent.</text>
+  <g transform="translate(852.0,303.0) scale(0.82)"><line x1="16" y1="2" x2="16" y2="9" stroke="#7A5AA8" stroke-width="2.2" stroke-linecap="round"/><circle cx="16" cy="3" r="3" fill="#7A5AA8"/><rect x="1" y="9" width="30" height="27" rx="9" fill="#7A5AA8"/><rect x="-3" y="17" width="4" height="11" rx="2" fill="#7A5AA8"/><rect x="31" y="17" width="4" height="11" rx="2" fill="#7A5AA8"/><circle cx="10.5" cy="21" r="3.3" fill="#FFF"/><circle cx="21.5" cy="21" r="3.3" fill="#FFF"/><rect x="11" y="28" width="10" height="2.6" rx="1.3" fill="#FFF" opacity="0.85"/></g>
+  <rect x="896" y="300" width="389" height="38" rx="14" fill="#F3EFF9"/>
+  <text x="912" y="325" font-size="16.5" fill="#1D1D1F">It is the 3-month trend, not the level.</text>
+  <g transform="translate(1566.0,353.0) scale(0.86)"><path d="M16,1 L30,6 V17 C30,27 23,33 16,36 C9,33 2,27 2,17 V6 Z" fill="#3D6BA8"/><path d="M10,18 l4.5,4.5 L23,13" stroke="#FFF" stroke-width="3" fill="none" stroke-linecap="round" stroke-linejoin="round"/></g>
+  <rect x="1318" y="350" width="234" height="38" rx="14" fill="#E7F0EA"/>
+  <text x="1334" y="375" font-size="16.5" fill="#1D1D1F"><tspan font-weight="700" fill="#3F7D5A">✓ </tspan>accepted → screening</text>
+  <g transform="translate(852.0,403.0) scale(0.82)"><line x1="16" y1="2" x2="16" y2="9" stroke="#7A5AA8" stroke-width="2.2" stroke-linecap="round"/><circle cx="16" cy="3" r="3" fill="#7A5AA8"/><rect x="1" y="9" width="30" height="27" rx="9" fill="#7A5AA8"/><rect x="-3" y="17" width="4" height="11" rx="2" fill="#7A5AA8"/><rect x="31" y="17" width="4" height="11" rx="2" fill="#7A5AA8"/><circle cx="10.5" cy="21" r="3.3" fill="#FFF"/><circle cx="21.5" cy="21" r="3.3" fill="#FFF"/><rect x="11" y="28" width="10" height="2.6" rx="1.3" fill="#FFF" opacity="0.85"/></g>
+  <rect x="896" y="400" width="341" height="38" rx="14" fill="#F3EFF9"/>
+  <text x="912" y="425" font-size="15.5" fill="#4A3B69" font-family="ui-monospace, 'SF Mono', Menlo, monospace">screen_feature(pay_to_spend_90d)</text>
+  <g transform="translate(1566.0,453.0) scale(0.86)"><path d="M16,1 L30,6 V17 C30,27 23,33 16,36 C9,33 2,27 2,17 V6 Z" fill="#3D6BA8"/><path d="M10,18 l4.5,4.5 L23,13" stroke="#FFF" stroke-width="3" fill="none" stroke-linecap="round" stroke-linejoin="round"/></g>
+  <rect x="1081" y="450" width="471" height="38" rx="14" fill="#F7F0E2"/>
+  <text x="1097" y="475" font-size="16.5" fill="#1D1D1F"><tspan font-weight="700" fill="#A0782E">↩ </tspan>that name is already taken. Nothing was spent.</text>
+  <g filter="url(#soft)"><rect x="24" y="578" width="784" height="456" rx="22" fill="#FFFFFF"/></g>
+  <circle cx="64.0" cy="616" r="17" fill="#A0782E"/><g fill="none" stroke="#FFF" stroke-width="2"><ellipse cx="64.0" cy="610" rx="7" ry="2.6"/><path d="M57.0,610 V622 A7,2.6 0 0 0 71.0,622 V610"/><path d="M57.0,616 A7,2.6 0 0 0 71.0,616"/></g>
+  <text x="92" y="623" font-size="20" font-weight="700" fill="#1D1D1F">A data request must survive its challenge</text>
+  <line x1="48" y1="648" x2="784" y2="648" stroke="#EEEAE2"/>
+  <g transform="translate(44.0,667.0) scale(0.82)"><line x1="16" y1="2" x2="16" y2="9" stroke="#7A5AA8" stroke-width="2.2" stroke-linecap="round"/><circle cx="16" cy="3" r="3" fill="#7A5AA8"/><rect x="1" y="9" width="30" height="27" rx="9" fill="#7A5AA8"/><rect x="-3" y="17" width="4" height="11" rx="2" fill="#7A5AA8"/><rect x="31" y="17" width="4" height="11" rx="2" fill="#7A5AA8"/><circle cx="10.5" cy="21" r="3.3" fill="#FFF"/><circle cx="21.5" cy="21" r="3.3" fill="#FFF"/><rect x="11" y="28" width="10" height="2.6" rx="1.3" fill="#FFF" opacity="0.85"/></g>
+  <rect x="88" y="664" width="428" height="38" rx="14" fill="#F3EFF9"/>
+  <text x="104" y="689" font-size="15.5" fill="#4A3B69" font-family="ui-monospace, 'SF Mono', Menlo, monospace">request_data(merchant_risk_band) · L3 SQL</text>
+  <g transform="translate(758.0,728.0) scale(0.86)"><path d="M16,1 L30,6 V17 C30,27 23,33 16,36 C9,33 2,27 2,17 V6 Z" fill="#3D6BA8"/><path d="M10,18 l4.5,4.5 L23,13" stroke="#FFF" stroke-width="3" fill="none" stroke-linecap="round" stroke-linejoin="round"/></g>
+  <rect x="155" y="714" width="589" height="60" rx="14" fill="#EAF0F8"/>
+  <text x="171" y="739" font-size="16.5" fill="#1D1D1F">Challenge it: can the current data build this? constructible,</text>
+  <text x="171" y="761" font-size="16.5" fill="#1D1D1F">partly, or new?</text>
+  <g transform="translate(44.0,789.0) scale(0.82)"><line x1="16" y1="2" x2="16" y2="9" stroke="#7A5AA8" stroke-width="2.2" stroke-linecap="round"/><circle cx="16" cy="3" r="3" fill="#7A5AA8"/><rect x="1" y="9" width="30" height="27" rx="9" fill="#7A5AA8"/><rect x="-3" y="17" width="4" height="11" rx="2" fill="#7A5AA8"/><rect x="31" y="17" width="4" height="11" rx="2" fill="#7A5AA8"/><circle cx="10.5" cy="21" r="3.3" fill="#FFF"/><circle cx="21.5" cy="21" r="3.3" fill="#FFF"/><rect x="11" y="28" width="10" height="2.6" rx="1.3" fill="#FFF" opacity="0.85"/></g>
+  <rect x="88" y="786" width="453" height="38" rx="14" fill="#F3EFF9"/>
+  <text x="104" y="811" font-size="16.5" fill="#1D1D1F">Constructible: here is build() from CAS auths.</text>
+  <g transform="translate(758.0,850.0) scale(0.86)"><path d="M16,1 L30,6 V17 C30,27 23,33 16,36 C9,33 2,27 2,17 V6 Z" fill="#3D6BA8"/><path d="M10,18 l4.5,4.5 L23,13" stroke="#FFF" stroke-width="3" fill="none" stroke-linecap="round" stroke-linejoin="round"/></g>
+  <rect x="201" y="836" width="543" height="60" rx="14" fill="#F7E6E1"/>
+  <text x="217" y="861" font-size="16.5" fill="#1D1D1F"><tspan font-weight="700" fill="#B5523B">✕ </tspan>ran it on the screen rows: it works. Dropped, the data</text>
+  <text x="217" y="883" font-size="16.5" fill="#1D1D1F">already covers it.</text>
+  <g filter="url(#soft)"><rect x="832" y="578" width="784" height="456" rx="22" fill="#FFFFFF"/></g>
+  <circle cx="872.0" cy="616" r="17" fill="#3F7D5A"/><path d="M867.0,625 V607" stroke="#FFF" stroke-width="2.4" stroke-linecap="round"/><path d="M867.0,607 H879.0 l-3,4 l3,4 H867.0 Z" fill="#FFF"/>
+  <text x="900" y="623" font-size="20" font-weight="700" fill="#1D1D1F">Stopping must be earned</text>
+  <line x1="856" y1="648" x2="1592" y2="648" stroke="#EEEAE2"/>
+  <g transform="translate(852.0,667.0) scale(0.82)"><line x1="16" y1="2" x2="16" y2="9" stroke="#7A5AA8" stroke-width="2.2" stroke-linecap="round"/><circle cx="16" cy="3" r="3" fill="#7A5AA8"/><rect x="1" y="9" width="30" height="27" rx="9" fill="#7A5AA8"/><rect x="-3" y="17" width="4" height="11" rx="2" fill="#7A5AA8"/><rect x="31" y="17" width="4" height="11" rx="2" fill="#7A5AA8"/><circle cx="10.5" cy="21" r="3.3" fill="#FFF"/><circle cx="21.5" cy="21" r="3.3" fill="#FFF"/><rect x="11" y="28" width="10" height="2.6" rx="1.3" fill="#FFF" opacity="0.85"/></g>
+  <rect x="896" y="664" width="325" height="38" rx="14" fill="#F3EFF9"/>
+  <text x="912" y="689" font-size="16.5" fill="#1D1D1F">I think that is enough features.</text>
+  <g transform="translate(1566.0,717.0) scale(0.86)"><path d="M16,1 L30,6 V17 C30,27 23,33 16,36 C9,33 2,27 2,17 V6 Z" fill="#3D6BA8"/><path d="M10,18 l4.5,4.5 L23,13" stroke="#FFF" stroke-width="3" fill="none" stroke-linecap="round" stroke-linejoin="round"/></g>
+  <rect x="963" y="714" width="589" height="38" rx="14" fill="#F7F0E2"/>
+  <text x="979" y="739" font-size="16.5" fill="#1D1D1F"><tspan font-weight="700" fill="#A0782E">↩ </tspan>No report, so the run is not done. Carry on. (nudge 1 of 3)</text>
+  <g transform="translate(852.0,767.0) scale(0.82)"><line x1="16" y1="2" x2="16" y2="9" stroke="#7A5AA8" stroke-width="2.2" stroke-linecap="round"/><circle cx="16" cy="3" r="3" fill="#7A5AA8"/><rect x="1" y="9" width="30" height="27" rx="9" fill="#7A5AA8"/><rect x="-3" y="17" width="4" height="11" rx="2" fill="#7A5AA8"/><rect x="31" y="17" width="4" height="11" rx="2" fill="#7A5AA8"/><circle cx="10.5" cy="21" r="3.3" fill="#FFF"/><circle cx="21.5" cy="21" r="3.3" fill="#FFF"/><rect x="11" y="28" width="10" height="2.6" rx="1.3" fill="#FFF" opacity="0.85"/></g>
+  <rect x="896" y="764" width="399" height="38" rx="14" fill="#F3EFF9"/>
+  <text x="912" y="789" font-size="15.5" fill="#4A3B69" font-family="ui-monospace, 'SF Mono', Menlo, monospace">report_findings("direction exhausted")</text>
+  <g transform="translate(1566.0,839.0) scale(0.86)"><path d="M16,1 L30,6 V17 C30,27 23,33 16,36 C9,33 2,27 2,17 V6 Z" fill="#3D6BA8"/><path d="M10,18 l4.5,4.5 L23,13" stroke="#FFF" stroke-width="3" fill="none" stroke-linecap="round" stroke-linejoin="round"/></g>
+  <rect x="945" y="814" width="607" height="82" rx="14" fill="#F7F0E2"/>
+  <text x="961" y="839" font-size="16.5" fill="#1D1D1F"><tspan font-weight="700" fill="#A0782E">↩ </tspan>Not yet: 2 of 6 results, half the target or less. Take stock:</text>
+  <text x="961" y="861" font-size="16.5" fill="#1D1D1F">5 did not beat base, 3 redundant, 1 script failed. Why, and</text>
+  <text x="961" y="883" font-size="16.5" fill="#1D1D1F">what would change that? Think out of the box.</text>
+  <g transform="translate(852.0,922.0) scale(0.82)"><line x1="16" y1="2" x2="16" y2="9" stroke="#7A5AA8" stroke-width="2.2" stroke-linecap="round"/><circle cx="16" cy="3" r="3" fill="#7A5AA8"/><rect x="1" y="9" width="30" height="27" rx="9" fill="#7A5AA8"/><rect x="-3" y="17" width="4" height="11" rx="2" fill="#7A5AA8"/><rect x="31" y="17" width="4" height="11" rx="2" fill="#7A5AA8"/><circle cx="10.5" cy="21" r="3.3" fill="#FFF"/><circle cx="21.5" cy="21" r="3.3" fill="#FFF"/><rect x="11" y="28" width="10" height="2.6" rx="1.3" fill="#FFF" opacity="0.85"/></g>
+  <rect x="896" y="908" width="607" height="60" rx="14" fill="#F3EFF9"/>
+  <text x="912" y="933" font-size="16.5" fill="#1D1D1F">All reuse the same 90-day spend window. Try a different signal:</text>
+  <text x="912" y="955" font-size="16.5" fill="#1D1D1F">payment timing vs. statement date.</text>
+  <g transform="translate(1566.0,983.0) scale(0.86)"><path d="M16,1 L30,6 V17 C30,27 23,33 16,36 C9,33 2,27 2,17 V6 Z" fill="#3D6BA8"/><path d="M10,18 l4.5,4.5 L23,13" stroke="#FFF" stroke-width="3" fill="none" stroke-linecap="round" stroke-linejoin="round"/></g>
+  <rect x="990" y="980" width="562" height="38" rx="14" fill="#E7F0EA"/>
+  <text x="1006" y="1005" font-size="16.5" fill="#1D1D1F"><tspan font-weight="700" fill="#3F7D5A">✓ </tspan>that analysis leads the next round of ideas (once a run)</text>
+  <text x="1616" y="1056" font-size="14" fill="#9A9387" text-anchor="end">Illustrative exchanges; the rules are the harness's own.</text>
+</svg>
