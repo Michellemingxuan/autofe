@@ -28,4 +28,4 @@ __all__ = [
     "PreflightReport",
     "run_preflight",
 ]
-__version__ = "2.0.0"
+__version__ = "2.1.0"
