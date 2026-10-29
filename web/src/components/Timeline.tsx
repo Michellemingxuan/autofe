@@ -3,7 +3,7 @@ import { ToolChips } from './ToolChips'
 import s from './Timeline.module.css'
 
 const KIND_LABEL: Record<Step['kind'], string> = {
-  explore: 'look at the data', ideas: 'ideas', linkage: 'linkage', intent: 'intent', l3: 'data request',
+  explore: 'look at the data', ideas: 'ideas', linkage: 'linkage', aggregate: 'aggregate', intent: 'intent', l3: 'data request',
   challenge: 'challenge', stage: 'stage', summary: 'summary',
 }
 

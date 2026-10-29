@@ -96,6 +96,30 @@ Build from an idea's measures, and say which idea each proposal tests:
 computes (`full_pay_share_6m`), not after the idea; one idea can have several
 features. Each screen reply shows the run's ideas - every round's - with their
 standing and `work_next`: the order to work them in, drawn by Thompson sampling
-from each idea's record. An earlier round's idea that carried signal stays in
-the order: its next measure is often worth more than a new idea's first. An idea whose features carried no signal draws low and moves
-back; follow the order unless you have a reason not to, and say the reason.
+from each idea's record. Every idea of the run stays in the draw: each attempt
+works the idea at the top of the latest `work_next`, new or earlier. A
+feature that missed tests one measure, not the idea - the idea draws a little
+lower and comes up less often but still comes up; when it comes up again, measure it
+another way. Follow the order unless you have a reason not to, and say the
+reason.
+
+## Earlier runs' ideas
+
+An idea's record is every run's: ideas linked across runs (an idea like an
+earlier one is linked to it) share their features' evidence, and the board
+shows that one standing. A run starts with the 20 best earlier ideas in its
+draw - those of runs with the same direction first - and the ideas message
+names them. To bring in another earlier idea that fits this direction, name it
+in `carry` in your ideas answer - it joins the draw with its record,
+marked `from run`. Work it by its name (`idea="<name>"`) as any other; do not
+give it again as a new idea.
+
+Is a new idea one you had before? That is yours to say, by meaning, not
+wording: `liquidity_squeeze` and `cash_buffer_running_out` are one idea.
+* the same claim about who defaults and why - set `same_as` to the earlier
+  idea's name: it keeps that idea's record, and its features count for it.
+  One already in this run's draw needs no new idea: work it by its name.
+* close to an earlier idea, but a different claim - say what it claims that
+  the earlier one does not, in `differs`.
+An idea worded close to an earlier one that says neither is sent back with the
+candidates, once.

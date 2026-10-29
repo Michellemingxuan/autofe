@@ -6,7 +6,7 @@ import { ToolChips } from './ToolChips'
 import s from './Trace.module.css'
 
 const KIND_LABEL: Record<Step['kind'], string> = {
-  explore: 'Look at the data', ideas: 'Ideas', linkage: 'Linkage', intent: 'Intent', l3: 'Data request',
+  explore: 'Look at the data', ideas: 'Ideas', linkage: 'Linkage', aggregate: 'Aggregate', intent: 'Intent', l3: 'Data request',
   challenge: 'Challenge', stage: 'Stage', summary: 'Summary',
 }
 const STATUS_LABEL: Record<Step['status'], string> = {

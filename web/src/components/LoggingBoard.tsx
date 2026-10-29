@@ -31,7 +31,7 @@ const COLUMNS: { key: Key; label: string; hint?: string; numeric?: boolean }[] =
   { key: 'direction', label: 'Direction' },
   { key: 'engine', label: 'Engine' },
   { key: 'idea', label: 'Idea' },
-  { key: 'idea_status', label: 'Idea status', hint: 'Sorts by P(useful): the mean of the idea\'s Beta(1 + signal, 1 + none)', numeric: true },
+  { key: 'idea_status', label: 'Idea status', hint: 'Sorts by P(useful): the mean of the idea\'s Beta(1 + signal, 1 + ½·none), counting its features in every run it is linked to', numeric: true },
   { key: 'name', label: 'Feature / request' },
   { key: 'level', label: 'Level' },
   { key: 'seen_before', label: 'C0 (seen before?)', hint: 'Against every earlier feature and the model history: the same code or values are refused; a close meaning needs `differs`. Shows the closest earlier feature, or what it resembles' },

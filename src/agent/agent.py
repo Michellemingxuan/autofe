@@ -144,6 +144,7 @@ async def _ideas_stage(session: Session, task: str) -> list[Any]:
     agent = build_agent(session, "ideas")
     items: Any = task
     last: list[dict[str, Any]] = []
+    carry: list[str] = []
     for attempt in range(1, IDEAS_TRIES + 1):
         try:
             stream = await _run(session, items, agent)
@@ -161,7 +162,8 @@ async def _ideas_stage(session: Session, task: str) -> list[Any]:
         answer = stream.final_output
         given = [i.model_dump() for i in answer.ideas] if isinstance(answer, tools.Ideas) else []
         last = given or last
-        result = (record_ideas(session, given) if isinstance(answer, tools.Ideas)
+        carry = list(answer.carry) if isinstance(answer, tools.Ideas) else carry
+        result = (record_ideas(session, given, carry=carry) if isinstance(answer, tools.Ideas)
                   else {"ok": False, "error": "answer with your ideas in the structured form"})
         if result["ok"]:
             return stream.to_input_list()
@@ -171,7 +173,7 @@ async def _ideas_stage(session: Session, task: str) -> list[Any]:
     items = items if isinstance(items, list) else [{"role": "user", "content": items}]
     # Still no spread: the last answer's valid ideas are recorded anyway, with the rules
     # they missed, so the run and the board keep its ideas.
-    if last and record_ideas(session, last, lenient=True)["ok"]:
+    if last and record_ideas(session, last, lenient=True, carry=carry)["ok"]:
         return items
     # Nothing valid at all: the run goes on rather than ending empty - proposals are no
     # longer held for ideas, and no new round is asked for after this one.
@@ -198,7 +200,9 @@ async def _direction(session: Session) -> None:
 
 def _focus(session: Session) -> dict[str, Any]:
     """The upcoming round's focus engines, for its message."""
-    return {"focus": ", ".join(focus_engines(session)),
+    from agent.board import preloaded_names
+
+    return {"focus": ", ".join(focus_engines(session)), "loaded": preloaded_names(session),
             "min_focus": min(MIN_FOCUS, ideas_in_round(session))}
 
 

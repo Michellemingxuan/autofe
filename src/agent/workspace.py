@@ -492,8 +492,10 @@ class Workspace:
                 raise KeyError(f"no source {source!r}; known: {sorted(self.sources())}")
             if src.data_path is None:
                 frame = pd.DataFrame(src.samples).head(n)
-            elif src.data_path.suffix == ".parquet":
-                frame = pd.read_parquet(src.data_path).head(n)
+            elif src.data_path.suffix == ".parquet" or src.data_path.is_dir():
+                import pyarrow.dataset as ds                 # the first rows, not the file
+
+                frame = ds.dataset(src.data_path, format="parquet").head(n).to_pandas()
             else:
                 frame = pd.read_csv(src.data_path, nrows=n)
         if columns:

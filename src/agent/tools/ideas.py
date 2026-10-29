@@ -14,11 +14,13 @@ it wider:
 * **focus engines** - each round leans on a few engines, drawn by Thompson
   sampling over every engine's yield across runs (``agent.engines.draw_focus``):
   at least ``MIN_FOCUS`` ideas must come from them.
-* **the board** - an idea that says what an earlier one said is checked on the
-  way in (``agent.checks.similarity``): the same as another idea of this answer
-  is sent back; the same as an idea of an earlier run is kept, linked to it
-  (``same_as``), and starts from its record - so one whose features carried no
-  signal is drawn late (Thompson sampling), not refused.
+* **the board** - two ideas of one answer alike in words are sent back. Whether
+  an idea restates an earlier one is the agent's to say: it names that idea
+  (``same_as``) - linked to it and starting from its record, so one whose
+  features carried no signal is drawn late (Thompson sampling), not refused -
+  or says how it differs (``differs``). Words only find the candidates
+  (``agent.checks.similarity``): an idea close to an earlier one that says
+  neither is shown the candidates and asked, once.
 
 The earlier directions' ideas and features are in the brief (``agent.board``,
 ``agent.memory``), and identical features are refused - so the agent cannot
@@ -31,7 +33,7 @@ import json
 import re
 from typing import Any
 
-from agent.board import idea_records
+from agent.board import carry_ideas, idea_records, idea_standing, one_per_family
 from agent.checks import similarity
 from agent.engines import ENGINES, MIN_ENGINES, draw_focus
 from agent.session import Session
@@ -71,7 +73,7 @@ def focus_engines(session: Session) -> list[str]:
     if drawn is None:
         drawn = session.focus_drawn = {}
     if upcoming not in drawn:
-        draw = draw_focus(idea_records(session.ws), seed=f"{session.run_id}:{upcoming}")
+        draw = draw_focus(one_per_family(idea_records(session.ws)), seed=f"{session.run_id}:{upcoming}")
         drawn[upcoming] = draw["focus"]
         session.emit("engines_drawn", round=upcoming, focus=draw["focus"], draws=draw["draws"],
                      engine_yield=draw["yield"])
@@ -126,44 +128,92 @@ def _fixes(clean: list[dict[str, Any]], focus: list[str], used: set[str], lenses
     return out or ["keep what passes, change what is MISSING"]
 
 
+# An earlier idea this close in words is shown to the idea's author, who says
+# whether it is the same idea (``same_as``) or how it differs (``differs``) - the
+# words find candidates, the agent decides. Restatements score from about 0.2.
+SHORTLIST = 0.2
+SHORTLIST_TOP = 3
+
+
 def _same_as(session: Session, clean: list[dict[str, Any]],
-             earlier: list[dict[str, Any]]) -> str | None:
-    """Check the ideas against each other, this run's earlier rounds and the board
-    (``earlier``, the earlier runs' ideas): an error, or None. The same as another
-    idea of the answer, or of an earlier round - still in the order, to be worked
-    by its name - is an error. A match with an idea of an earlier run is linked on
-    the idea (``same_as``), with that idea's record (``inherited``)."""
+             earlier: list[dict[str, Any]], lenient: bool = False) -> str | None:
+    """Check each idea against the others of the answer and the ideas before it: an
+    error, or None. Two ideas of the answer alike in words are sent back. An idea
+    may name the earlier idea it restates (``same_as``): one of this run's - an
+    earlier round's, or an earlier run's in its draw - is in the order already, so
+    it is sent back to be worked by its name; one of an earlier run's is linked
+    (``same_as``, the family's record in ``inherited``). An idea close in words to
+    an earlier one that names none is asked, once, which it is - same as it, or
+    different (``differs``); one this close (``same_meaning``) until it says."""
+    from agent.board import one_per_family, session_ideas
+
     limit = session.ws.cfg.agent.checks.same_meaning
-    if limit is None:
-        return None
-    text = lambda i: f"{i['name']} {i['description']}"           # noqa: E731
-    problem = None
-    for a in range(len(clean)):
+    text = lambda i: f"{i['name']} {i.get('description') or ''}"   # noqa: E731
+    problems: list[str] = []
+    for a in range(len(clean)) if limit is not None else []:
         scores = similarity(text(clean[a]), [text(b) for b in clean[a + 1:]])
         for b, score in enumerate(scores, a + 1):
-            if score >= limit and problem is None:
-                problem = (f"ideas {clean[a]['name']!r} and {clean[b]['name']!r} say much the same "
-                           f"thing (overlap {score:.2f}) - merge them, or make one measure "
-                           "something else")
-    for idea in clean if session.ideas else []:
-        scores = similarity(text(idea), [text(e) for e in session.ideas])
-        best = max(range(len(scores)), key=scores.__getitem__)
-        if scores[best] >= limit and problem is None:
-            twin = session.ideas[best]
-            problem = (f"idea {idea['name']!r} reads like {twin['name']!r} of round "
-                       f"{twin.get('round') or '?'} (overlap {scores[best]:.2f}) - that idea is "
-                       f"still in the order: work it with idea=\"{twin['name']}\", or give an idea "
-                       "that measures something else")
-    for idea in clean if earlier else []:
-        scores = similarity(text(idea), [text(e) for e in earlier])
-        best = max(range(len(scores)), key=scores.__getitem__)
-        if scores[best] < limit:
+            if score >= limit:
+                problems.append(f"ideas {clean[a]['name']!r} and {clean[b]['name']!r} say much "
+                                f"the same thing (overlap {score:.2f}) - merge them, or make one "
+                                "measure something else")
+    mine = {i["name"]: i for i in session.ideas}
+    drawn = {i["name"]: i for i in session_ideas(session) if i.get("carried_from")}
+    runs = {**{e["name"]: e for e in earlier}, **{e["key"]: e for e in earlier}}
+    # The candidates: this run's ideas and one per family of the earlier runs'.
+    pool = [{**i, "where": f"round {i.get('round') or '?'} of this run"} for i in session.ideas] + [
+        {**e, "where": (f"run {e['run_id']}, in this run's draw" if e["name"] in drawn
+                        else f"run {e['run_id']}")} for e in one_per_family(earlier)]
+    questions = []
+    for idea in clean:
+        declared = str(idea.pop("_same_as", "") or "").strip()
+        if declared:
+            current = mine.get(declared) or drawn.get(declared)
+            twin = runs.get(declared)
+            if current is not None:
+                if not lenient:
+                    where = (f"of round {current.get('round') or '?'}" if declared in mine
+                             else "of an earlier run, in this run's draw")
+                    problems.append(f"idea {idea['name']!r} is {declared!r} {where} - that idea is "
+                                    f"still in the order: work it with idea=\"{declared}\", and "
+                                    "give a new idea in its place")
+            elif twin is not None:
+                idea["same_as"] = twin["key"]
+                idea["inherited"] = {"signal": twin["signal"], "none": twin["none"],
+                                     "why": twin.get("why") or ""}
+            elif not lenient:
+                problems.append(f"idea {idea['name']!r}: same_as names no earlier idea "
+                                f"({declared!r}) - give an earlier idea's name, or leave it empty")
             continue
-        twin = earlier[best]
-        idea["same_as"] = f"{twin['run_id']}:{twin['name']}"
-        idea["inherited"] = {"signal": twin["signal"], "none": twin["none"],
-                             "why": twin.get("why") or ""}
-    return problem
+        if lenient or not pool:
+            continue
+        scores = similarity(text(idea), [text(c) for c in pool])
+        near = sorted(((s, c) for s, c in zip(scores, pool) if s >= SHORTLIST),
+                      key=lambda x: -x[0])[:SHORTLIST_TOP]
+        if not near or idea.get("differs"):
+            continue
+        top, twin = near[0]
+        if limit is not None and top >= limit and twin["name"] in mine:
+            problems.append(f"idea {idea['name']!r} reads like {twin['name']!r} of round "
+                            f"{twin.get('round') or '?'} (overlap {top:.2f}) - that idea is still in "
+                            f"the order: work it with idea=\"{twin['name']}\", or give an idea "
+                            "that measures something else (or say in `differs` how it does)")
+            continue
+        if idea["name"] in session.ideas_asked and (limit is None or top < limit):
+            continue                        # asked once already: its silence means new
+        session.ideas_asked.add(idea["name"])
+        questions.append(f"`{idea['name']}` reads like " + "; ".join(
+            f"`{c['name']}` ({c['where']}, P(useful) {c.get('p_useful', 0.5):.2f}, overlap {s:.2f}: "
+            f"{str(c.get('description') or '')[:100]!r})" for s, c in near))
+    if questions:
+        problems.append(
+            "say for each of these ideas whether it is one of the earlier ideas it reads like. "
+            "The same idea - the same claim about who defaults and why, however worded: set "
+            "`same_as` to that idea's name (it then keeps that idea's record; one already in "
+            "this run's order is worked by its name instead). A different one: say in "
+            "`differs` what it claims that the earlier one does not. "
+            + " | ".join(questions))
+    return "; ".join(problems) or None
 
 
 def _scope_variables(session: Session) -> list[str]:
@@ -192,9 +242,10 @@ def _names_in(text: str, variables: list[str]) -> list[str]:
 
 
 def record_ideas(session: Session, ideas: list[dict[str, Any]],
-                 lenient: bool = False) -> dict[str, Any]:
+                 lenient: bool = False, carry: list[str] | None = None) -> dict[str, Any]:
     """Check the ideas - many, varied, each fitting its level - and record
-    them. The error, when there is one, goes back to the model to fix.
+    them, with the earlier runs' ideas it carries into the draw (``carry``, by
+    name). The error, when there is one, goes back to the model to fix.
 
     ``lenient`` is the last resort, when the answers kept missing the spread: the
     ideas that are each valid are recorded anyway, with the rules they missed, so
@@ -273,9 +324,12 @@ def record_ideas(session: Session, ideas: list[dict[str, Any]],
                 continue
             return {"ok": False, "error": problem}
         names.add(name)
+        differs = str(idea.get("differs", "") or "").strip()
         clean.append({"n": first + i, "round": session.round + 1, "name": name,
                       "engine": engine, "lens": lens, "level": level,
                       "description": description, "measures": measures, "data": data,
+                      "_same_as": str(idea.get("same_as", "") or "").strip(),
+                      **({"differs": differs} if differs else {}),
                       **({"beyond_scope": True} if beyond else {}),
                       **({"variables": named} if named and not beyond else {})})
     focus = focus_engines(session)
@@ -309,23 +363,26 @@ def record_ideas(session: Session, ideas: list[dict[str, Any]],
                                                   bare if mixed else [], n, most))}
     if lenient and not clean:
         return {"ok": False, "error": "no idea in the answer was valid: " + "; ".join(skipped)}
-    if (problem := _same_as(session, clean, board)) and not lenient:
+    if (problem := _same_as(session, clean, board, lenient)) and not lenient:
         return {"ok": False, "error": problem}
+    if (unknown := carry_ideas(session, carry or [])) and not lenient:
+        return {"ok": False, "error": "; ".join(unknown) + " - name ideas from the board in "
+                                      "your brief, or leave carry empty"}
     session.ideas = session.ideas + clean
     save_ideas(session)
     session.round += 1
     session.round_ideas, session.round_attempts, session.round_spent = clean, 0, False
     session.round_results, session.report_refusals = session.results(), 0
     session.emit("ideas_recorded", ideas=clean, focus=focus, round=session.round,
+                 **({"carried": list(session.carried)} if session.carried else {}),
                  **({"lenient": True, "missed": missed + skipped} if lenient else {}),
                  **({"theme": session.themes_drawn[session.round]}
                     if session.round in getattr(session, "themes_drawn", {}) else {}))
     linked = [{"idea": c["name"], "same_as": c["same_as"],
-               "p_useful": round((1 + c["inherited"]["signal"])
-                                 / (2 + c["inherited"]["signal"] + c["inherited"]["none"]), 3),
+               "p_useful": idea_standing([], c["inherited"])["p_useful"],
                **({"why_not": c["inherited"]["why"]} if c["inherited"]["why"] else {})}
               for c in clean if c.get("same_as")]
     return {"ok": True, "ideas": len(clean), "engines": sorted(used), "lenses": sorted(lenses),
-            "round": session.round,
+            "round": session.round, **({"carried": len(session.carried)} if session.carried else {}),
             **({"linked": linked, "note": "these read like earlier ideas and start from their "
                                           "record - a failed one is worked later"} if linked else {})}

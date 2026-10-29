@@ -224,6 +224,8 @@ class Session:
         self.cancelled = False
         self.stopped_because = ""
         self.linked: dict[str, str] = {}      # source -> its linked rows this run
+        # name -> an aggregate of a source, defined this run, and its linked rows (path)
+        self.aggregates: dict[str, dict[str, Any]] = {}
         self.shot_round: int | None = None    # taken when the agent first reads shots
         # Ideas first (agent.tools.ideas): the runner requires them before any
         # proposal; tools called directly - tests, scripts - do not.
@@ -244,6 +246,11 @@ class Session:
         self.round = 0
         self.themes_drawn: dict[int, str] = {}   # an exploration's theme, per round
         self.round_ideas: list[dict[str, Any]] = []
+        # Earlier runs' ideas the agent carried into this run's draw, by key (agent.board).
+        self.carried: list[str] = []
+        self.earlier_ideas: list[dict[str, Any]] | None = None
+        self.preloaded: list[str] | None = None
+        self.ideas_asked: set[str] = set()   # ideas asked whether they restate an earlier one
         self.round_attempts = 0
         self.round_spent = False
         self.round_results = 0                # results when this round began
@@ -300,9 +307,11 @@ class Session:
         self.round_attempts -= 1
 
     def round_over(self) -> str | None:
-        """When this round's ideas are used - while results are still wanted and
-        attempts remain, and no request awaits its challenge - the round is spent and
-        the next one is asked for. Returns the word to the agent, or None."""
+        """After as many attempts as the round brought ideas - each drawn over every
+        round's ideas, so an earlier idea can take them - while results are still wanted
+        and attempts remain, and no request awaits its challenge, the round is spent
+        and the next one is asked for: new ideas join the draw. Returns the word to the
+        agent, or None."""
         if (not self.round_ideas or self.round_attempts < len(self.round_ideas)
                 or self.wanted() == 0 or self.attempts >= self.max_attempts
                 or self.pending_at("L3")):
@@ -380,10 +389,24 @@ class Session:
         return None
 
     def raw_paths(self) -> dict[str, str]:
-        """Each allowed source's file for discovery's code - its ``_fe`` cut when
-        there is one (Source.discovery_path)."""
+        """Each allowed source as the agent sees it - in probes, sizes and samples:
+        the source itself (its ``_fe`` file when there is one, Source.discovery_path),
+        never the screen cut, so what it proposes does not depend on the cut."""
         return {n: str(s.discovery_path) for n, s in self.ws.sources().items()
                 if s.usable and n in self.params.sources}
+
+    def build_paths(self) -> dict[str, str]:
+        """What a linkage or an aggregate reads to build for the screen ids: the
+        screen customers' rows once a confirmed linkage has cut them
+        (agent.extracts) - the same values, read faster - else the source."""
+        from agent.extracts import cached_extract, linkage_key
+
+        out = self.raw_paths()
+        for n, path in out.items():
+            linkage = self.ws.linkage_path(n)
+            if linkage.exists():
+                out[n] = cached_extract(self.ws, n, path, linkage_key(linkage.read_text())) or path
+        return out
 
     def run(self, code: str, mode: str, *, intent: str, level: str | None = None,
             title: str = "", base_path: Path | None = None, engine: str | None = None,
@@ -391,8 +414,10 @@ class Session:
         """Run agent-written code - on the run's engine, or the one given (a linkage
         runs on its own engine, whatever the run's)."""
         agent = self.ws.cfg.agent
-        # A linkage reads a whole source; a feature or probe works on the screen rows.
-        timeout = agent.timeouts.linkage_s if mode == "linkage" else agent.timeouts.screen_s
+        # A linkage or an aggregate reads a whole source; a feature or probe works on
+        # the screen rows.
+        timeout = agent.timeouts.linkage_s if mode in ("linkage", "aggregate") \
+            else agent.timeouts.screen_s
         return run_logged(self.log, code, mode, engine=engine or self.local_engine,
                           spark_conf=agent.spark_conf,
                           id_col=self.ws.id_col, base_path=base_path or self.base_path,

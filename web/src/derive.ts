@@ -88,6 +88,14 @@ export function deriveRun(events: Ev[]): RunView {
         const args = parse(e.args)
         let ownRequest: Step | undefined
         if (e.tool === 'propose_linkage') open('linkage', `Linkage · ${args.source ?? ''}`)
+        else if (e.tool === 'define_aggregate') {
+          // Its scripts ran before the call was announced, and opened its step.
+          const title = `Aggregate · ${args.name ?? ''} (${args.period ?? ''}ly ${args.source ?? ''})`
+          const step = at.step?.kind === 'aggregate' && at.step.aggregateOf === args.name
+            ? at.step : open('aggregate', title)
+          step.title = title
+          step.aggregateOf = args.name
+        }
         else if (isRequest(e.tool)) {
           // A recorded request arrives before its call is flushed: the step
           // that holds it is this call's step, not a new one.
@@ -151,7 +159,7 @@ export function deriveRun(events: Ev[]): RunView {
         }
         if (!at.step) break
         const step: Step = at.step
-        if (e.tool === 'propose_linkage' || isRequest(e.tool)) {
+        if (e.tool === 'propose_linkage' || e.tool === 'define_aggregate' || isRequest(e.tool)) {
           if (out.error && !out.approved) step.note = String(out.error).slice(0, 220)
           const passed = out.ok || out.approved || out.recorded
           // A request the screen sent back waits for its retry, in the same step.
@@ -196,6 +204,12 @@ export function deriveRun(events: Ev[]): RunView {
             level: e.level, title: e.title, code: e.code ?? '', state: e.state,
           }
           codes.set(e.code_id, card)
+          // An aggregate's scripts come before its call: they open its step.
+          const aggregate = typeof e.intent === 'string' && e.intent.startsWith('aggregate:')
+            ? e.intent.slice('aggregate:'.length) : null
+          if (aggregate && !(at.step?.kind === 'aggregate' && at.step.aggregateOf === aggregate)) {
+            open('aggregate', `Aggregate · ${aggregate}`).aggregateOf = aggregate
+          }
           here().items.push(card)
           view.codeCount += 1
         } else {

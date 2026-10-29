@@ -21,8 +21,8 @@ const EXAMPLES = [
 ]
 
 const LEVELS: { level: Level; title: string; text: string }[] = [
-  { level: 'L1', title: 'L1 · model columns or one source', text: 'Combine model columns, or aggregate one extra source joined by its linkage' },
-  { level: 'L2', title: 'L2 · source × model', text: 'Combine a source aggregate with model columns' },
+  { level: 'L1', title: 'L1 · model dataset', text: 'Features from the model dataset\'s own columns' },
+  { level: 'L2', title: 'L2 · additional data', text: 'Features that use the additional data - aggregated first, alone or with model columns' },
   { level: 'L3', title: 'L3 · request data', text: 'SQL for data the model lacks. Alone: a data-request run, nothing screened' },
 ]
 

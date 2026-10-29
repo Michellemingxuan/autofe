@@ -45,7 +45,8 @@ def main(argv: list[str] | None = None) -> None:
         brief = compose(session, args.stage)
     first = (message("linkage", source=args.linkage) if args.linkage
              else message("direction", direction=args.direction) + "\n\n"
-             + message("ideas", focus="(two engines, drawn when the round starts)", min_focus=2))
+             + message("ideas", focus="(two engines, drawn when the round starts)", min_focus=2,
+                             loaded="(the 20 best earlier ideas, chosen when the run starts)"))
     print(f"# brief (templates/{template_for(session)}.md) - the system instructions\n")
     print(brief)
     print("\n# first message - the user turn\n")

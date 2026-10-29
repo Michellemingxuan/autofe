@@ -39,7 +39,10 @@ anything; the frames above are all they get.
 ## Linkage - once per source, confirmed by the user
 
 A source can be used in a feature only after its linkage is confirmed. Write it
-with `propose_linkage(source, code, time_column, rule)`. The code defines:
+with `propose_linkage(source, code, time_column, rule, key)` - `key` the source
+column(s) it joins on, kept in the output: the confirmed linkage's first pass
+also cuts the screen customers' rows of the source, and discovery reads only
+those from then on. The code defines:
 
 ```python
 def link(base_ids, source):
@@ -60,6 +63,12 @@ Steps:
    yet), `inclusive` = `event <= as_of`.
 4. Do not aggregate here. Linkage returns event rows; features aggregate.
    You may drop rows far older than any feature could want (e.g. > 2 years).
+5. Row by row only: the runner reads the source in batches and calls `link()`
+   on each, so it may join and filter, never deduplicate, rank or aggregate
+   across events (that would differ batch by batch; it is checked).
+6. No Python loops over rows or ids (`iterrows`, `apply(axis=1)`, `for ... in
+   df.groupby(...)`): parse the id with `.str.split(..., expand=True)`, join
+   with one `merge`. The runner refuses a loop before it runs.
 
 Write `link()` for the linkage engine your brief names - pandas, unless it says
 PySpark. A link reads the whole source, and at evaluation it runs on the full

@@ -34,9 +34,10 @@ from typing import Any
 
 import pandas as pd
 
+from agent._child import _schema, is_parts
 from agent.board import idea_for, idea_of, order_ideas, round_board, session_ideas  # noqa: F401 - idea_of, for callers
 from agent.checks import code_fingerprint, model_checks, nearest_meaning
-from agent.execution import check_code
+from agent.execution import check_code, check_loops
 from agent.memory import earlier_features, save_values, same_feature
 from agent.model_history import history_of
 from agent.session import FEATURE_LEVELS, Session
@@ -79,19 +80,32 @@ def screen_feature(session: Session, name: str, description: str, level: str,
     if (problem := session.target_met(level)):
         return {"ok": False, "error": problem}
     named = set(re.findall(r"sources\[\s*['\"]([^'\"]+)['\"]\s*\]", code))
-    if (unknown := sorted(named - set(ws.sources()))):
+    if (unknown := sorted(named - set(ws.sources()) - set(session.aggregates))):
+        aggregates = f" and the aggregates {sorted(session.aggregates)}" if session.aggregates else ""
         return {"ok": False, "error": (
-            f"no source {unknown} - the sources are {sorted(session.params.sources)}. A data "
-            "request is not data: its pull exists only once the analyst drops the result in "
-            "the additional data folder, where it appears as a source. Nothing was spent.")}
-    used = [s for s in ws.sources() if re.search(rf"['\"]{re.escape(s)}['\"]", code)]
+            f"no source {unknown} - the sources are {sorted(session.params.sources)}{aggregates}. "
+            "A data request is not data: its pull exists only once the analyst drops the "
+            "result in the additional data folder, where it appears as a source. An "
+            "aggregate exists once define_aggregate has made it. Nothing was spent.")}
+    quoted = lambda n: re.search(rf"['\"]{re.escape(n)}['\"]", code)        # noqa: E731
+    used = [s for s in ws.sources() if quoted(s)]
+    summarised = [a for a in session.aggregates if quoted(a)]
+    # L1: the model database alone. L2: any additional data - a source or an aggregate.
+    if level == "L1" and (used or summarised):
+        return {"ok": False, "error": (
+            f"it reads additional data ({', '.join(used + summarised)}) - that is L2; L1 is "
+            "the model database alone. Resend it as L2. Nothing was spent.")}
+    if level == "L2" and not (used or summarised):
+        return {"ok": False, "error": (
+            "it reads no additional data - only model columns, which is L1. Resend it as "
+            "L1, or build it on a source or an aggregate. Nothing was spent.")}
     for source in used:
         if (problem := session.allowed(source)) or (problem := ensure_linked(session, source)):
             return {"ok": False, "error": problem}
 
     # The code guard reads the script without running it: a refusal costs nothing,
     # like every other check above. (run_code applies it again, for every mode.)
-    if (problem := check_code(code)):
+    if (problem := check_code(code) or check_loops(code)):
         return {"ok": False, "error": f"{problem}. Nothing was spent."}
 
     # C0 - seen before? The code and the meaning, before anything runs.
@@ -102,13 +116,19 @@ def screen_feature(session: Session, name: str, description: str, level: str,
     session.take_attempt()
     intent = f"I{session.attempts}"
     code_id, run = session.run(code, "feature", intent=intent, level=level, title=name,
-                               sources={s: session.linked[s] for s in used})
+                               sources={**{s: session.linked[s] for s in used},
+                                        **{a: session.aggregates[a]["path"] for a in summarised}})
     # `delta` is the Gini gain - the name the trace and the evaluation read.
     record = next((i for i in session.ideas if i["name"] == idea), {})
     entry = {"intent": intent, "name": name, "description": description,
              "idea": idea, "engine": record.get("engine", ""),
              "differs": differs.strip(), "checks": {"passed": False, "seen_before": seen_note},
              "level": level, "code": code, "code_id": code_id, "sources": used,
+             # each aggregate it reads, as defined - evaluation recomputes it from this
+             "aggregates": {a: {k: session.aggregates[a][k]
+                                for k in ("source", "period", "time_column", "rule", "window_days",
+                                          "key", "description", "code") if k in session.aggregates[a]}
+                            for a in summarised},
              "delta": None, "base_score": None, "candidate_score": None,
              "capture_gain": None, "coverage": None, "verified": False, "reason": ""}
 
@@ -162,12 +182,13 @@ def screen_feature(session: Session, name: str, description: str, level: str,
     if run.ok is False:
         reply["stdout"] = run.stdout
         # The usual cause is a column the frame does not have: show what it had.
-        reply["frames"] = _frames(session, used)
+        reply["frames"] = _frames(session, used + summarised)
     if run.elapsed_s and run.elapsed_s > ws.cfg.agent.timeouts.slow_script_s:
         reply["slow"] = (f"the script took {run.elapsed_s:.0f}s on {len(ws.screen):,} screen rows - "
                          "it loops over rows or ids. Vectorise: filter, then groupby().agg(); "
                          "no apply, iterrows or Python loops.")
-    if run.ok and (note := scale_note(session, run)):
+    if run.ok and (note := scale_note(session, run, chunked=any(
+            is_parts(session.linked[s]) for s in used))):
         reply["scale"] = note
     # One failure tends to breed the next - patching the same code on a wrong
     # belief. Two in a row: the next screen waits for a look at the data.
@@ -209,7 +230,7 @@ def _machine_mb() -> float | None:
         return None
 
 
-def scale_note(session: Session, run: Any) -> str | None:
+def scale_note(session: Session, run: Any, chunked: bool = False) -> str | None:
     """The screen is a sample; evaluation runs the same script on the full splits.
     Scaled by the row ratio - roughly, as joins and sorts grow faster than rows -
     a script that will not finish there, or not fit, is told so now."""
@@ -225,7 +246,8 @@ def scale_note(session: Session, run: Any) -> str | None:
         problems.append(f"about {projected_s / 60:.0f} min (the limit is {limit_s / 60:.0f})")
     machine = _machine_mb()
     # On spark the work is in the JVM, not this process: only the time says anything.
-    if session.params.engine != "spark" and run.peak_mb and machine:
+    # A feature built a chunk of ids at a time holds one chunk at evaluation too.
+    if session.params.engine != "spark" and run.peak_mb and machine and not chunked:
         projected_mb = run.peak_mb * ratio
         if projected_mb > SCALE_WARN_SHARE * machine:
             problems.append(f"about {projected_mb / 1024:.0f} GB of memory "
@@ -328,9 +350,10 @@ def _frames(session: Session, used: list[str]) -> dict[str, list[str]]:
     out = {"base": [ws.id_col, *ws.base_features[:60]]
                    + ([f"... {len(ws.base_features) - 60} more"] if len(ws.base_features) > 60 else [])}
     for source in used:
-        path = session.linked.get(source)
+        path = session.linked.get(source) or session.aggregates.get(source, {}).get("path")
         if path:
-            out[f"sources[{source!r}]"] = ds.dataset(path).schema.names
+            out[f"sources[{source!r}]"] = _schema(path) if is_parts(path) \
+                else ds.dataset(path).schema.names
     return out
 
 

@@ -39,7 +39,10 @@ not verified does not count against it; you have up to {max_attempts} attempts.
    for an L3 share, request the data and challenge the request yourself
    (challenge_request): can the data that exists now already supply it? Learn
    from each result: a failed screen says what to change.
-4. A source needs confirmed linkage before any feature can use it.
+4. A source needs confirmed linkage before any feature can use it. A long
+   source: summarise it first with define_aggregate - temporary features per
+   customer and period - then build features on the aggregate (see the feature
+   skill, "Long sources").
 5. Call report_findings with a summary when the target is reached, the attempts
    are used, or the direction is exhausted.
 

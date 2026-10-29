@@ -116,7 +116,7 @@ def test_planted_feature_verifies_through_linkage(workspace):
         reply = propose_linkage(session, source, LINK, "event_dt")
         assert reply["ok"], reply
         assert reply["checks"]["point_in_time_violations"] == 0
-    reply = screen_feature(session, "pay_to_spend_90d", "share of spend repaid", "L1",
+    reply = screen_feature(session, "pay_to_spend_90d", "share of spend repaid", "L2",
                                    PAY_TO_SPEND)
     assert reply["verified"], reply
     assert reply["gini_gain"] > 0.03 and reply["capture_gain"] is not None
@@ -143,7 +143,7 @@ def test_leaky_linkage_is_refused_before_the_user_sees_it(workspace):
 def test_unlinked_source_costs_nothing_and_target_and_attempts_are_enforced(workspace, tmp_path):
     workspace.cfg.discovery.additional_data.linkage_dir = str(tmp_path / "empty_linkage")
     session = _session(workspace, "x", params=RunParams(K=1))
-    reply = screen_feature(session, "f1", "d", "L1",
+    reply = screen_feature(session, "f1", "d", "L2",
                                    'def build(spark, sources, base):\n    return sources["spends"]')
     assert not reply["ok"] and "no confirmed linkage" in reply["error"]
     assert session.attempts == 0
@@ -306,7 +306,8 @@ def test_an_idea_whose_features_carry_no_signal_is_worked_later_not_refused(work
         assert reply["reason"].startswith("explained by the model") and reply["checks"]["max_model_rho"] > 0.9
         assert reply["checks"]["nearest"] == column
     standing = {i["name"]: i for i in reply["ideas"]}
-    assert standing["pay_gap"]["status"] == "low" and standing["pay_gap"]["p_useful"] == 0.25
+    assert standing["pay_gap"]["status"] == "low" and standing["pay_gap"]["p_useful"] == 0.333   # misses count half
+    assert standing["pay_gap"]["measures_left"] == 0 and standing["tenure_curve"]["measures_left"] == 0
     assert set(reply["work_next"]) == {"pay_gap", "tenure_curve"}
     # ... and is worked later - Thompson sampling, not a ban:
     low, fresh = (dict(name="pay_gap", **idea_standing(["none", "none"])),
@@ -336,7 +337,7 @@ def test_evaluation_pools_features_across_runs_and_combines_them(no_history):
     first = _session(workspace, "payments vs spend", params=RunParams(K=1))
     for source in ("payments", "spends"):
         assert propose_linkage(first, source, LINK, "event_dt")["ok"]
-    assert screen_feature(first, "pay_to_spend_90d", "d", "L1", PAY_TO_SPEND)["verified"]
+    assert screen_feature(first, "pay_to_spend_90d", "d", "L2", PAY_TO_SPEND)["verified"]
 
     # A second direction may not reuse the name - a name is one feature, across runs.
     second = _session(workspace, "utilisation", params=RunParams(K=1, min_gini_gain=-1.0))
@@ -472,9 +473,10 @@ def test_a_dropped_source_is_seen_schema_first_then_usable(workspace):
             (extra / name).unlink(missing_ok=True)
 
 
-def test_discovery_reads_a_sources_fe_cut_and_evaluation_the_whole(workspace):
+def test_discovery_reads_a_sources_fe_cut_and_evaluation_the_whole(no_history):
     import pandas as pd
 
+    workspace = no_history                   # no screen cut from an earlier test's run
     extra = workspace.extra_dir
     whole = workspace.sources()["payments"].data_path
     cut = extra / f"payments_fe{whole.suffix}"
@@ -496,7 +498,7 @@ def test_the_analysts_capture_gate_can_hold_back_a_gini_win(no_history):
                        params=RunParams(K=1, min_gini_gain=0.0, min_capture_gain=1.0))
     for source in ("payments", "spends"):
         assert propose_linkage(session, source, LINK, "event_dt")["ok"]
-    reply = screen_feature(session, "pay_to_spend_90d", "d", "L1", PAY_TO_SPEND)
+    reply = screen_feature(session, "pay_to_spend_90d", "d", "L2", PAY_TO_SPEND)
     assert reply["gini_gain"] > 0.03 and not reply["verified"]
     assert "capture-rate gain" in reply["reason"]
     assert reply["gates"] == {"min_gini_gain": 0.0, "min_capture_gain": 1.0}
@@ -703,14 +705,14 @@ def test_a_later_direction_remembers_what_was_proposed(no_history):
     workspace = no_history
     first = _session(workspace, "spend level", params=RunParams(K=3, min_gini_gain=-1.0))
     assert propose_linkage(first, "spends", LINK, "event_dt")["ok"]
-    assert screen_feature(first, "spend_90d", "90-day spend", "L1",
+    assert screen_feature(first, "spend_90d", "90-day spend", "L2",
                           WINDOW.format(days=90, name="spend_90d"))["verified"]
 
     later = _session(workspace, "spend again", params=RunParams(K=3, min_gini_gain=-1.0))
     assert "`spend_90d`" in brief(later) and "Earlier directions" in brief(later)
 
     # The same code under a new name is refused before it runs, and costs nothing (C0).
-    twin = screen_feature(later, "total_spend_last_quarter", "d", "L1",
+    twin = screen_feature(later, "total_spend_last_quarter", "d", "L2",
                           WINDOW.format(days=90, name="total_spend_last_quarter"))
     assert not twin["ok"] and "the same code as `spend_90d`" in twin["error"]
     assert later.attempts == 0
@@ -718,16 +720,16 @@ def test_a_later_direction_remembers_what_was_proposed(no_history):
     rewritten = WINDOW.format(days=90, name="quarter_outlay").replace(
         'out["id"].map(recent.groupby("id")["amount"].sum()).fillna(0.0)',
         'out["id"].map(recent["amount"].groupby(recent["id"]).sum()).fillna(0) * 1.0')
-    values_twin = screen_feature(later, "quarter_outlay", "d", "L1", rewritten)
+    values_twin = screen_feature(later, "quarter_outlay", "d", "L2", rewritten)
     assert not values_twin["ok"] and "identical to `spend_90d`" in values_twin["error"]
     assert later.attempts == 0
     # So is one that means much the same, until it says what differs.
-    alike = screen_feature(later, "spend_90d_total", "90-day spend total", "L1",
+    alike = screen_feature(later, "spend_90d_total", "90-day spend total", "L2",
                            WINDOW.format(days=60, name="spend_90d_total"))
     assert not alike["ok"] and "differs" in alike["error"] and later.attempts == 0
 
     # Another window measures something else, and is screened as usual.
-    other = screen_feature(later, "spend_30d", "30-day spend", "L1",
+    other = screen_feature(later, "spend_30d", "30-day spend", "L2",
                            WINDOW.format(days=30, name="spend_30d"), differs="30 days, not 90")
     # C0 lets it through on its word, and says what it resembled.
     assert later.ledger[-1]["checks"]["seen_before"].startswith("like `spend_90d`")
@@ -735,7 +737,7 @@ def test_a_later_direction_remembers_what_was_proposed(no_history):
 
     # A deleted feature is forgotten.
     assert first.delete_intent("spend_90d")
-    again = screen_feature(later, "spend_quarter", "d", "L1",
+    again = screen_feature(later, "spend_quarter", "d", "L2",
                            WINDOW.format(days=90, name="spend_quarter"))
     assert "verified" in again
 
@@ -858,7 +860,8 @@ def test_each_engine_has_its_guide_and_the_focus_follows_their_yield():
     assert draw_focus(board, "x") == draw_focus(board, "x")    # seeded, so on record
 
 
-def test_ideas_that_say_the_same_thing_are_sent_back_and_a_retired_one_refused(no_history):
+def test_ideas_that_say_the_same_thing_are_sent_back_and_a_retired_one_refused(no_history, monkeypatch):
+    from agent import board
     from agent.tools.ideas import LENSES, focus_engines, record_ideas
 
     def round_of(session, descriptions):
@@ -884,20 +887,137 @@ def test_ideas_that_say_the_same_thing_are_sent_back_and_a_retired_one_refused(n
                      {"name": "spend_vol_v2", "reason": "no new signal: |ρ| ..."}]
     first.save_ledger()
 
-    later = _session(no_history, "y", params=RunParams(K=2, levels=["L1"]))
-    again = round_of(later, [("monthly_spend_volatility", "volatility of monthly spend"),
-                             ("pay_channel_switch", "switch of payment channel"),
-                             ("limit_raise_surge", "spend surge after a limit increase"),
-                             ("min_pay_cluster", "payments at exactly the minimum due")])
-    # Not refused: linked to it, and starting from its record - so it is drawn late.
+    def later_round(tag=""):                  # a run that records takes its names
+        session = _session(no_history, "y", params=RunParams(K=2, levels=["L1"]))
+        return session, round_of(session, [
+            (f"monthly_spend_volatility{tag}", "volatility of monthly spend"),
+            (f"pay_channel_switch{tag}", "switch of payment channel"),
+            (f"limit_raise_surge{tag}", "spend surge after a limit increase"),
+            (f"min_pay_cluster{tag}", "payments at exactly the minimum due")])
+
+    # Close in words to an earlier idea and silent on it: asked which it is, with the
+    # candidate. Here spend_vol is in the new run's draw already: worked by its name.
+    later, again = later_round()
+    asked = record_ideas(later, again)
+    assert not asked["ok"] and "`monthly_spend_volatility` reads like `spend_vol`" in asked["error"]
+    again[0]["same_as"] = "spend_vol"
+    in_draw = record_ideas(later, again)
+    assert not in_draw["ok"] and 'work it with idea="spend_vol"' in in_draw["error"]
+    # A different claim says so, and is new.
+    again[0] = {**again[0], "same_as": "", "differs": "volatility net of seasonal peaks"}
+    assert "linked" not in record_ideas(later, again)
+    # An unknown name is sent back.
+    later, again = later_round("_b")
+    again[1]["same_as"] = "nope"
+    assert "same_as names no earlier idea ('nope')" in record_ideas(later, again)["error"]
+
+    # Not in the draw: linked to it, and starting from its record - so it is drawn late.
+    monkeypatch.setattr(board, "PRELOAD", 0)
+    later, again = later_round("_c")
+    again[0]["same_as"] = "spend_vol"
+    # The others are worded as the run above's: as close as that, they must say.
+    assert "say for each of these ideas" in record_ideas(later, again)["error"]
+    for idea in again[1:]:
+        idea["differs"] = "a new population"
     linked = record_ideas(later, again)
-    assert linked["ok"] and linked["linked"][0]["same_as"] == f"{first.run_id}:spend_vol"
-    assert linked["linked"][0]["p_useful"] == 0.25 and "no new signal" in linked["linked"][0]["why_not"]
+    assert linked["ok"] and linked["linked"][0]["same_as"] == f"{first.run_id}:spend_vol", linked
+    assert linked["linked"][0]["p_useful"] == 0.333 and "no new signal" in linked["linked"][0]["why_not"]
     from agent.board import session_ideas
 
     standing = {i["name"]: i for i in session_ideas(later)}
-    assert standing["monthly_spend_volatility"]["status"] == "low"
-    assert standing["pay_channel_switch"]["status"] == "explore"
+    assert standing["monthly_spend_volatility_c"]["status"] == "low"
+    assert standing["pay_channel_switch_c"]["status"] == "explore"
+
+
+def test_an_idea_keeps_one_record_across_runs_and_earlier_ideas_join_the_draw(no_history, monkeypatch):
+    from agent import board
+    from agent.board import board_rows, idea_for, idea_records, session_ideas
+    from agent.tools.ideas import LENSES, focus_engines, record_ideas
+
+    def round_of(session, descriptions):
+        focus = focus_engines(session)
+        engines = [*focus, *[e for e in ("analogy", "others", "contrastive", "morphological")
+                             if e not in focus]][:4]
+        return [{"name": name, "engine": engine, "lens": lens, "level": "L1", "description": text,
+                 "measures": ["first way to measure it", "second way to measure it"],
+                 "data": "x"} for (name, text), engine, lens
+                in zip(descriptions, engines, list(LENSES)[:4])]
+
+    def run(direction):
+        session = _session(no_history, direction, params=RunParams(K=2, levels=["L1"]))
+        session.start()
+        return session
+
+    first = run("cash stress")
+    assert record_ideas(first, round_of(first, [
+        ("pay_drift", "payment day drifting toward the due date"),
+        ("spend_vol", "volatility of monthly spend"),
+        ("fee_rise", "fees and charges rising"),
+        ("inquiry_burst", "bureau inquiries in a short window")]))["ok"]
+    first.ledger += [{"name": "spend_vol_6m", "idea": "spend_vol", "reason": "no new signal: |ρ| ..."}]
+    first.save_ledger()
+
+    # Another direction gives an idea like spend_vol: linked, and its feature that
+    # works counts for spend_vol too - in the first run's row of the board as well.
+    monkeypatch.setattr(board, "PRELOAD", 0)
+    other = run("spending habits")
+    restated = round_of(other, [
+        ("monthly_spend_volatility", "volatility of monthly spend"),
+        ("pay_channel_switch", "switch of payment channel"),
+        ("limit_raise_surge", "spend surge after a limit increase"),
+        ("min_pay_cluster", "payments at exactly the minimum due")])
+    restated[0]["same_as"] = "spend_vol"
+    # The others read a little like earlier ones: asked once - silent again, they are new.
+    assert "say for each of these ideas" in record_ideas(other, restated)["error"]
+    assert record_ideas(other, restated)["ok"]
+    monkeypatch.setattr(board, "PRELOAD", 20)
+    other.ledger += [{"name": "spend_cv_12m", "idea": "monthly_spend_volatility", "verified": True}]
+    other.save_ledger()
+    records = {r["key"]: r for r in idea_records(no_history)}
+    for key in (f"{first.run_id}:spend_vol", f"{other.run_id}:monthly_spend_volatility"):
+        assert records[key]["signal"] == 1 and records[key]["none"] == 1
+        assert records[key]["p_useful"] == 0.571 and records[key]["status"] == "active"
+    row = next(r for r in board_rows(no_history) if r["name"] == "spend_vol_6m")
+    assert row["p_useful"] == 0.571
+    # A run's own ideas don't pool with others: an unlinked idea keeps its own record.
+    assert records[f"{first.run_id}:pay_drift"]["status"] == "explore"
+
+    # A new run starts with the best earlier ideas in its draw, before any are given -
+    # each family once, and those of runs with the same direction first.
+    again = run("Cash  stress")
+    drawn = {i["name"]: i for i in session_ideas(again)}
+    assert {"pay_drift", "fee_rise", "inquiry_burst", "pay_channel_switch"} <= set(drawn)
+    assert not {"spend_vol", "monthly_spend_volatility"} <= set(drawn)
+    assert drawn["pay_drift"]["carried_from"] == first.run_id
+    monkeypatch.setattr(board, "PRELOAD", 2)
+    again = run("Cash  stress")
+    carried = [i for i in session_ideas(again) if i.get("carried_from")]
+    assert len(carried) == 2 and all(i["carried_from"] == first.run_id for i in carried)
+    drawn = {i["name"]: i for i in carried}
+    if "spend_vol" in drawn:                              # the family's best, when it is first's
+        assert drawn["spend_vol"]["p_useful"] == 0.571
+    drawn = {i["name"]: i for i in session_ideas(again)}
+    if "pay_drift" not in drawn:
+        again.carried.append(f"{first.run_id}:pay_drift")
+    # A feature that names a carried idea brings it into the run, linked to its family.
+    assert idea_for(again, "pay_drift", "pay_day_gap_3m") == ("pay_drift", None)
+    assert again.ideas[-1]["same_as"] == f"{first.run_id}:pay_drift" and again.ideas[-1]["carried"]
+    again.ledger += [{"name": "pay_day_gap_3m", "idea": "pay_drift", "reason": "no new signal: ..."}]
+    drawn = {i["name"]: i for i in session_ideas(again)}
+    assert "carried_from" not in drawn["pay_drift"] and drawn["pay_drift"]["status"] == "low"
+
+    # Beyond the ones it starts with, the agent names an earlier idea in carry to draw
+    # it; an unknown name is sent back.
+    monkeypatch.setattr(board, "PRELOAD", 1)
+    new = run("bureau signals")
+    ideas = round_of(new, [("score_slide", "bureau score sliding"),
+                           ("new_trades", "many new trade lines opened"),
+                           ("util_jump", "utilisation jumping across lenders"),
+                           ("closed_accounts", "accounts closed by lenders")])
+    assert "no earlier idea named 'nope'" in record_ideas(new, ideas, carry=["nope"])["error"]
+    assert record_ideas(new, ideas, carry=["inquiry_burst"])["ok"]
+    drawn = {i["name"]: i for i in session_ideas(new)}
+    assert drawn["inquiry_burst"]["carried_from"] == first.run_id and "pay_drift" not in drawn
 
 
 def test_ideas_come_in_rounds_and_a_round_ends_when_its_ideas_are_used(no_history):
@@ -919,7 +1039,7 @@ def test_ideas_come_in_rounds_and_a_round_ends_when_its_ideas_are_used(no_histor
     assert record_ideas(session, _ideas(lenses, engines))["round"] == 1
     for _ in range(3):
         session.take_attempt()
-    assert session.round_over() is None                   # one idea is still untried
+    assert session.round_over() is None                   # one attempt of the round left
     session.take_attempt()
     assert "round 1's ideas are used" in session.round_over() and session.round_spent
     again = record_ideas(session, _ideas(lenses, engines))       # the same names as round 1
@@ -1458,11 +1578,11 @@ def test_an_idea_is_a_hypothesis_its_features_name_it(workspace):
     assert row["idea"] == "capacity_strain" and len(row["idea_measures"]) == 2
 
 
-def test_the_proposal_message_carries_each_idea_in_the_order_to_work_it(workspace):
+def test_the_proposal_message_carries_each_idea_in_the_order_to_work_it(no_history):
     from agent.agent import _propose
     from agent.tools.ideas import focus_engines, record_ideas
 
-    session = _session(workspace, "x", params=RunParams(K=2, levels=["L1"]))
+    session = _session(no_history, "x", params=RunParams(K=2, levels=["L1"]))
     focus = focus_engines(session)
     engines = [*focus, *[e for e in ("analogy", "others", "contrastive", "mechanism") if e not in focus]][:4]
     ideas = [{"name": n, "engine": e, "lens": l, "level": "L1", "description": f"the {n} hypothesis",
@@ -1617,7 +1737,7 @@ def _evaluated_pay_to_spend(workspace, **kwargs):
     session = _session(workspace, "payments vs spend", params=RunParams(K=1))
     for source in ("payments", "spends"):
         assert propose_linkage(session, source, LINK, "event_dt")["ok"]
-    assert screen_feature(session, "pay_to_spend_90d", "d", "L1", PAY_TO_SPEND)["verified"]
+    assert screen_feature(session, "pay_to_spend_90d", "d", "L2", PAY_TO_SPEND)["verified"]
     evaluation = Evaluation(workspace, [f"{session.run_id}:pay_to_spend_90d"], {}, **kwargs)
     return evaluation, evaluation.run()
 
@@ -1722,7 +1842,7 @@ def test_ids_repeated_in_the_full_data_are_built_once_and_go_to_every_row(no_his
     session = _session(workspace, "payments vs spend", params=RunParams(K=1))
     for source in ("payments", "spends"):
         assert propose_linkage(session, source, LINK, "event_dt")["ok"]
-    assert screen_feature(session, "pay_to_spend_90d", "d", "L1", PAY_TO_SPEND)["verified"]
+    assert screen_feature(session, "pay_to_spend_90d", "d", "L2", PAY_TO_SPEND)["verified"]
     key = f"{session.run_id}:pay_to_spend_90d"
     once = Evaluation(workspace, [key], {}).materialise()["train"]
 
@@ -1786,3 +1906,324 @@ def test_exhaustion_at_half_the_target_is_sent_back_once_to_rethink(workspace):
     session.round_spent = False
     report_findings(session, "still exhausted")
     assert session.finished
+
+
+BY_MONTH = '''
+def aggregate(spark, raw):
+    r = raw[["customer_id", "period_end", "amount"]]
+    return (r.groupby(["customer_id", "period_end"], as_index=False)
+             .agg(spend=("amount", "sum"), n_txn=("amount", "size")))
+'''
+
+# The last three calendar months before as_of - from the events, then from the months.
+SPEND_3M = '''
+def build(spark, sources, base):
+    s = sources["spends"]
+    recent = s[s["event_dt"] >= s["as_of"] - pd.DateOffset(months=3)]
+    out = base[["id"]].copy()
+    out["{name}"] = out["id"].map(recent.groupby("id")["amount"].sum()).fillna(0.0)
+    return out
+'''
+SPEND_3M_BY_MONTH = '''
+def build(spark, sources, base):
+    m = sources["spends_by_month"]
+    recent = m[m["event_dt"] >= m["as_of"] - pd.DateOffset(months=3)]
+    out = base[["id"]].copy()
+    out["{name}"] = out["id"].map(recent.groupby("id")["spend"].sum()).fillna(0.0)
+    return out
+'''
+
+
+def test_an_aggregate_summarises_a_source_before_it_is_joined(no_history):
+    from agent.composer import compose
+    from agent.tools.aggregate import define_aggregate
+
+    workspace = no_history
+    session = _session(workspace, "spend by month", params=RunParams(K=3, min_gini_gain=-1.0))
+    assert propose_linkage(session, "spends", LINK, "event_dt")["ok"]
+    assert "is taken" in define_aggregate(session, "spends", "spends", "month", "d", BY_MONTH)["error"]
+    assert "period must be" in define_aggregate(
+        session, "spends_by_month", "spends", "year", "d", BY_MONTH)["error"]
+    # The runner sets period_end; the script may not drop it or move it.
+    dropped = define_aggregate(session, "spends_by_month", "spends", "month", "d",
+                               BY_MONTH.replace('"customer_id", "period_end"]', '"customer_id"]')
+                               .replace(', "period_end", "amount"]', ', "amount"]'), key="customer_id")
+    assert not dropped["ok"] and "must keep 'period_end'" in dropped["error"]
+    shifted = define_aggregate(session, "spends_by_month", "spends", "month", "d",
+                               BY_MONTH.replace("    return (r.groupby",
+                                                "    r = r.assign(period_end=r['period_end'] + pd.Timedelta(days=1))\n"
+                                                "    return (r.groupby"), key="customer_id")
+    assert not shifted["ok"] and "no event has" in shifted["error"]
+    assert session.attempts == 0 and not session.aggregates
+
+    assert "name the key" in define_aggregate(
+        session, "spends_by_month", "spends", "month", "d", BY_MONTH)["error"]
+    assert "is not a column" in define_aggregate(
+        session, "spends_by_month", "spends", "month", "d", BY_MONTH, key="cust")["error"]
+    made = define_aggregate(session, "spends_by_month", "spends", "month",
+                            "monthly spend and transactions", BY_MONTH, key="customer_id")
+    assert made["ok"], made
+    a = session.aggregates["spends_by_month"]
+    assert a["rows"] < a["source_rows"]
+    assert set(a["columns"]) >= {"event_dt", "spend", "n_txn"}
+    assert a["rows_per_id"] <= 20 and session.attempts == 0       # a month per row, not an event
+    assert (session.run_dir / "aggregates" / "spends_by_month.py").exists()
+    assert "spends_by_month" in compose(session)                   # the brief lists it
+    assert not define_aggregate(session, "spends_by_month", "spends", "month", "d", BY_MONTH,
+                                key="customer_id")["ok"]
+
+    # A feature on it is L2: it reads additional data.
+    as_l1 = screen_feature(session, "spend_3m_m", "d", "L1", SPEND_3M_BY_MONTH.format(name="spend_3m_m"))
+    assert not as_l1["ok"] and "that is L2" in as_l1["error"] and session.attempts == 0
+    # Months that end before as_of are exactly the events before it: the same values.
+    assert screen_feature(session, "spend_3m", "3-month spend", "L2",
+                          SPEND_3M.format(name="spend_3m"))["verified"]
+    twin = screen_feature(session, "spend_3m_m", "spend over the last three months, by month",
+                          "L2", SPEND_3M_BY_MONTH.format(name="spend_3m_m"), differs="from months")
+    assert not twin["ok"] and "identical to `spend_3m`" in twin["error"], twin
+
+
+def test_a_model_only_feature_is_l1_and_a_wrong_level_is_sent_back(no_history):
+    session = _session(no_history, "x", params=RunParams(K=2, levels=["L1", "L2"]))
+    product = 'def build(spark, sources, base):\n    out = base[["id"]].copy()\n' \
+              '    out["util_by_tenure"] = base["utilization"] * base["tenure_months"]\n    return out\n'
+    wrong = screen_feature(session, "util_by_tenure", "d", "L2", product)
+    assert not wrong["ok"] and "which is L1" in wrong["error"] and session.attempts == 0
+    assert screen_feature(session, "util_by_tenure", "d", "L1", product)["intent"] == "I1"
+
+
+def _in_batches(monkeypatch):
+    """A long source, as the runner meets it in the private environment: read a batch
+    of rows at a time, split by key on disk, features built a chunk of ids at a time."""
+    monkeypatch.setenv("AUTOFE_BATCH_ROWS", "300000")         # ~6 batches of spends
+    monkeypatch.setenv("AUTOFE_PART_BYTES", str(8 * 2**20))   # ~4 partitions of it
+    monkeypatch.setenv("AUTOFE_CHUNK_IDS", "1500")            # several chunks of ids
+
+
+@pytest.mark.parametrize("batched", [False, True], ids=["whole", "in_batches"])
+def test_evaluation_recomputes_an_aggregate_on_the_full_splits(no_history, monkeypatch, batched):
+    import pandas as pd
+
+    from agent.evaluate import Evaluation
+    from agent.tools.aggregate import define_aggregate
+
+    if batched:
+        _in_batches(monkeypatch)
+    workspace = no_history
+    session = _session(workspace, "spend by month", params=RunParams(K=1, min_gini_gain=-1.0))
+    assert propose_linkage(session, "spends", LINK, "event_dt")["ok"]
+    assert define_aggregate(session, "spends_by_month", "spends", "month", "d", BY_MONTH,
+                            key="customer_id")["ok"]
+    assert screen_feature(session, "spend_3m_m", "d", "L2",
+                          SPEND_3M_BY_MONTH.format(name="spend_3m_m"))["verified"]
+    assert session.ledger[-1]["aggregates"]["spends_by_month"]["period"] == "month"
+    assert session.ledger[-1]["sources"] == []                 # the long source is not linked
+
+    key = f"{session.run_id}:spend_3m_m"
+    train = Evaluation(workspace, [key], {}).materialise()["train"]
+    evaluation = Evaluation(workspace, [key], {})
+    evaluation.run()
+    titles = [e.get("title", "") for e in evaluation.log.events if e["event"] == "code_status"]
+    assert any(t.startswith("aggregate spends_by_month") and "full splits" in t for t in titles)
+    assert not any(t.startswith("linkage for spends ") for t in titles)
+
+    # The same sum straight from the raw events, on the full train split.
+    spends = pd.read_parquet(workspace.sources()["spends"].data_path)
+    spends["event_dt"] = pd.to_datetime(spends["event_dt"])
+    ids = train[["id"]].drop_duplicates().copy()
+    ids["customer_id"] = ids["id"].str.split("_").str[0]
+    ids["as_of"] = pd.to_datetime(ids["id"].str.split("_").str[1], format="%Y%m%d")
+    joined = ids.merge(spends, on="customer_id")
+    joined = joined[(joined["event_dt"] < joined["as_of"])
+                    & (joined["event_dt"] >= joined["as_of"] - pd.DateOffset(months=3))]
+    expected = ids["id"].map(joined.groupby("id")["amount"].sum()).fillna(0.0)
+    got = ids["id"].map(train.drop_duplicates("id").set_index("id")["spend_3m_m"])
+    assert (got - expected).abs().max() < 1e-6
+
+    # Inference summarises the cases' own history the same way.
+    from agent.infer import Inference, preview
+
+    assert preview(workspace)["sources"]["spends"]["needed_by"] == 1
+    result = Inference(workspace, evaluation.eval_id).run()
+    assert result["summaries"]["loi__spend_3m_m"]["cases"] == 24
+
+
+# Per transaction: each id's spend in the 90 days before its as-of date.
+SPEND_90D_PER_ID = '''
+def aggregate(spark, raw):
+    return (raw.groupby("id", as_index=False)
+               .agg(spend_90d=("amount", "sum"), n_txn_90d=("amount", "size")))
+'''
+
+
+def test_a_per_transaction_aggregate_summarises_each_ids_window_in_chunks(no_history, monkeypatch):
+    from agent.evaluate import Evaluation
+    from agent.tools.aggregate import define_aggregate
+
+    monkeypatch.setenv("AUTOFE_CHUNK_IDS", "700")             # several chunks on the screen ids
+    monkeypatch.setenv("AUTOFE_BATCH_ROWS", "300000")         # and batches of the source
+    workspace = no_history
+    session = _session(workspace, "recent spend", params=RunParams(K=3, min_gini_gain=-1.0))
+    assert propose_linkage(session, "spends", LINK, "event_dt")["ok"]
+    assert "window_days is for" in define_aggregate(
+        session, "spends_90d", "spends", "month", "d", BY_MONTH, window_days=90)["error"]
+    made = define_aggregate(session, "spends_90d", "spends", "transaction",
+                            "spend in the 90 days before", SPEND_90D_PER_ID, window_days=90)
+    assert made["ok"], made
+    a = session.aggregates["spends_90d"]
+    assert a["rows_per_id"] == 1 and a["rows"] <= len(workspace.screen)
+    assert set(a["columns"]) == {"spend_90d", "n_txn_90d"}
+    one_row = SPEND_90D_PER_ID.replace('groupby("id", as_index=False)', 'groupby("customer_id", as_index=False)')
+    assert "must return 'id'" in define_aggregate(session, "by_customer", "spends", "transaction",
+                                                    "d", one_row, window_days=90)["error"]
+
+    # The same values as the 90-day sum over the joined events.
+    assert screen_feature(session, "spend_90d_raw", "90-day spend", "L2",
+                          WINDOW.format(days=90, name="spend_90d_raw"))["verified"]
+    from_agg = """
+def build(spark, sources, base):
+    out = base[["id"]].copy()
+    out["{name}"] = out["id"].map(sources["spends_90d"].set_index("id")["spend_90d"]).fillna(0.0)
+    return out
+"""
+    twin = screen_feature(session, "spend_90d_agg", "spend in the last 90 days, per transaction",
+                          "L2", from_agg.format(name="spend_90d_agg"), differs="from an aggregate")
+    assert not twin["ok"] and "identical to `spend_90d_raw`" in twin["error"], twin
+
+    # Evaluation summarises the full splits the same way, without linking the source whole.
+    ratio = """
+def build(spark, sources, base):
+    a = sources["spends_90d"].set_index("id")
+    out = base[["id", "credit_limit"]].copy()
+    spend = out["id"].map(a["spend_90d"]).fillna(0.0)
+    out["{name}"] = np.where(out["credit_limit"] > 0, spend / out["credit_limit"], np.nan)
+    return out[["id", "{name}"]]
+"""
+    assert screen_feature(session, "spend_90d_to_limit", "recent spend against the line", "L2",
+                          ratio.format(name="spend_90d_to_limit"))["verified"]
+    key = f"{session.run_id}:spend_90d_to_limit"
+    evaluation = Evaluation(workspace, [key], {})
+    train = evaluation.materialise()["train"]
+    titles = [e.get("title", "") for e in evaluation.log.events if e["event"] == "code_status"]
+    assert any(t.startswith("aggregate spends_90d (per transaction") for t in titles)
+    assert not any(t.startswith("linkage for spends") for t in titles)
+    assert train["spend_90d_to_limit"].notna().mean() > 0.5
+
+
+
+def test_a_long_source_is_linked_in_batches_and_evaluated_by_chunk(no_history, monkeypatch):
+    import pandas as pd
+
+    from agent.evaluate import Evaluation
+
+    _in_batches(monkeypatch)
+    workspace = no_history
+    session = _session(workspace, "recent spend", params=RunParams(K=1, min_gini_gain=-1.0))
+    # A link that dedupes across events gives other rows batch by batch: refused.
+    latest = LINK.replace('return out[out["event_dt"] < out["as_of"]]',
+                          'out = out[out["event_dt"] < out["as_of"]]\n'
+                          '    return out.drop_duplicates("id", keep="last")')
+    refused = propose_linkage(session, "spends", latest, "event_dt")
+    assert not refused["ok"] and "not row by row" in refused["error"], refused
+    assert propose_linkage(session, "spends", LINK, "event_dt")["ok"]
+    assert screen_feature(session, "spend_90d", "90-day spend", "L2",
+                          WINDOW.format(days=90, name="spend_90d"))["verified"]
+
+    key = f"{session.run_id}:spend_90d"
+    evaluation = Evaluation(workspace, [key], {})
+    train = evaluation.materialise()["train"]
+    linked = [e for e in evaluation.log.events if e["event"] == "code_status"
+              and e.get("state") == "ok" and e.get("mode") == "linkage"]
+    assert linked and linked[0]["result"]["chunks"] > 1          # on disk by chunk of ids
+
+    spends = pd.read_parquet(workspace.sources()["spends"].data_path)
+    spends["event_dt"] = pd.to_datetime(spends["event_dt"])
+    ids = train[["id"]].drop_duplicates().copy()
+    ids["customer_id"] = ids["id"].str.split("_").str[0]
+    ids["as_of"] = pd.to_datetime(ids["id"].str.split("_").str[1], format="%Y%m%d")
+    joined = ids.merge(spends, on="customer_id")
+    joined = joined[(joined["event_dt"] < joined["as_of"])
+                    & (joined["event_dt"] >= joined["as_of"] - pd.Timedelta(days=90))]
+    expected = ids["id"].map(joined.groupby("id")["amount"].sum()).fillna(0.0)
+    got = ids["id"].map(train.drop_duplicates("id").set_index("id")["spend_90d"])
+    assert (got - expected).abs().max() < 1e-6
+
+
+def test_discovery_builds_from_a_cut_of_the_screen_customers_but_proposes_from_the_source(
+        no_history, monkeypatch):
+    import os
+
+    import pandas as pd
+
+    from agent._child import is_parts
+    from agent.tools.linkage import ensure_linked, read_linked
+
+    monkeypatch.setenv("AUTOFE_BATCH_ROWS", "300000")
+    monkeypatch.setenv("AUTOFE_CHUNK_IDS", "700")             # several chunks of screen ids
+    workspace = no_history
+    full = str(workspace.sources()["spends"].discovery_path)
+    first = _session(workspace, "recent spend", params=RunParams(K=2, min_gini_gain=-1.0))
+    assert first.build_paths()["spends"] == full
+    assert propose_linkage(first, "spends", LINK, "event_dt", key="customer_id")["ok"]
+    assert "key=customer_id" in workspace.linkage_path("spends").read_text()
+    # The screen ids' linked rows are on disk by chunk of ids, as at evaluation.
+    assert is_parts(first.linked["spends"])
+    chunked = screen_feature(first, "spend_90d", "90-day spend", "L2",
+                             WINDOW.format(days=90, name="spend_90d"))
+    assert chunked["verified"], chunked
+
+    # Here the screen's customers hold nearly every row: a cut would save nothing,
+    # so none is kept and the next run reads the source.
+    assert _session(workspace, "x", params=RunParams(K=1)).build_paths()["spends"] == full
+    # Where it is smaller, the next run builds from the cut - every row of the
+    # screen's customers - while the agent still sees the source itself.
+    import agent.tools.linkage as linkage
+
+    monkeypatch.setattr(linkage, "CUT_MAX_SHARE", 1.0)
+    assert ensure_linked(_session(workspace, "x", params=RunParams(K=1)), "spends") is None
+    second = _session(workspace, "recent spend", params=RunParams(K=1))
+    cut = second.build_paths()["spends"]
+    assert cut != full and "extracts" in cut
+    assert second.raw_paths()["spends"] == full
+    rows, source = pd.read_parquet(cut), pd.read_parquet(full)
+    linked = set(read_linked(first.linked["spends"])["customer_id"].astype(str))
+    assert len(rows) < len(source)
+    assert len(rows) == source["customer_id"].astype(str).isin(linked).sum()
+    # ... and links to the same rows as the whole file did.
+    assert ensure_linked(second, "spends") is None
+    assert len(read_linked(second.linked["spends"])) == len(read_linked(first.linked["spends"]))
+
+    # A changed source invalidates it.
+    os.utime(full, (os.stat(full).st_atime, os.stat(full).st_mtime + 10))
+    assert _session(workspace, "x", params=RunParams(K=1)).build_paths()["spends"] == full
+
+
+def test_a_loop_over_rows_is_refused_before_it_runs(no_history):
+    from agent.execution import check_loops
+
+    looping = """
+def build(spark, sources, base):
+    s = sources["spends"]
+    out = base[["id"]].copy()
+    values = []
+    for _, row in base.iterrows():
+        values.append(s[s["id"] == row["id"]]["amount"].sum())
+    out["{name}"] = values
+    return out
+"""
+    session = _session(no_history, "spend", params=RunParams(K=2, min_gini_gain=-1.0))
+    assert propose_linkage(session, "spends", LINK, "event_dt")["ok"]
+    refused = screen_feature(session, "spend_loop", "d", "L2", looping.format(name="spend_loop"))
+    assert not refused["ok"] and "iterates over rows" in refused["error"] and "line 6" in refused["error"]
+    assert session.attempts == 0                                    # nothing spent
+    # Groups and row-wise apply are loops too; a loop over a few fixed windows is not.
+    assert check_loops("for _id, g in s.groupby('id'):\n    pass")
+    assert check_loops("base['f'] = base.apply(lambda r: r['a'] > r['b'], axis=1)")
+    assert check_loops("vals = [x * 2 for x in s['amount']]")
+    assert check_loops("for i in range(len(base)):\n    pass")
+    assert check_loops("for days in (30, 90, 180):\n    pass") is None
+    assert check_loops("for c in ['a', 'b']:\n    pass") is None
+    assert check_loops("# for _, r in base.iterrows():\nx = 1") is None      # a comment
+    # The vectorised feature is screened as usual.
+    assert screen_feature(session, "spend_90d", "90-day spend", "L2",
+                          WINDOW.format(days=90, name="spend_90d"))["intent"]

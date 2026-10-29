@@ -3,6 +3,7 @@
     explore    catalog · scope · sample_rows · run_probe   look at the data
     shots      shots                                    labelled examples by category, rotated
     linkage    propose_linkage                          join a source, point in time
+    aggregate  define_aggregate                         summarise a long source before it is joined
     screen     screen_feature                           build + check (C0-C2) + score one feature
     data_pull  screen_request · propose_new_data        L3: data within a scope (SQL) or beyond scope
     challenge  challenge_request                        L3: record a verdict, run its construction
@@ -25,6 +26,7 @@ from typing import Any
 from pydantic import BaseModel, Field
 
 from agent.session import Session
+from agent.tools.aggregate import define_aggregate
 from agent.tools.challenge import challenge_request
 from agent.tools.data_pull import propose_new_data, screen_request
 from agent.tools.explore import catalog, run_probe, sample_rows, scope
@@ -33,14 +35,15 @@ from agent.tools.report import report_findings
 from agent.tools.screen import screen_feature
 from agent.tools.shots import shots
 
-__all__ = ["catalog", "scope", "sample_rows", "run_probe", "shots", "propose_linkage", "screen_feature",
+__all__ = ["catalog", "scope", "sample_rows", "run_probe", "shots", "propose_linkage",
+           "define_aggregate", "screen_feature",
            "screen_request", "propose_new_data", "challenge_request", "report_findings", "for_agent",
            "Ideas", "Idea", "TOOLSETS", "END_TOOL"]
 
 # Which tools each kind of run gets. A linkage job only explores and links.
 TOOLSETS = {
     "direction": ("catalog", "scope", "sample_rows", "shots", "run_probe", "propose_linkage",
-                  "screen_feature", "screen_request", "propose_new_data", "challenge_request",
+                  "define_aggregate", "screen_feature", "screen_request", "propose_new_data", "challenge_request",
                   "report_findings"),
     "linkage": ("sample_rows", "run_probe", "propose_linkage", "report_findings"),
     # A data-request run (L3 only): explore, then for each pull - propose it (the
@@ -74,6 +77,14 @@ class Idea(BaseModel):
                                   "the scope variables it needs, spelled exactly as scope() "
                                   "lists them. Beyond scope: the data and where it would "
                                   "come from")
+    same_as: str = Field(default="", description="the name of the earlier idea this one is - "
+                                                 "the same claim about who defaults and why, "
+                                                 "however worded - from Ideas on the board or "
+                                                 "the earlier ideas in this run's draw: it "
+                                                 "keeps that idea's record. Empty for a new idea")
+    differs: str = Field(default="", description="when it reads like an earlier idea but is not "
+                                                 "it: what it claims that the earlier one does "
+                                                 "not. Empty otherwise")
     beyond_scope: bool = Field(description="L3 only: true when the data lies outside every "
                                            "scope - external information, strategies applied "
                                            "(RLA), calling or contact history, ...; false "
@@ -83,6 +94,10 @@ class Idea(BaseModel):
 class Ideas(BaseModel):
     """The ideas, before any proposal: more than the run can spend, through different lenses."""
     ideas: list[Idea]
+    carry: list[str] = Field(default_factory=list, description="names of earlier runs' ideas (Ideas on the board, "
+                                         "in your brief) that fit this direction: they join "
+                                         "this run's draw with their record, beside the "
+                                         "earlier ideas it starts with. Empty when none fits")
 
 
 def _dump(value: Any) -> str:
@@ -150,7 +165,7 @@ def for_agent(session: Session, toolset: str | None = None) -> list[Any]:
 
     @function_tool(name_override="propose_linkage")
     def _propose_linkage(source: str, code: str, time_column: str,
-                         rule: str = "strict") -> str:
+                         rule: str = "strict", key: str = "") -> str:
         """Propose the point-in-time join of a source to the model ids; the analyst confirms.
 
         Args:
@@ -158,8 +173,34 @@ def for_agent(session: Session, toolset: str | None = None) -> list[Any]:
             code: a script defining link(base_ids, source).
             time_column: the source's event-date column, kept in the output.
             rule: strict (event < as_of) or inclusive (event <= as_of).
+            key: the source column(s) it joins on, comma-separated, kept in the output.
+                Discovery then reads only the screen customers' rows of the source.
         """
-        return _dump(propose_linkage(session, source, code, time_column, rule))
+        return _dump(propose_linkage(session, source, code, time_column, rule, key or None))
+
+    @function_tool(name_override="define_aggregate")
+    def _define_aggregate(name: str, source: str, period: str, description: str,
+                          code: str, window_days: int | None = None, key: str = "") -> str:
+        """Summarise a long source once - temporary features per transaction, or per
+        customer and period - for features to read as sources["<name>"]. No attempt is spent.
+
+        Args:
+            name: snake_case name of the aggregate, e.g. spends_7d or spends_by_month.
+            source: the source it summarises; it needs a confirmed linkage.
+            period: transaction (one row per id: its events before its as-of date), or
+                day, week or month (one row per customer and period).
+            description: one line on what its columns measure.
+            code: a script defining aggregate(spark, raw). By transaction, `raw` is a chunk
+                of ids' events joined by the linkage (id, as_of, the source's columns):
+                group by the id. By day, week or month, `raw` is the whole source with
+                `period_end` added: group by the key the linkage joins on and period_end.
+            window_days: by transaction only - keep the events in this many days before
+                each as-of date (7 for the last week's spend).
+            key: by day, week or month only, and required - the source column(s) it
+                groups by with period_end, comma-separated (the key the linkage joins on).
+        """
+        return _dump(define_aggregate(session, name, source, period, description, code,
+                                      window_days, key or None))
 
     @function_tool(name_override="screen_feature")
     def _screen_feature(name: str, description: str, level: str, code: str,
@@ -170,7 +211,7 @@ def for_agent(session: Session, toolset: str | None = None) -> list[Any]:
         Args:
             name: the new column's name.
             description: one sentence on what it measures and why it matters.
-            level: L1 or L2.
+            level: L1 (model columns only) or L2 (reads a source or an aggregate).
             code: a script defining build(spark, sources, base).
             idea: the idea this feature tests - one of the run's ideas, by name.
             differs: when an earlier feature means much the same - what this one measures
@@ -262,7 +303,8 @@ def for_agent(session: Session, toolset: str | None = None) -> list[Any]:
 
     tools = {"draw_theme": _draw_theme, "engine": _engine, "catalog": _catalog, "scope": _scope, "sample_rows": _sample_rows, "shots": _shots,
              "run_probe": _run_probe,
-             "propose_linkage": _propose_linkage, "screen_feature": _screen_feature,
+             "propose_linkage": _propose_linkage, "define_aggregate": _define_aggregate,
+             "screen_feature": _screen_feature,
              "screen_request": _screen_request, "propose_new_data": _propose_new_data,
              "challenge_request": _challenge_request,
              "report_findings": _report_findings}

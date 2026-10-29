@@ -126,7 +126,9 @@ def round_ideas(session: Session, order: list[str]) -> str:
             reason = str(e.get("reason") or (e.get("challenge") or {}).get("reasoning") or "").splitlines()
             built.append(f"{label} ✓" if evidence == "signal" else
                          f"{label} ✗ {reason[0][:100] if reason else ''}".rstrip())
-        earlier = f" · round {i['round']}" if i.get("round") and i["round"] != session.round else ""
+        source = i.get("carried_from") or (i["same_as"].split(":")[0] if i.get("carried") else "")
+        earlier = (f" · from run {source}" if source else
+                   f" · round {i['round']}" if i.get("round") and i["round"] != session.round else "")
         lines = [f"{k}. `{name}` - {i.get('engine') or '?'} · {i.get('level') or '?'}{earlier} · "
                  f"{i['status']} (P(useful) {i['p_useful']:.2f})",
                  f"   Hypothesis: {i.get('description') or ''}"]
@@ -137,6 +139,8 @@ def round_ideas(session: Session, order: list[str]) -> str:
         if i.get("data"):
             lines.append(f"   Data: {i['data']}")
         lines.append(f"   Built so far: {'; '.join(built) or 'none'}")
+        if (before := [m for m in i.get("family_made") or [] if m not in i.get("made", [])]):
+            lines.append(f"   Built in earlier runs: {', '.join(before[-8:])}")
         if i["status"] == "low" and i.get("why"):
             lines.append(f"   Why not yet: {i['why']} - change what made it fail.")
         blocks.append("\n".join(lines))
@@ -222,7 +226,10 @@ def memory(session: Session, limit: int = 40) -> str:
         lines.append("Ideas on the board (✓ carried signal, · none yet) - with their engine, "
                      "P(useful) and what their features showed. Deepen a ✓ idea by changing "
                      "one axis; a · idea comes back only with a change that answers its "
-                     "'why not' - an idea like it starts from its record:")
+                     "'why not' - an idea like it starts from its record. An idea's record "
+                     "is every run's evidence on it. To work one of them again, name it in "
+                     "`carry` in your ideas answer: it joins this run's draw with its record "
+                     "(the best earlier ideas are in it already - the ideas message names them):")
         lines += board
     if feats:
         lines.append("Features already proposed (✓ verified, ✗ not):")
@@ -378,6 +385,10 @@ def _linked_columns(session: Session, source: str) -> set[str] | None:
     try:
         import pyarrow.dataset as ds
 
+        from agent._child import _schema, is_parts
+
+        if is_parts(path):
+            return set(_schema(path))
         return set(ds.dataset(path, format="parquet").schema.names)
     except Exception:  # noqa: BLE001 - then every column is listed
         return None
@@ -418,6 +429,18 @@ def columns(session: Session) -> str:
                     continue
                 lines.append(f"      * `{c}` - {d or '(no description)'}"
                              f"  e.g. {_examples(src.samples.get(c, []))}")
+    if session.aggregates:
+        lines += ["", "Aggregates of this run (define_aggregate) - read as `sources[\"<name>\"]`: "
+                      f"`{ws.id_col}` and its columns - per transaction one row per id; per "
+                      "day, week or month a row per id and period before the as-of date, with "
+                      "`as_of` and the period's last day:"]
+        for name, a in session.aggregates.items():
+            grain = (f"`{a['source']}` per transaction"
+                     + (f", last {a['window_days']} days" if a.get("window_days") else "")
+                     + ", one row per id" if a["period"] == "transaction" else
+                     f"{a['period']}ly `{a['source']}`, about {a['rows_per_id']} rows per id")
+            lines.append(f"  * `{name}` - {grain}: {a['description']}")
+            lines.append("      * columns: " + ", ".join(f"`{c}`" for c in a["columns"]))
     return "\n".join(lines) + "\n"
 
 

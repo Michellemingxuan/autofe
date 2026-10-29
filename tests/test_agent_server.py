@@ -92,8 +92,12 @@ def scripted(session):
         report_findings(session, "Declines are worth pulling.")
         return
     else:
+        # The split across levels is drawn from the run id: fixed here, so the one L1
+        # and the one L2 feature below both have room.
+        if set(session.quota) == {"L1", "L2"}:
+            session.quota = {"L2": session.K - 1, "L1": 1}
         screen_feature(session, "income_to_limit", "income relative to the line", "L1", RATIO)
-        screen_feature(session, "n_payments", "how many payments were made", "L1", PAY_COUNT)
+        screen_feature(session, "n_payments", "how many payments were made", "L2", PAY_COUNT)
     report_findings(session, "scripted")
 
 
@@ -215,11 +219,11 @@ def test_linkage_job_waits_for_approval_then_links(env):
 def test_direction_then_evaluation_then_deletes(env):
     client, _, runs = env
     reply = client.post("/api/runs", json={"direction": "income and payments",
-                                           "params": {"K": 3, "levels": ["L1"]}})
+                                           "params": {"K": 3, "levels": ["L1", "L2"]}})
     assert reply.status_code == 202
     run = reply.get_json()["run_id"]
     events = wait_for(runs / run, "run_done")
-    assert events[0]["params"]["levels"] == ["L1"]
+    assert events[0]["params"]["levels"] == ["L1", "L2"]
     listed = {r["run_id"]: r for r in client.get("/api/runs").get_json()}
     assert listed[run]["verified"] == 2
     # The logging board: every feature with its code, what the checks measured, and
@@ -562,12 +566,12 @@ def test_a_constructible_verdict_needs_its_construction(env):
 def test_a_rerun_replaces_the_earlier_run_and_its_features(env):
     client, _, runs = env
     first = client.post("/api/runs", json={"direction": "ratios",
-                                           "params": {"K": 2, "levels": ["L1"]}}).get_json()["run_id"]
+                                           "params": {"K": 2, "levels": ["L1", "L2"]}}).get_json()["run_id"]
     wait_for(runs / first, "run_done")
     assert any(f["run_id"] == first for f in client.get("/api/features").get_json())
 
     again = client.post("/api/runs", json={"direction": "ratios, again", "replaces": first,
-                                           "params": {"K": 2, "levels": ["L1"]}})
+                                           "params": {"K": 2, "levels": ["L1", "L2"]}})
     assert again.status_code == 202 and again.get_json()["replaced"] == first
     second = again.get_json()["run_id"]
     wait_for(runs / second, "run_done")
@@ -586,7 +590,7 @@ def test_a_rerun_replaces_the_earlier_run_and_its_features(env):
 def test_an_evaluation_can_be_stopped(env):
     client, _, runs = env
     run = client.post("/api/runs", json={"direction": "to evaluate",
-                                         "params": {"K": 2, "levels": ["L1"]}}).get_json()["run_id"]
+                                         "params": {"K": 2, "levels": ["L1", "L2"]}}).get_json()["run_id"]
     wait_for(runs / run, "run_done")
     pool = [f for f in client.get("/api/features").get_json() if f["run_id"] == run]
     reply = client.post("/api/evaluations", json={"features": [pool[0]["key"]]})

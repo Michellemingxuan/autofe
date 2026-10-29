@@ -19,7 +19,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, Callable
 
-__all__ = ["CodeResult", "check_code", "run_code", "spark_available"]
+__all__ = ["CodeResult", "check_code", "check_loops", "run_code", "spark_available"]
 
 _SPARK: bool | None = None
 
@@ -49,6 +49,41 @@ def check_code(code: str) -> str | None:
         if re.search(pattern, code, flags=re.MULTILINE):
             return (f"the script {why} (`{pattern}`); use the frames it is given - "
                     "base, sources, raw - and nothing else")
+    return None
+
+
+# A loop over rows, ids or groups in Python: seconds on the screen rows, hours on
+# the full data (millions of ids, each filtering whole frames). Refused before it
+# runs in a feature, an aggregate or a linkage; a probe may loop - it only looks.
+_ROW_LOOPS = [
+    (r"\.(iterrows|itertuples|iteritems)\s*\(", "iterates over rows"),
+    (r"\.apply\s*\((?:[^()]|\([^()]*\))*?\baxis\s*=\s*(?:1|['\"]columns['\"])",
+     "applies a function row by row (apply(..., axis=1))"),
+]
+# What a `for` loops over that makes it a loop over rows, ids or groups.
+_ROW_ITERABLE = re.compile(
+    r"\.(index|values|array)\b|\.(unique|tolist|to_list|to_numpy|groupby|iterrows|itertuples)\s*\("
+    r"|\brange\s*\(\s*len\s*\(|\bzip\s*\(|^\s*\w+\s*\[\s*['\"][^'\"]+['\"]\s*\]?\s*$")
+_FOR = re.compile(r"\bfor\s+[\w\s,()]+?\s+in\s+([^:\]\n]+)")
+_MODES_WITHOUT_LOOPS = ("feature", "aggregate", "linkage")
+
+
+def check_loops(code: str) -> str | None:
+    """A loop over rows, ids or groups, in words with its line, or None."""
+    for number, line in enumerate(code.splitlines(), 1):
+        text = line.split("#", 1)[0]
+        why = next((w for pattern, w in _ROW_LOOPS if re.search(pattern, text)), None)
+        if why is None:
+            for iterable in _FOR.findall(text):
+                if _ROW_ITERABLE.search(iterable.strip()):
+                    why = "loops in Python over rows, ids or groups"
+                    break
+        if why:
+            return (f"the script {why} - line {number}: `{line.strip()[:120]}`. On the full "
+                    "data that is millions of passes, each scanning whole frames: hours, past "
+                    "the time limit. Write it as whole-frame operations: merge the rows onto "
+                    "the ids, filter by date, then one groupby(...).agg(...) - see 'No loops' "
+                    "in the feature skill")
     return None
 
 
@@ -106,9 +141,10 @@ def run_code(code: str, mode: str, *, workdir: Path, engine: str, id_col: str,
              timeout_s: float = 600.0, tag: str = "code",
              probe_rows: int | None = None,
              spark_conf: dict[str, str] | None = None,
+             options: dict[str, Any] | None = None,
              should_stop: Callable[[], bool] | None = None) -> CodeResult:
     """Write the script, run it in a child process, and read back what happened."""
-    problem = check_code(code)
+    problem = check_code(code) or (check_loops(code) if mode in _MODES_WITHOUT_LOOPS else None)
     if problem:
         return CodeResult(ok=False, mode=mode, error=problem)
     if engine == "spark" and not spark_available():
@@ -126,6 +162,7 @@ def run_code(code: str, mode: str, *, workdir: Path, engine: str, id_col: str,
             "sources": sources or {}, "raw": raw or {}, "source": source,
             "out_path": str(out_path), "result_path": str(result_path),
             **({"probe_rows": probe_rows} if probe_rows else {}),
+            **({"options": options} if options else {}),
             **({"spark_conf": spark_conf} if spark_conf and engine == "spark" else {})}
     spec_path = workdir / f"{tag}.spec.json"
     spec_path.write_text(json.dumps(spec))
@@ -150,6 +187,9 @@ def run_code(code: str, mode: str, *, workdir: Path, engine: str, id_col: str,
                     "the join is too large: keep only the columns and events needed "
                     "before joining" + (", or use the spark engine" if spark_available() else "")
                     if mode == "linkage" else
+                    "one pass over the source: name only the columns you need, filter, then a "
+                    "single groupby(key, period_end).agg(...) - no apply or loops"
+                    if mode == "aggregate" else
                     "vectorise: no loops or apply over rows; aggregate with groupby, "
                     "filter before joining"))
             if stopped:

@@ -9,13 +9,15 @@ from __future__ import annotations
 
 import os
 import re
+from pathlib import Path
 from typing import Any
 
 import pandas as pd
 
+from agent.extracts import cached_extract, linkage_key, save_extract
 from agent.session import Session
 
-__all__ = ["propose_linkage", "ensure_linked", "engine_of"]
+__all__ = ["propose_linkage", "ensure_linked", "engine_of", "read_linked"]
 
 
 def engine_of(code: str) -> str:
@@ -29,8 +31,53 @@ def linkage_engine(session: Session) -> str:
     return session.ws.cfg.agent.linkage_engine
 
 
+# A cut is kept when it holds at most this share of the source's rows.
+CUT_MAX_SHARE = 0.5
+
+
+def _extract_option(session: Session, source: str, keys: list[str]) -> dict[str, Any]:
+    """Run options that also cut discovery's sample of the source (agent.extracts) -
+    none when there is no key, or the cut is already what discovery reads."""
+    src = session.ws.sources()[source]
+    if not keys or cached_extract(session.ws, source, str(src.discovery_path), keys):
+        return {}
+    folder = session.run_dir / "extracts"
+    folder.mkdir(parents=True, exist_ok=True)
+    return {"extract": {"key": keys, "path": str(folder / f"{source}.parquet")}}
+
+
+def _options(engine: str, extract: dict[str, Any]) -> dict[str, Any]:
+    """On pandas the screen ids' linked rows go to disk by chunk of ids, as at
+    evaluation, so a feature is built a chunk at a time in discovery too."""
+    if engine == "spark":
+        return {}
+    return {"options": {"partition": True, **extract}}
+
+
+def read_linked(path: str) -> pd.DataFrame:
+    """A linkage's rows - one file, or on disk by chunk of ids (agent._child.Parts)."""
+    from agent._child import Parts, is_parts
+
+    if not is_parts(path):
+        return pd.read_parquet(path)
+    parts = Parts.open(path)
+    return pd.concat([parts.read(k) for k in range(parts.n_chunks)], ignore_index=True)
+
+
+def _keep_extract(session: Session, source: str, keys: list[str], kwargs: dict[str, Any],
+                  result: Any) -> None:
+    made = kwargs.get("extract")
+    stats = (result.result or {}).get("extract")
+    # Kept only when it saves reading: a cut holding most of the source is no faster.
+    if made and stats and Path(made["path"]).exists() \
+            and stats["rows"] <= CUT_MAX_SHARE * max(stats["source_rows"], 1):
+        src = session.ws.sources()[source]
+        save_extract(session.ws, source, made["path"], str(src.discovery_path), keys, stats)
+        session.emit("extract_saved", source=source, **stats)
+
+
 def propose_linkage(session: Session, source: str, code: str, time_column: str,
-                    rule: str = "strict") -> dict[str, Any]:
+                    rule: str = "strict", key: str | list[str] | None = None) -> dict[str, Any]:
     """Run link() on the screen ids, check point-in-time, then ask the analyst."""
     if (problem := session.allowed(source)):
         return {"ok": False, "error": problem}
@@ -41,14 +88,17 @@ def propose_linkage(session: Session, source: str, code: str, time_column: str,
     if rule not in ("strict", "inclusive"):
         return {"ok": False, "error": "rule must be strict (event < as_of) or "
                                       "inclusive (event <= as_of)"}
+    keys = [k.strip() for k in (key.split(",") if isinstance(key, str) else key or [])
+            if k.strip()] or linkage_key(code)
     engine = linkage_engine(session)
+    extra = _extract_option(session, source, keys) if engine != "spark" else {}
     _, result = session.run(code, "linkage", intent=f"linkage:{source}",
-                            title=f"linkage for {source}", raw=session.raw_paths(),
-                            source=source, engine=engine)
+                            title=f"linkage for {source}", raw=session.build_paths(),
+                            source=source, engine=engine, **_options(engine, extra))
     if not result.ok:
         return result.for_agent()
 
-    checks = _check(session, pd.read_parquet(result.out_path), time_column, rule)
+    checks = _check(session, read_linked(result.out_path), time_column, rule)
     if checks.get("error"):
         return {"ok": False, **checks}
 
@@ -59,9 +109,11 @@ def propose_linkage(session: Session, source: str, code: str, time_column: str,
 
     path = session.ws.linkage_path(source)
     path.parent.mkdir(parents=True, exist_ok=True)
-    path.write_text(f"# linkage for {source}: time_column={time_column}, rule={rule}\n"
+    path.write_text(f"# linkage for {source}: time_column={time_column}, rule={rule}"
+                    + (f", key={','.join(keys)}" if keys else "") + "\n"
                     f"# confirmed in run {session.run_id}\n# engine: {engine}\n{code}")
     session.linked[source] = result.out_path
+    _keep_extract(session, source, keys, extra, result)
     return {"ok": True, "approved": True, "user_note": decision.note,
             "saved": str(path), "checks": checks,
             "next": f"features can now use sources[{source!r}]"}
@@ -76,12 +128,16 @@ def ensure_linked(session: Session, source: str) -> str | None:
         return (f"{source!r} has no confirmed linkage; call propose_linkage first "
                 f"(confirmed: {session.ws.linked()})")
     code = path.read_text()
+    keys = linkage_key(code)
+    extra = _extract_option(session, source, keys) if engine_of(code) != "spark" else {}
     _, result = session.run(code, "linkage", intent=f"linkage:{source}",
                             title=f"reuse confirmed linkage for {source}",
-                            raw=session.raw_paths(), source=source, engine=engine_of(code))
+                            raw=session.build_paths(), source=source, engine=engine_of(code),
+                            **_options(engine_of(code), extra))
     if not result.ok:
         return f"the confirmed linkage for {source!r} failed: {result.error}"
     session.linked[source] = result.out_path
+    _keep_extract(session, source, keys, extra, result)
     return None
 
 

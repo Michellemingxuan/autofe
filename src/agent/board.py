@@ -29,8 +29,15 @@ signal) or ``low`` (measured, no signal yet). Nothing is refused: the order the
 ideas are worked in is a Thompson draw from each Beta (:func:`order_ideas`) -
 over every round's ideas of the run, not only the latest round's - so
 an idea whose features failed is drawn later and later - deprioritised, never
-shut out, and back in front the moment one of its features carries signal. An
-idea linked to an earlier run's (``same_as``) starts from that idea's record.
+shut out, and back in front the moment one of its features carries signal.
+
+Across runs, ideas linked by ``same_as`` are one family: each member's standing
+is the evidence of every member, in whichever run (:func:`_pool`) - so a
+feature built in this run updates the idea where it began too. A run draws from
+its own ideas and the earlier ones it carries: the PRELOAD best it starts with
+(the same direction's first), and any the agent names in its ideas answer
+(``carry``). A carried
+idea joins the run's ideas, linked to its family, when a feature names it.
 """
 
 from __future__ import annotations
@@ -46,6 +53,7 @@ if TYPE_CHECKING:
     from agent.workspace import Workspace
 
 __all__ = ["idea_of", "idea_for", "feature_evidence", "idea_standing", "run_ideas", "idea_records",
+           "one_per_family", "carry_candidates", "carry_ideas", "session_ideas",
            "order_ideas", "round_board", "board_rows", "prompt_board"]
 
 _NO_EVIDENCE = (r"^script failed", r"^build\(\) returned")
@@ -71,6 +79,11 @@ def idea_for(session: "Session", idea: str, name: str) -> tuple[str, str | None]
     if idea:
         if idea in names:
             return idea, None
+        carried = {i["name"]: i for i in session_ideas(session) if i.get("carried_from")}
+        if idea in carried:
+            _adopt(session, carried[idea])
+            return idea, None
+        names += list(carried)
         return "", (f"no idea named {idea!r}; this run's ideas are "
                     f"{', '.join(names[-10:]) or 'none yet'}. Nothing was spent.")
     guess = idea_of(name, session.ideas)
@@ -95,6 +108,10 @@ def feature_evidence(entry: dict[str, Any]) -> str | None:
     return "none"
 
 
+# What a feature without signal counts against its idea, against 1 for one with signal.
+FAILED_FEATURE_WEIGHT = 0.5
+
+
 def idea_standing(evidence: list[str | None],
                   inherited: dict[str, int] | None = None) -> dict[str, Any]:
     """An idea's Beta and status from its features' evidence - and the record of the
@@ -102,9 +119,13 @@ def idea_standing(evidence: list[str | None],
     signal = evidence.count("signal") + int((inherited or {}).get("signal", 0))
     none = evidence.count("none") + int((inherited or {}).get("none", 0))
     status = "active" if signal else "low" if none else "explore"
+    # A feature that worked shows the idea works; one that did not tests one of its
+    # measures, not the idea - it counts for half, so one miss does not put the
+    # idea behind every fresh one.
+    beta = 1 + FAILED_FEATURE_WEIGHT * none
     return {"status": status, "signal": signal, "none": none,
-            "alpha": 1 + signal, "beta": 1 + none,
-            "p_useful": round((1 + signal) / (2 + signal + none), 3)}
+            "alpha": 1 + signal, "beta": beta,
+            "p_useful": round((1 + signal) / (1 + signal + beta), 3)}
 
 
 def run_ideas(folder: Path) -> list[dict[str, Any]]:
@@ -136,27 +157,65 @@ def _of(entry: dict[str, Any], ideas: list[dict[str, Any]]) -> str:
 
 def _standings(ideas: list[dict[str, Any]], ledger: list[dict[str, Any]],
                requests: list[dict[str, Any]]) -> list[dict[str, Any]]:
-    """The ideas of one run, each with its standing, its features and requests."""
+    """The ideas of one run, each with what its own features and requests showed:
+    ``own_signal``, ``own_none``, what it made, why its last miss failed. The
+    standing comes from its family's (:func:`_pool`)."""
     out = []
     made = [e for e in [*ledger, *requests] if not e.get("deleted")]
     for idea in ideas:
         mine = [e for e in made if _of(e, ideas) == idea["name"]]
         evidence = [feature_evidence(e) for e in mine]
-        standing = idea_standing(evidence, idea.get("inherited"))
         last = next((str(e.get("reason") or "") for e, ev in zip(reversed(mine), reversed(evidence))
                      if ev == "none"), "")
-        out.append({**idea, **standing, "made": [e.get("name") or e.get("source_name") for e in mine],
+        out.append({**idea, "own_signal": evidence.count("signal"),
+                    "own_none": evidence.count("none"),
+                    "made": [e.get("name") or e.get("source_name") for e in mine],
                     "why": last.splitlines()[0][:160] if last else ""})
     return out
 
 
-def session_ideas(session: "Session") -> list[dict[str, Any]]:
-    """This run's ideas with their standing - from the session, as it is now."""
-    return _standings(session.ideas, session.ledger, session.data_requests)
+def _pool(records: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    """One record per idea family: ideas linked across runs (``same_as``, by key
+    ``run_id:name``) share every member's evidence, so an idea's standing is all
+    that its features showed, in whichever run. Records oldest first; each comes
+    back with its family (``family``), the family's standing, and every feature
+    the family made (``family_made``)."""
+    parent = {r["key"]: r["key"] for r in records}
+
+    def find(k: str) -> str:
+        while parent[k] != k:
+            parent[k] = parent[parent[k]]
+            k = parent[k]
+        return k
+
+    for r in records:
+        if r.get("same_as") in parent:
+            parent[find(r["key"])] = find(r["same_as"])
+    totals: dict[str, list[int]] = {}
+    made: dict[str, list[str]] = {}
+    why: dict[str, str] = {}
+    for r in records:
+        root = find(r["key"])
+        t = totals.setdefault(root, [0, 0])
+        t[0] += r["own_signal"]
+        t[1] += r["own_none"]
+        # Linked to a run no longer here: the record it copied then.
+        if r.get("same_as") and r["same_as"] not in parent and r.get("inherited"):
+            t[0] += int(r["inherited"].get("signal", 0))
+            t[1] += int(r["inherited"].get("none", 0))
+        made.setdefault(root, []).extend(m for m in r["made"] if m)
+        why[root] = r["why"] or why.get(root, "")
+    out = []
+    for r in records:
+        root = find(r["key"])
+        signal, none = totals[root]
+        out.append({**r, **idea_standing([], {"signal": signal, "none": none}),
+                    "family": root, "family_made": made[root], "why": r["why"] or why[root]})
+    return out
 
 
-def idea_records(ws: "Workspace", skip_run: str | None = None) -> list[dict[str, Any]]:
-    """Every run's ideas with their standing, oldest run first."""
+def _counted(ws: "Workspace", skip_run: str | None = None) -> list[dict[str, Any]]:
+    """Every run's ideas with their own evidence, oldest run first."""
     from agent.memory import _direction, _runs
 
     out = []
@@ -168,9 +227,110 @@ def idea_records(ws: "Workspace", skip_run: str | None = None) -> list[dict[str,
             continue
         ledger, requests = _entries(folder)
         direction = _direction(folder)
-        out += [{**i, "run_id": folder.name, "direction": direction}
-                for i in _standings(ideas, ledger, requests)]
+        out += [{**i, "run_id": folder.name, "key": f"{folder.name}:{i['name']}",
+                 "direction": direction} for i in _standings(ideas, ledger, requests)]
     return out
+
+
+def idea_records(ws: "Workspace", skip_run: str | None = None) -> list[dict[str, Any]]:
+    """Every run's ideas with their family's standing, oldest run first."""
+    return _pool(_counted(ws, skip_run))
+
+
+def one_per_family(records: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    """The latest record of each idea family - an idea linked across runs counted once."""
+    latest = {r["family"]: r for r in records}
+    return [r for r in records if latest[r["family"]] is r]
+
+
+def _same_direction(a: str, b: str) -> bool:
+    norm = lambda d: " ".join(str(d or "").lower().split())      # noqa: E731
+    return bool(norm(a)) and norm(a) == norm(b)
+
+
+def carry_candidates(session: "Session") -> list[dict[str, Any]]:
+    """Earlier runs' ideas this run may carry into its draw: one per family, at a
+    level the run allows, with the family's standing."""
+    if getattr(session, "earlier_ideas", None) is None:
+        session.earlier_ideas = _counted(session.ws, skip_run=session.run_id)
+    levels = set(session.params.levels)
+    return [r for r in one_per_family(_pool(session.earlier_ideas))
+            if not r.get("level") or r["level"] in levels]
+
+
+# Earlier runs' ideas a run loads into its draw at the start.
+PRELOAD = 20
+
+
+def preloaded(session: "Session") -> list[str]:
+    """The earlier ideas this run starts with, by key: the PRELOAD best of the
+    candidates - those of runs with the same direction first, then by P(useful),
+    the latest first among equals. Chosen once, at the first ask, and recorded."""
+    if session.preloaded is None:
+        ranked = sorted(enumerate(carry_candidates(session)), key=lambda c: (
+            not _same_direction(c[1]["direction"], session.direction), -c[1]["p_useful"], -c[0]))
+        picked = [c for _, c in ranked[:PRELOAD]]
+        session.preloaded = [c["key"] for c in picked]
+        if picked:
+            session.emit("ideas_preloaded", ideas=[
+                {"key": c["key"], "p_useful": c["p_useful"], "status": c["status"]} for c in picked])
+    return session.preloaded
+
+
+def session_ideas(session: "Session") -> list[dict[str, Any]]:
+    """The ideas this run draws from, with their standing as it is now: its own -
+    each pooled with the earlier runs' ideas it is linked to - and the earlier
+    ideas it carries (``carried_from``): those it started with (:func:`preloaded`)
+    and those the agent named (``session.carried``), until one of its own is
+    linked to them."""
+    candidates = carry_candidates(session)
+    mine = [{**i, "run_id": session.run_id, "key": f"{session.run_id}:{i['name']}"}
+            for i in _standings(session.ideas, session.ledger, session.data_requests)]
+    pooled = _pool(session.earlier_ideas + mine)
+    ours = [r for r in pooled if r["run_id"] == session.run_id]
+    families = {r["family"] for r in ours}
+    keys = {*preloaded(session), *session.carried} & {c["key"] for c in candidates}
+    carried = [{**r, "carried_from": r["run_id"]} for r in one_per_family(pooled)
+               if r["key"] in keys and r["family"] not in families]
+    return ours + carried
+
+
+def preloaded_names(session: "Session") -> str:
+    """The earlier ideas the run starts with, for the ideas message."""
+    keys = set(preloaded(session))
+    names = [c["name"] for c in carry_candidates(session) if c["key"] in keys]
+    return ", ".join(f"`{n}`" for n in names) or "none"
+
+
+def carry_ideas(session: "Session", names: list[str]) -> list[str]:
+    """Carry earlier runs' ideas into this run's draw by name: the problems, if any."""
+    candidates = {c["name"]: c for c in carry_candidates(session)}
+    problems = []
+    for name in dict.fromkeys(str(n).strip() for n in names or []):
+        if not name:
+            continue
+        if name not in candidates:
+            problems.append(f"carry: no earlier idea named {name!r} at this run's levels")
+            continue
+        if candidates[name]["key"] not in session.carried:
+            session.carried.append(candidates[name]["key"])
+    return problems
+
+
+def _adopt(session: "Session", record: dict[str, Any]) -> None:
+    """A carried idea a feature names joins this run's ideas, linked to its family -
+    so its features count for the idea in every run, and the board shows it here."""
+    from agent.tools.ideas import save_ideas
+
+    fields = ("name", "engine", "lens", "level", "description", "measures", "data",
+              "beyond_scope", "variables")
+    session.ideas = session.ideas + [{
+        "n": len(session.ideas) + 1, "round": session.round,
+        **{k: record[k] for k in fields if k in record},
+        "same_as": record["key"], "carried": True}]
+    save_ideas(session)
+    session.emit("idea_carried", idea=record["name"], same_as=record["key"],
+                 p_useful=record["p_useful"])
 
 
 def order_ideas(standings: list[dict[str, Any]], seed: str) -> list[str]:
@@ -185,8 +345,16 @@ def order_ideas(standings: list[dict[str, Any]], seed: str) -> list[str]:
 def round_board(session: "Session") -> list[dict[str, Any]]:
     """This run's ideas, every round's, as the screen reply shows them: standing and
     order. An earlier round's idea that carried signal is still worth working."""
-    return [{k: i.get(k) for k in ("name", "round", "engine", "status", "p_useful", "made")}
-            for i in session_ideas(session)]
+    out = []
+    for i in session_ideas(session):
+        row = {k: i.get(k) for k in ("name", "round", "engine", "status", "p_useful", "made")}
+        if i.get("carried_from"):
+            row["from_run"] = i["carried_from"]
+        measures = len(i.get("measures") or [])
+        # How many of its measures no feature, in any run, has tried yet.
+        row["measures_left"] = max(measures - len(i.get("family_made") or []), 0)
+        out.append(row)
+    return out
 
 
 # --------------------------------------------------------------- the board
@@ -256,6 +424,7 @@ def board_rows(ws: "Workspace") -> list[dict[str, Any]]:
     from agent.memory import _direction, _runs
 
     evaluations = _evaluations(ws)
+    pooled = {r["key"]: r for r in idea_records(ws)}
     rows = []
     for folder in reversed(_runs(ws)):
         ideas = run_ideas(folder)
@@ -263,7 +432,7 @@ def board_rows(ws: "Workspace") -> list[dict[str, Any]]:
         if not ideas and not ledger and not requests:
             continue
         direction = _direction(folder)
-        standings = {i["name"]: i for i in _standings(ideas, ledger, requests)}
+        standings = {i["name"]: pooled.get(f"{folder.name}:{i['name']}", i) for i in ideas}
         used = set()
 
         def idea_cols(name: str) -> dict[str, Any]:
@@ -271,7 +440,8 @@ def board_rows(ws: "Workspace") -> list[dict[str, Any]]:
             return {"idea": name if i else "", "round": i.get("round"), "engine": i.get("engine") or "",
                 "idea_measures": i.get("measures") or [],
                     "lens": i.get("lens") or "", "idea_status": i.get("status") or "",
-                    "p_useful": i.get("p_useful"), "idea_description": i.get("description") or ""}
+                    "p_useful": i.get("p_useful"), "idea_description": i.get("description") or "",
+                    "idea_same_as": i.get("same_as") or ""}
 
         for e in ledger:
             name = _of(e, ideas)
@@ -327,7 +497,8 @@ def _finished(folder: Path) -> bool:
 def prompt_board(ws: "Workspace", skip_run: str | None = None, limit: int = 30) -> list[str]:
     """Earlier runs' ideas for the brief: engine, standing, and what their features
     showed - the low ones with why, so a new idea changes what made them fail."""
-    ideas = [i for i in idea_records(ws, skip_run) if i["status"] != "explore"][-limit:]
+    ideas = [i for i in one_per_family(idea_records(ws, skip_run))
+             if i["status"] != "explore"][-limit:]
     mark = {"active": "✓", "low": "·"}
     lines = []
     for i in ideas:

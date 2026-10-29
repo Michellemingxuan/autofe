@@ -44,6 +44,7 @@ from typing import Any
 
 import pandas as pd
 
+from agent.aggregates import materialise_aggregate, spec_key
 from agent.events import EventLog, finite, read_events, run_logged
 from agent.tools.linkage import engine_of
 from agent.workspace import Workspace
@@ -109,7 +110,9 @@ def feature_pool(ws: Workspace) -> list[dict[str, Any]]:
             if not entry.get("verified") or entry.get("deleted"):
                 continue
             codes, missing = {}, []
-            for source in entry.get("sources", []):
+            # the sources it reads, and those its aggregates summarise
+            for source in dict.fromkeys([*entry.get("sources", []),
+                                         *(a["source"] for a in (entry.get("aggregates") or {}).values())]):
                 current = ws.linkage_path(source)
                 code = linkage.get(source) or (current.read_text() if current.exists() else None)
                 if code is None:
@@ -401,31 +404,68 @@ class Evaluation:
         # One join per distinct (source, linkage code): features verified under
         # the same linkage share it, and two runs that linked a source
         # differently each get their own.
+        # On pandas the source is streamed in batches and the joined rows go to disk
+        # by chunk of ids - only the columns the features read - and each feature
+        # is built a chunk at a time (agent._child): neither is ever held whole.
         linked: dict[tuple[str, str], str] = {}
         for source, code in sorted({(s, f["linkage"][s]) for f in self.chosen
                                     for s in f["sources"]}):
             version = len([k for k in linked if k[0] == source]) + 1
+            keep = "\n".join(f["code"] for f in self.chosen
+                             if source in f["sources"] and f["linkage"][source] == code)
             _, result = self._run(code, "linkage", base_path, engine=engine_of(code),
                                   intent="evaluate",
                                   title=f"linkage for {source} on the full splits"
                                         + (f" (v{version})" if version > 1 else ""),
-                                  raw=raw, source=source)
+                                  raw=raw, source=source,
+                                  **({} if engine_of(code) == "spark" else
+                                     {"options": {"partition": True, "keep": keep}}))
             if not result.ok:
                 raise RuntimeError(f"linkage for {source} failed on the full splits: "
                                    f"{result.error}")
             linked[(source, code)] = result.out_path
 
+        summaries = self._aggregates(base_path, raw)
         for f in self.chosen:
             _, result = self._run(f["code"], "feature", base_path, engine=f["engine"],
                                   intent="evaluate",
                                   level=f["level"], title=f"{f['column']} on the full splits",
-                                  sources={s: linked[(s, f["linkage"][s])] for s in f["sources"]})
+                                  sources={**{s: linked[(s, f["linkage"][s])] for s in f["sources"]},
+                                           **{a: summaries[spec_key(spec, f["linkage"][spec["source"]])]
+                                              for a, spec in (f.get("aggregates") or {}).items()}})
             if not result.ok:
                 raise RuntimeError(f"{f['key']} failed on the full splits: {result.error}")
             values = pd.read_parquet(result.out_path).set_index(ws.id_col)[f["name"]]
             for frame in frames.values():
                 frame[f["column"]] = frame[ws.id_col].map(values)
         return frames
+
+    def _aggregates(self, base_path: Path, raw: dict[str, str]) -> dict[tuple, str]:
+        """Each distinct aggregate the chosen features read, summarised on the whole
+        source and joined to every id - once, however many features share it."""
+        out: dict[tuple, str] = {}
+        for f in self.chosen:
+            for name, spec in (f.get("aggregates") or {}).items():
+                linkage = f["linkage"][spec["source"]]
+                key = spec_key(spec, linkage)
+                if key in out:
+                    continue
+                if spec["source"] not in raw:
+                    raise RuntimeError(f"{spec['source']} has no data for the aggregate {name}")
+
+                def run(code: str, mode: str, **kwargs: Any):
+                    return self._run(code, mode, base_path, intent="evaluate", **kwargs)
+
+                summary, linked = materialise_aggregate(
+                    run, name, spec, linkage, raw[spec["source"]], engine=f["engine"],
+                    linkage_engine=engine_of(linkage), where="on the full splits",
+                    partition=engine_of(linkage) != "spark")
+                failed = summary if not summary.ok else linked
+                if not failed.ok:
+                    raise RuntimeError(f"the aggregate {name} failed on the full splits: "
+                                       f"{failed.error}")
+                out[key] = linked.out_path
+        return out
 
     def run(self) -> dict[str, Any]:
         """Materialise, then run the pipeline - narrating both as events.
@@ -449,8 +489,9 @@ class Evaluation:
         # Each feature as it was evaluated - its script, sources, linkage and engine -
         # so inference reruns exactly these, though the run behind one is deleted.
         (self.folder / "features.json").write_text(json.dumps(
-            [{k: f[k] for k in ("key", "column", "name", "run_id", "level", "code", "sources",
-                                "engine", "linkage")} for f in self.chosen], indent=2))
+            [{**{k: f[k] for k in ("key", "column", "name", "run_id", "level", "code", "sources",
+                                   "engine", "linkage")},
+              "aggregates": f.get("aggregates") or {}} for f in self.chosen], indent=2))
         handler = _EventLogHandler(self)
         logging.getLogger("validation").addHandler(handler)
         try:

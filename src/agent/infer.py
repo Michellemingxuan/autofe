@@ -39,6 +39,7 @@ from typing import Any
 import numpy as np
 import pandas as pd
 
+from agent.aggregates import materialise_aggregate, spec_key
 from agent.evaluate import FLAG_SHARES, combinations_of, feature_pool, list_evaluations, removed_variants, share_key
 from agent.events import EventLog, finite, read_events, run_logged
 from agent.tools.linkage import engine_of
@@ -105,7 +106,9 @@ def needed_sources(ws: Workspace) -> dict[str, int]:
     histories the cases must bring."""
     counts: dict[str, int] = {}
     for f in feature_pool(ws):
-        for source in f.get("sources") or []:
+        # read directly, or summarised by an aggregate first
+        for source in dict.fromkeys([*(f.get("sources") or []),
+                                     *(a["source"] for a in (f.get("aggregates") or {}).values())]):
             counts[source] = counts.get(source, 0) + 1
     return counts
 
@@ -308,11 +311,34 @@ class Inference:
             linked[(source, code)] = result.out_path
             n = pd.read_parquet(result.out_path, columns=[ws.id_col])[ws.id_col].nunique()
             self.emit("infer_log", message=f"{source}: history for {n:,} of {len(rows):,} case rows")
+        summaries: dict[tuple, str] = {}
+        for f in specs.values():
+            for name, spec in (f.get("aggregates") or {}).items():
+                linkage = f["linkage"][spec["source"]]
+                if spec_key(spec, linkage) in summaries:
+                    continue
+                if spec["source"] not in raw:
+                    raise ValueError(f"the cases have no history of {spec['source']}, which the "
+                                     f"aggregate {name} summarises - give its path in Setup, "
+                                     "Target cases")
+
+                def run(code: str, mode: str, **kwargs: Any):
+                    return self._run(code, mode, base_path, intent="infer", **kwargs)
+
+                summary, joined = materialise_aggregate(
+                    run, name, spec, linkage, raw[spec["source"]], engine=f["engine"],
+                    linkage_engine=engine_of(linkage), where="on the cases")
+                failed = summary if not summary.ok else joined
+                if not failed.ok:
+                    raise RuntimeError(f"the aggregate {name} failed on the cases: {failed.error}")
+                summaries[spec_key(spec, linkage)] = joined.out_path
         out = rows[[ws.id_col]].copy()
         for column, f in specs.items():
             _, result = self._run(f["code"], "feature", base_path, engine=f["engine"],
                                   intent="infer", level=f.get("level"), title=f"{column} on the cases",
-                                  sources={s: linked[(s, f["linkage"][s])] for s in f["sources"]})
+                                  sources={**{s: linked[(s, f["linkage"][s])] for s in f["sources"]},
+                                           **{a: summaries[spec_key(spec, f["linkage"][spec["source"]])]
+                                              for a, spec in (f.get("aggregates") or {}).items()}})
             if not result.ok:
                 raise RuntimeError(f"{column} failed on the cases: {result.error}")
             values = pd.read_parquet(result.out_path).set_index(ws.id_col)[f["name"]]

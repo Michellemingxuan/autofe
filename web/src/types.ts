@@ -141,7 +141,7 @@ export type CodeCard = {
   seq: number
   code_id: string
   intent: string
-  mode: 'probe' | 'linkage' | 'feature'
+  mode: 'probe' | 'linkage' | 'aggregate' | 'feature'
   level: string | null
   title: string
   code: string
@@ -221,7 +221,7 @@ export type Idea = { n: number; name?: string; level?: string; lens: string
                      description?: string; hypothesis?: string; data: string
                      beyond_scope?: boolean; beyond_cas?: boolean }   // beyond_cas: older runs
 
-export type StepKind = 'explore' | 'ideas' | 'linkage' | 'intent' | 'l3' | 'challenge' | 'stage' | 'summary'
+export type StepKind = 'explore' | 'ideas' | 'linkage' | 'aggregate' | 'intent' | 'l3' | 'challenge' | 'stage' | 'summary'
 
 /** One tool call: which tool, whether it went through, and the model response it came in -
  *  calls that share a `batch` were released together, in parallel. */
@@ -245,6 +245,8 @@ export type Step = {
   row?: LedgerRow
   request?: DataRequest
   challengeOf?: string
+  /** an aggregate step: the aggregate's name - its scripts arrive before its call */
+  aggregateOf?: string
   note?: string
   summary?: string
   tools?: ToolUse[]
@@ -306,6 +308,7 @@ export type BoardRow = {
   p_useful: number | null
   idea_description: string
   idea_measures: string[]   // the ways the idea can be measured, as the agent gave them
+  idea_same_as?: string     // <run_id>:<idea> it is linked to - its standing pools that family's evidence
   kind: 'feature' | 'request' | 'idea'
   name: string
   level: string | null
