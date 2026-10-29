@@ -1934,6 +1934,34 @@ def build(spark, sources, base):
 '''
 
 
+def test_an_aggregate_joins_through_a_linkage_that_names_the_source_columns(no_history):
+    import pandas as pd
+
+    from agent.tools.aggregate import define_aggregate
+
+    session = _session(no_history, "spend by month", params=RunParams(K=3))
+    columns = list(no_history.sources()["spends"].columns)
+    # Written for the raw source: it picks its columns by name - most of them are not
+    # in the aggregate, and reach it empty.
+    selecting = LINK.replace('out = ids.merge(source, on="customer_id")',
+                             f'events = source[{columns!r}].copy()\n'
+                             '    out = ids.merge(events, on="customer_id")')
+    assert propose_linkage(session, "spends", selecting, "event_dt")["ok"]
+    made = define_aggregate(session, "spends_by_month", "spends", "month",
+                            "monthly spend", BY_MONTH, key="customer_id")
+    assert made["ok"], made
+    assert set(made["columns"]) == {"customer_id", "event_dt", "spend", "n_txn"}  # no empty columns
+    # A filter on a column the aggregate lacks drops every row: said, not an empty table.
+    other = next(c for c in columns if c not in ("customer_id", "event_dt"))
+    filtering = selecting.replace('return out[out["event_dt"] < out["as_of"]]',
+                                  f'return out[(out["event_dt"] < out["as_of"]) & out[{other!r}].notna()]')
+    session = _session(no_history, "spend by month", params=RunParams(K=3))
+    assert propose_linkage(session, "spends", filtering, "event_dt")["ok"]
+    dropped = define_aggregate(session, "spends_by_month", "spends", "month", "monthly spend",
+                               BY_MONTH, key="customer_id")
+    assert not dropped["ok"] and "kept none of the aggregate's" in dropped["error"]
+
+
 def test_an_aggregate_summarises_a_source_before_it_is_joined(no_history):
     from agent.composer import compose
     from agent.tools.aggregate import define_aggregate

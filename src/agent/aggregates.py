@@ -84,10 +84,15 @@ def materialise_aggregate(run: Callable[..., tuple[str, Any]], name: str, spec: 
                               "key": spec.get("key")})
     if not summary.ok:
         return summary, None
+    # The linkage was written for the raw source: the columns it names that the
+    # aggregate lacks are filled in empty, and the aggregate's own put back after
+    # it, by key and time column (agent._child).
     _, linked = run(linkage, "linkage", engine=linkage_engine,
                     title=f"linkage for {name}{suffix}",
                     raw={source: str(summary.out_path)}, source=source,
-                    **({"options": {"partition": True}} if partition else {}))
+                    options={"aggregate": {"source": raw_path, "key": spec.get("key"),
+                                           "time_column": time_column},
+                             **({"partition": True} if partition else {})})
     return summary, linked
 
 

@@ -498,6 +498,8 @@ def _link_in_batches(spec: dict[str, Any], code: str, link: Any, ids: pd.DataFra
     also keeps discovery's cut (agent.extracts): the rows of every customer the ids
     link to."""
     id_col, path = spec["id_col"], spec["raw"][spec["source"]]
+    if options.get("aggregate"):
+        link = _filled(link, options["aggregate"])
     columns = None
     if options.get("keep"):
         columns = named_columns(code + "\n" + options["keep"], _schema(path), set())
@@ -533,10 +535,69 @@ def _link_in_batches(spec: dict[str, Any], code: str, link: Any, ids: pd.DataFra
         linked = pd.concat(pieces, ignore_index=True)
         linked.to_parquet(spec["out_path"], index=False)
         described = _describe(linked)
+    if options.get("aggregate") and n_source and not described.get("n_rows"):
+        raise ValueError(
+            f"the linkage kept none of the aggregate's {n_source:,} rows. An aggregate has "
+            "only its key, the time column and its values; the source's other columns reach "
+            "the linkage empty - so a filter on one of them (a status, a second date) drops "
+            "every row. Apply that filter in the aggregate's code instead")
     if keys:
         _write_cut(cut, extract["path"])
         described["extract"] = {"rows": int(sum(len(c) for c in cut)), "source_rows": int(n_source)}
     return described
+
+
+def _source_columns(path: str) -> pd.DataFrame:
+    """A source's columns and types, no rows."""
+    if path.endswith(".csv"):
+        return pd.read_csv(path, nrows=1000, low_memory=False).head(0)
+    import pyarrow.dataset as ds
+
+    return ds.dataset(path, format="parquet").schema.empty_table().to_pandas()
+
+
+def _filled(link: Any, aggregate: dict[str, Any]) -> Any:
+    """link() for an aggregate: the linkage was written for the raw source and may
+    select its columns by name. The source columns the aggregate lacks are added
+    empty, in the source's types, and taken out of what link() returns; the
+    aggregate's own columns, which such a selection drops, are put back by the
+    key and the time column - one aggregate row each."""
+    empty = _source_columns(aggregate["source"])
+    keys, time = list(aggregate["key"] or []), aggregate["time_column"]
+
+    def by_row(frame: pd.DataFrame) -> pd.Series:
+        return _key_text(frame, keys) + "\x1f" + \
+            pd.to_datetime(frame[time].reset_index(drop=True)).astype(str)
+
+    def link_aggregate(ids: pd.DataFrame, table: Any) -> Any:
+        table = _to_pandas(table)
+        added = [c for c in empty.columns if c not in table.columns]
+        filler = {}
+        for c in added:
+            dtype = empty[c].dtype
+            # A missing value has no integer or boolean form.
+            dtype = "float64" if pd.api.types.is_integer_dtype(dtype) else \
+                "object" if pd.api.types.is_bool_dtype(dtype) else dtype
+            filler[c] = pd.Series(index=table.index, dtype=dtype)
+        out = _to_pandas(link(ids, pd.concat([table, pd.DataFrame(filler)], axis=1)))
+        out = out.drop(columns=[c for c in added if c in out.columns])
+        lost = [c for c in table.columns if c not in out.columns]
+        if lost and len(out):
+            if not keys:
+                raise ValueError(f"the linkage drops the aggregate's columns {lost}, and the "
+                                 "aggregate names no key to join them back by - define it "
+                                 "again with key=")
+            if missing := [c for c in [*keys, time] if c not in out.columns]:
+                raise ValueError(f"link() must keep {missing}: the aggregate's columns are "
+                                 "joined back by its key and time column")
+            values = table[lost].set_axis(by_row(table))
+            out = out.reset_index(drop=True)
+            out[lost] = values.reindex(by_row(out)).to_numpy()
+        elif lost:
+            out = out.assign(**{c: table[c].iloc[:0] for c in lost})
+        return out
+
+    return link_aggregate
 
 
 def _key_text(frame: pd.DataFrame, keys: list[str]) -> pd.Series:
