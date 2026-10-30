@@ -518,7 +518,7 @@ def _link_in_batches(spec: dict[str, Any], code: str, link: Any, ids: pd.DataFra
             pieces.append(linked)
         if keys:
             if missing := [k for k in keys if k not in linked.columns]:
-                raise ValueError(f"link() must keep the key {missing}")
+                raise ValueError(f"link() must return the source's key {missing} under its own name")
             cut.append(batch[_key_text(batch, keys).isin(set(_key_text(linked, keys))).to_numpy()])
     if n_source == 0:                                # an empty source: its columns still
         empty = pd.read_csv(path, usecols=columns, nrows=0) if path.endswith(".csv") \
@@ -655,6 +655,41 @@ def _build_in_chunks(build: Any, spec: dict[str, Any], code: str, base: pd.DataF
     return pd.concat(out, ignore_index=True)
 
 
+def _split_by(table: pd.DataFrame, grain: list[str]) -> str:
+    """What makes an aggregate's rows repeat at its grain: the other columns that take
+    several values within one key and period - a category grouped by, say."""
+    repeated = table[table.duplicated(grain, keep=False)]
+    split = [c for c in repeated.columns if c not in grain
+             and not pd.api.types.is_numeric_dtype(repeated[c])
+             and (repeated.groupby(grain, sort=False)[c].nunique(dropna=False) > 1).any()]
+    if not split:
+        return ""
+    return (f" - {split} splits them. Make one column per value of it (pivot, e.g. "
+            "`spend_<value>`), or summarise across it (a share, a count of distinct "
+            "values), so each key and period is one row")
+
+
+def _missing_column(error: BaseException, spec: dict[str, Any]) -> str:
+    """For a column an aggregate or a linkage named that is not there: the columns
+    that are, read from the file - so the next try names real ones. (A feature's
+    reply lists its frames: agent.tools.screen.)"""
+    seen = error
+    while seen is not None and not isinstance(seen, KeyError):
+        seen = seen.__cause__ or seen.__context__
+    mode, source = spec["mode"], spec.get("source")
+    # A per-transaction aggregate reads the linked rows, not the source.
+    per_id = (spec.get("options") or {}).get("period") == "transaction"
+    if seen is None or mode not in ("aggregate", "linkage") or per_id \
+            or source not in (spec.get("raw") or {}):
+        return ""
+    try:
+        columns = _schema(spec["raw"][source]) + ([PERIOD_END] if mode == "aggregate" else [])
+    except Exception:  # noqa: BLE001 - the error stands on its own without it
+        return ""
+    given = "raw" if mode == "aggregate" else "source"
+    return f"\nKeyError: {seen} - not a column. `{given}` ({source!r}) has {columns[:60]}"
+
+
 def _describe(frame: pd.DataFrame) -> dict[str, Any]:
     return {"n_rows": int(len(frame)),
             "columns": {c: str(t) for c, t in frame.dtypes.items()},
@@ -784,7 +819,8 @@ def main(spec_path: str) -> None:
                     repeats = int(table.duplicated(keys + [PERIOD_END]).sum()) if keys else 0
                     if repeats:
                         raise ValueError(f"aggregate() must return one row per {keys} and "
-                                         f"{PERIOD_END!r}; {repeats:,} repeat")
+                                         f"{PERIOD_END!r}; {repeats:,} repeat"
+                                         + _split_by(table, keys + [PERIOD_END]))
                     n_out = len(table)
                     table = table.rename(columns={PERIOD_END: time_column})
                     table.to_parquet(spec["out_path"], index=False)
@@ -817,8 +853,10 @@ def main(spec_path: str) -> None:
         out["ok"] = True
     except _Done:
         out["ok"] = True
-    except Exception:  # noqa: BLE001 - every failure goes back to the agent as text
+    except Exception as error:  # noqa: BLE001 - every failure goes back to the agent as text
         tb = traceback.format_exc()
+        if note := _missing_column(error, spec):
+            tb += note                                  # the last line: what agent.execution keeps
         out["error"] = tb[-_MAX_TEXT:]
     out["stdout"] = printed.getvalue()[-_MAX_TEXT:]
     out["elapsed_s"] = round(time.perf_counter() - started, 2)

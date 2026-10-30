@@ -289,7 +289,7 @@ export type PoolFeature = {
   evaluation?: {
     single: { eval_id: string; evaluated: number; verdict: string | null; reason: string
               gini_gain: number | null; trained: boolean; not_trained: string | null } | null
-    combinations: string[]
+    combinations: { name: string; members: string[] }[]
   } | null
 }
 

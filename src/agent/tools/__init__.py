@@ -173,8 +173,10 @@ def for_agent(session: Session, toolset: str | None = None) -> list[Any]:
             code: a script defining link(base_ids, source).
             time_column: the source's event-date column, kept in the output.
             rule: strict (event < as_of) or inclusive (event <= as_of).
-            key: the source column(s) it joins on, comma-separated, kept in the output.
-                Discovery then reads only the screen customers' rows of the source.
+            key: the source's own column(s) it joins on, comma-separated, as the source
+                names them. Recorded with the linkage: discovery then reads only the
+                screen customers' rows, and aggregates by period group by it. Left
+                empty, it is read from the code's on=, and the reply says what was kept.
         """
         return _dump(propose_linkage(session, source, code, time_column, rule, key or None))
 
@@ -196,8 +198,9 @@ def for_agent(session: Session, toolset: str | None = None) -> list[Any]:
                 `period_end` added: group by the key the linkage joins on and period_end.
             window_days: by transaction only - keep the events in this many days before
                 each as-of date (7 for the last week's spend).
-            key: by day, week or month only, and required - the source column(s) it
-                groups by with period_end, comma-separated (the key the linkage joins on).
+            key: by day, week or month only - the raw source's column(s) it groups by
+                with period_end, comma-separated. Empty: the join key the source's
+                linkage recorded (shown under the source's columns).
         """
         return _dump(define_aggregate(session, name, source, period, description, code,
                                       window_days, key or None))

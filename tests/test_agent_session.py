@@ -51,6 +51,10 @@ def build(spark, sources, base):
 @pytest.fixture(scope="module")
 def workspace(tmp_path_factory):
     root = generate(tmp_path_factory.mktemp("syn") / "data", n_customers=2500, seed=1)
+    return _workspace_at(root)
+
+
+def _workspace_at(root):
     raw = yaml.safe_load(open("configs/synthetic_agent.yaml"))
     text = json.dumps(raw).replace("data/synthetic_agent", str(root))
     payload = json.loads(text)
@@ -415,7 +419,7 @@ def build(spark, sources, base):
     assert (Path(every["output_dir"]) / "models" / f"combo__{TOGETHER['all']}.json").exists()
     # The pool knows what became of each feature.
     status = evaluation_status(workspace)
-    assert status[a]["single"]["eval_id"] == latest.eval_id and "both" in status[a]["combinations"]
+    assert status[a]["single"]["eval_id"] == latest.eval_id and "both" in [c["name"] for c in status[a]["combinations"]]
 
     # The board: an evaluated feature says so - and nothing measured out of time;
     # a removed one too. Its id is the one the metrics results carry.
@@ -1968,7 +1972,10 @@ def test_an_aggregate_summarises_a_source_before_it_is_joined(no_history):
 
     workspace = no_history
     session = _session(workspace, "spend by month", params=RunParams(K=3, min_gini_gain=-1.0))
-    assert propose_linkage(session, "spends", LINK, "event_dt")["ok"]
+    linked = propose_linkage(session, "spends", LINK, "event_dt")
+    # No key given: read from the code's on=, checked against the data, and said back.
+    assert linked["ok"] and "join key ['customer_id'] - read from your code" in linked["recorded"]
+    assert workspace.linkage_info("spends")["key"] == ["customer_id"]
     assert "is taken" in define_aggregate(session, "spends", "spends", "month", "d", BY_MONTH)["error"]
     assert "period must be" in define_aggregate(
         session, "spends_by_month", "spends", "year", "d", BY_MONTH)["error"]
@@ -1984,14 +1991,24 @@ def test_an_aggregate_summarises_a_source_before_it_is_joined(no_history):
     assert not shifted["ok"] and "no event has" in shifted["error"]
     assert session.attempts == 0 and not session.aggregates
 
-    assert "name the key" in define_aggregate(
-        session, "spends_by_month", "spends", "month", "d", BY_MONTH)["error"]
-    assert "is not a column" in define_aggregate(
-        session, "spends_by_month", "spends", "month", "d", BY_MONTH, key="cust")["error"]
+    # A category grouped by as well: the reply names it and how to fold it in.
+    split = define_aggregate(session, "spends_by_month", "spends", "month", "d",
+                             BY_MONTH.replace('"period_end", "amount"]', '"period_end", "amount", "mcc_group"]')
+                             .replace('["customer_id", "period_end"], as_index', '["customer_id", "period_end", "mcc_group"], as_index'))
+    assert not split["ok"] and "['mcc_group'] splits them" in split["error"]
+    ran, real = [], session.run
+    session.run = lambda *a, **k: ran.append(a) or real(*a, **k)
+    wrong = define_aggregate(session, "spends_by_month", "spends", "month", "d", BY_MONTH,
+                             key="cust")["error"]
+    del session.run
+    assert "is not a column of the raw 'spends'" in wrong and "customer_id" in wrong
+    assert not ran                                   # refused before any script runs
+    # No key: the one the linkage recorded.
     made = define_aggregate(session, "spends_by_month", "spends", "month",
-                            "monthly spend and transactions", BY_MONTH, key="customer_id")
+                            "monthly spend and transactions", BY_MONTH)
     assert made["ok"], made
     a = session.aggregates["spends_by_month"]
+    assert a["key"] == ["customer_id"]
     assert a["rows"] < a["source_rows"]
     assert set(a["columns"]) >= {"event_dt", "spend", "n_txn"}
     assert a["rows_per_id"] <= 20 and session.attempts == 0       # a month per row, not an event
@@ -2255,3 +2272,123 @@ def build(spark, sources, base):
     # The vectorised feature is screened as usual.
     assert screen_feature(session, "spend_90d", "90-day spend", "L2",
                           WINDOW.format(days=90, name="spend_90d"))["intent"]
+
+
+def test_a_linkage_header_keeps_column_names_with_spaces():
+    from agent.aggregates import linkage_rule, linkage_time_column
+    from agent.extracts import linkage_key
+
+    header = ("# linkage for payment: time_column=Payment Date, rule=inclusive, key=grms_cid,Acct No\n"
+              "# engine: pandas\ndef link(base_ids, table): ...\n")
+    assert linkage_time_column(header) == "Payment Date"
+    assert linkage_rule(header) == "inclusive"
+    assert linkage_key(header) == ["grms_cid", "Acct No"]
+    assert linkage_key("table.merge(ids, on='Acct No')") == ["Acct No"]
+
+
+# A source shaped like the real payments extract: its own key name, column names with
+# spaces, dates as text, a column the sample describes that the data lacks.
+CARD_LINK = '''
+def link(base_ids, source):
+    ids = base_ids.copy()
+    parts = ids["id"].str.split("_")
+    ids["cust_id_new"] = parts.str[0]
+    ids["as_of"] = pd.to_datetime(parts.str[1], format="%Y%m%d")
+    src = source.rename(columns={"grms_cid": "cust_id_new"})
+    out = ids.merge(src[["cust_id_new", "Payment Date", "Payment Amount", "Return Flag"]],
+                    on="cust_id_new")
+    out["Payment Date"] = pd.to_datetime(out["Payment Date"])
+    return out[out["Payment Date"] < out["as_of"]]
+'''
+CARD_LINK_KEEPS_KEY = CARD_LINK.replace(
+    'src = source.rename(columns={"grms_cid": "cust_id_new"})',
+    'src = source.assign(cust_id_new=source["grms_cid"])').replace(
+    'src[["cust_id_new", ', 'src[["cust_id_new", "grms_cid", ')
+CARD_BY_MONTH = '''
+def aggregate(spark, raw):
+    r = raw[["grms_cid", "period_end", "Payment Amount", "Return Flag"]]
+    return (r.groupby(["grms_cid", "period_end"], as_index=False)
+             .agg(paid=("Payment Amount", "sum"), returned=("Return Flag", "sum")))
+'''
+
+
+def test_a_source_with_its_own_names_is_learned_from_the_data_and_settled_by_feedback(tmp_path):
+    import pandas as pd
+
+    from agent.composer.sections import columns as columns_section
+    from agent.tools.aggregate import define_aggregate
+
+    root = generate(tmp_path / "data", n_customers=300, seed=2)
+    extra = root / "additional_data"
+    pay = pd.read_parquet(extra / "payments.parquet")
+    card = pd.DataFrame({"grms_cid": pay["customer_id"].astype(str),
+                         "Card Number": "3798" + pay["customer_id"].astype(str),
+                         "Payment Date": pay["event_dt"].dt.strftime("%Y-%m-%d"),
+                         "Payment Amount": pay["amount"], "Return Flag": pay["returned"]})
+    card.to_parquet(extra / "card_payments.parquet", index=False)
+    described = {c: [f"{c} as the extract describes it", []] for c in card.columns}
+    described["Return Reason"] = ["Why the payment was returned", []]
+    (extra / "card_payments_data_sample.json").write_text(json.dumps(described))
+    ws = _workspace_at(root)
+    ws.cfg.agent.run_dir = str(tmp_path / "runs")
+    session = _session(ws, "payments", approver=AutoApprover(), params=RunParams(K=3))
+
+    # The key: the code joins on a column the linkage makes, so it cannot be read
+    # from it - the agent is asked, before anything runs.
+    asked = propose_linkage(session, "card_payments", CARD_LINK, "Payment Date")
+    assert not asked["ok"] and "key=" in asked["error"] and "'grms_cid'" in asked["error"]
+    # Named, but link() renames it away: it must come back under its own name.
+    renamed = propose_linkage(session, "card_payments", CARD_LINK, "Payment Date", key="grms_cid")
+    assert not renamed["ok"] and "under its own name" in renamed["error"]
+    assert "not a column of" in propose_linkage(
+        session, "card_payments", CARD_LINK_KEEPS_KEY, "Payment Date", key="Acct No")["error"]
+    linked = propose_linkage(session, "card_payments", CARD_LINK_KEEPS_KEY, "Payment Date",
+                             key="grms_cid")
+    assert linked["ok"], linked
+    info = ws.linkage_info("card_payments")
+    assert info["key"] == ["grms_cid"] and info["time_column"] == "Payment Date"
+    assert "Card Number" in info["source_columns"] and "cust_id_new" in info["linked_columns"]
+
+    # The prompt shows the data as it is: what link() returns, the raw view an
+    # aggregate reads, and what the sample describes that the data lacks.
+    text = columns_section(session)
+    assert "`cust_id_new` - made by the linkage" in text
+    assert "join key ['grms_cid'], time column `Payment Date`" in text
+    assert "also has ['Card Number']" in text
+    assert "described in the sample but not in the data: ['Return Reason']" in text
+
+    # An aggregate over names with spaces, keyed by the recorded key.
+    made = define_aggregate(session, "payments_by_month", "card_payments", "month",
+                            "monthly payments and returns", CARD_BY_MONTH)
+    assert made["ok"], made
+    assert session.aggregates["payments_by_month"]["key"] == ["grms_cid"]
+    # A column the source does not have comes back with the ones it does.
+    wrong = define_aggregate(session, "payments_by_week", "card_payments", "week", "d",
+                             CARD_BY_MONTH.replace("Return Flag", "Return Flg"))
+    assert not wrong["ok"] and "not a column" in wrong["error"]
+    assert "'Return Flag'" in wrong["error"]
+    assert "is not a column of the raw 'card_payments'" in define_aggregate(
+        session, "payments_by_week", "card_payments", "week", "d", CARD_BY_MONTH,
+        key="cust_id_new")["error"]
+
+
+def test_a_linkage_record_follows_its_code(workspace, tmp_path):
+    # A linkage from before records were kept, or replaced by hand: its record is
+    # made again from the code, its key kept only when the source has it.
+    path = workspace.linkage_path("balances")
+    path.parent.mkdir(parents=True, exist_ok=True)
+    had = path.read_text() if path.exists() else None
+    try:
+        path.write_text("# linkage for balances: time_column=Statement Date, rule=inclusive, "
+                        "key=customer_id,Acct No\n# engine: pandas\n" + LINK)
+        info = workspace.linkage_info("balances")
+        assert info["time_column"] == "Statement Date" and info["rule"] == "inclusive"
+        assert info["key"] == ["customer_id"]               # 'Acct No' is not in the data
+        path.write_text(LINK.replace("customer_id", "cust"))
+        assert workspace.linkage_info("balances")["key"] == []
+    finally:
+        if had is None:
+            path.unlink()
+            path.with_suffix(".json").unlink(missing_ok=True)
+        else:
+            path.write_text(had)

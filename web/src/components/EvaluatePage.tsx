@@ -339,7 +339,8 @@ function Evaluated({ status }: { status?: PoolFeature['evaluation'] }) {
                 title={one.reason || undefined}>
             evaluated · {one.verdict ?? '–'}{one.gini_gain != null ? ` · test Δ ${signed(one.gini_gain)}` : ''}</span>)}
       {status.combinations.length > 0 && (
-        <span className={s.evalCombo}>in ⊕ {status.combinations.map((c) => AUTO_COMBO[c] ?? c).join(', ⊕ ')}</span>
+        <span className={s.evalCombo}>in {status.combinations.map((c) =>
+          `⊕ ${AUTO_COMBO[c.name] ?? c.name} (${c.members.join(' + ')})`).join(', ')}</span>
       )}
     </span>
   )

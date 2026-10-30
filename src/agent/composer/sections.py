@@ -377,6 +377,43 @@ def _examples(values: Any, n: int = 3) -> str:
     return ", ".join(str(v)[:24] for v in out)
 
 
+def _source_lines(session: Session, name: str, src: Any) -> list[str]:
+    """A source as the data has it: its columns read from the file (the sample JSON
+    only describes them), once linked the columns the linkage returns, and the raw
+    columns an aggregate by period reads, with the key and time column the linkage
+    recorded."""
+    ws = session.ws
+    info = ws.linkage_info(name)
+    state = ("linked" if info else "needs linkage first" if src.usable else "schema only - no data")
+    actual = ws.source_columns(name)
+    lower = {c.lower(): c for c in src.columns}
+
+    def described(c: str) -> str:
+        d = src.columns.get(c, src.columns.get(lower.get(c.lower(), ""), ""))
+        return d or ("made by the linkage" if info and c not in actual else "(no description)")
+
+    kept = _linked_columns(session, name)
+    kept = list(kept) if kept is not None else (info or {}).get("linked_columns")
+    shown = [c for c in kept if c not in (ws.id_col, "as_of")] if kept else actual
+    lines = [f"  * `{name}` ({state}):"]
+    for c in shown[:COLUMNS_LISTED]:
+        samples = src.samples.get(c) or src.samples.get(lower.get(c.lower(), ""), [])
+        lines.append(f"      * `{c}` - {described(c)}" + (f"  e.g. {_examples(samples)}" if samples else ""))
+    if len(shown) > COLUMNS_LISTED:
+        lines.append(f"      ... and {len(shown) - COLUMNS_LISTED} more: sample_rows({name!r}) shows them")
+    if info and actual:
+        dropped = [c for c in actual if kept and c not in kept]
+        lines.append(f"      * raw `{name}` (what define_aggregate reads by day, week or month): "
+                     f"join key {info.get('key') or '(none recorded)'}, time column "
+                     f"`{info.get('time_column')}`"
+                     + (f"; also has {dropped[:20]}" if dropped else ""))
+    missing = [c for c in src.columns if actual and c not in actual and c.lower() not in
+               {a.lower() for a in actual}]
+    if src.usable and missing:
+        lines.append(f"      * described in the sample but not in the data: {missing[:20]}")
+    return lines
+
+
 def _linked_columns(session: Session, source: str) -> set[str] | None:
     """The columns the confirmed linkage returns - it may keep only some."""
     path = session.linked.get(source)
@@ -419,16 +456,7 @@ def columns(session: Session) -> str:
         lines += ["", "`sources[\"<name>\"]` - event rows, once the source's linkage is "
                       f"confirmed: `{ws.id_col}`, `as_of`, and its own columns:"]
         for name in run_sources:
-            src = sources[name]
-            state = ("linked" if ws.linkage_path(name).exists() else
-                     "needs linkage first" if src.usable else "schema only - no data")
-            lines.append(f"  * `{name}` ({state}):")
-            kept = _linked_columns(session, name)
-            for c, d in src.columns.items():
-                if kept is not None and c not in kept:
-                    continue
-                lines.append(f"      * `{c}` - {d or '(no description)'}"
-                             f"  e.g. {_examples(src.samples.get(c, []))}")
+            lines += _source_lines(session, name, sources[name])
     if session.aggregates:
         lines += ["", "Aggregates of this run (define_aggregate) - read as `sources[\"<name>\"]`: "
                       f"`{ws.id_col}` and its columns - per transaction one row per id; per "

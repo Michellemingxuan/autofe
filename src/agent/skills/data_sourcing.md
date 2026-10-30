@@ -39,10 +39,12 @@ anything; the frames above are all they get.
 ## Linkage - once per source, confirmed by the user
 
 A source can be used in a feature only after its linkage is confirmed. Write it
-with `propose_linkage(source, code, time_column, rule, key)` - `key` the source
-column(s) it joins on, kept in the output: the confirmed linkage's first pass
-also cuts the screen customers' rows of the source, and discovery reads only
-those from then on. The code defines:
+with `propose_linkage(source, code, time_column, rule, key)` - `key` the source's
+own column(s) it joins on, as the source names them, returned under those names
+(rename a copy if the ids need another name). It is recorded with the linkage:
+the confirmed linkage's first pass cuts the screen customers' rows of the source
+by it - discovery reads only those from then on - and aggregates by period group
+by it. The reply says what was recorded; anything it could not settle, it asks. The code defines:
 
 ```python
 def link(base_ids, source):

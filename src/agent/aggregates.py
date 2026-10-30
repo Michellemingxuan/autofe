@@ -41,13 +41,14 @@ PERIODS = ("transaction", "day", "week", "month")
 
 def linkage_time_column(code: str) -> str | None:
     """The time column a confirmed linkage checks against as_of - from its header."""
-    match = re.search(r"time_column=(\w+)", code)
+    # A column name may hold spaces ("Payment Date"): read up to the next field.
+    match = re.search(r"^# linkage for .*?: time_column=(.+?), rule=", code, flags=re.M)
     return match.group(1) if match else None
 
 
 def linkage_rule(code: str) -> str:
     """strict (event < as_of) or inclusive (event <= as_of) - from its header."""
-    match = re.search(r"rule=(\w+)", code)
+    match = re.search(r"^# linkage for .*?, rule=(\w+)", code, flags=re.M)
     return match.group(1) if match else "strict"
 
 

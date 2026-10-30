@@ -39,8 +39,10 @@ feature re-reads it. Summarise the source first, then build on the summary:
      days of payments) - or when the window is fixed.
    * **`period="day" | "week" | "month"`** - one row per customer and period,
      on the raw source before any join. `raw` is the source with `period_end`
-     added (the last day of each event's period); group by the key the linkage
-     joins on and `period_end`, and name that key (`key="<key>"`): a source too
+     added (the last day of each event's period). Its columns are the raw
+     source's - listed under the source as "raw", with the join key and time
+     column its linkage recorded - not the ones link() makes. Group by that key
+     and `period_end` (`key=` defaults to it): a source too
      large for memory is split by it and summarised a part at a time. The runner then joins it through
      the source's linkage - only periods that end before each as-of date. The
      grain when features need several windows over a long history (3 vs 12

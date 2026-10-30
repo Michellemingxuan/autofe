@@ -27,10 +27,10 @@ __all__ = ["linkage_key", "fingerprint", "cached_extract", "save_extract"]
 def linkage_key(code: str) -> list[str]:
     """The source column(s) a linkage joins on: from its header, else from its merge
     (`on=` / `right_on=`); empty when neither says."""
-    header = re.search(r"^# linkage for .*\bkey=([\w,]+)", code, flags=re.M)
+    header = re.search(r"^# linkage for .*, key=(.+)$", code, flags=re.M)
     if header:
         return [k for k in header.group(1).split(",") if k]
-    merge = re.search(r"""\b(?:right_on|on)\s*=\s*\[?\s*['"](\w+)['"]""", code)
+    merge = re.search(r"""\b(?:right_on|on)\s*=\s*\[?\s*['"]([^'"]+)['"]""", code)
     return [merge.group(1)] if merge else []
 
 

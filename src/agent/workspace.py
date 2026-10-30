@@ -75,6 +75,12 @@ class Source:
                 "columns": self.columns}
 
 
+def _sha(text: str) -> str:
+    import hashlib
+
+    return hashlib.sha1(text.encode()).hexdigest()
+
+
 def _count_rows(path: Path) -> int | None:
     """Parquet from its metadata; a CSV by its line breaks, read in blocks."""
     try:
@@ -284,6 +290,48 @@ class Workspace:
     def linkage_code(self, source: str) -> str | None:
         path = self.linkage_path(source)
         return path.read_text() if path.exists() else None
+
+    def source_columns(self, source: str) -> list[str]:
+        """The columns a source's data has - read from the file, not from its sample
+        JSON, which may describe them under other names or not at all."""
+        from agent._child import _schema
+
+        src = self.sources().get(source)
+        if src is None or src.data_path is None:
+            return list(src.columns) if src else []
+        return _schema(str(src.discovery_path))
+
+    def linkage_info(self, source: str) -> dict[str, Any] | None:
+        """What a confirmed linkage settled about its source: the source's join `key`,
+        `time_column`, `rule`, `engine`, and the columns it reads (`source_columns`)
+        and returns (`linked_columns`, when known). Recorded when it was confirmed
+        (agent.tools.linkage); a linkage from before records were kept gets one here,
+        once, from its header - its key kept only if the source has that column."""
+        path = self.linkage_path(source)
+        if not path.exists():
+            return None
+        code = path.read_text()
+        record = path.with_suffix(".json")
+        if record.exists():
+            info = json.loads(record.read_text())
+            if info.get("code_sha") == _sha(code):     # else the linkage was replaced
+                return info
+        from agent.aggregates import linkage_rule, linkage_time_column
+        from agent.extracts import linkage_key
+        from agent.tools.linkage import engine_of
+
+        columns = self.source_columns(source)
+        info = {"source": source, "key": [k for k in linkage_key(code) if k in columns],
+                "time_column": linkage_time_column(code), "rule": linkage_rule(code),
+                "engine": engine_of(code), "source_columns": columns, "linked_columns": None}
+        self.save_linkage_info(source, info)
+        return info
+
+    def save_linkage_info(self, source: str, info: dict[str, Any]) -> None:
+        """Keep what a linkage settled beside its code - tied to that code by its hash."""
+        path = self.linkage_path(source)
+        info = {**info, "code_sha": _sha(path.read_text())}
+        path.with_suffix(".json").write_text(json.dumps(info, indent=2, default=str))
 
     # ------------------------------------------------------------------ scope
     @property

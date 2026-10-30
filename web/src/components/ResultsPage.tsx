@@ -224,7 +224,8 @@ export function ResultsPage({ selected }: { selected: string | null }) {
                 <button className={s.pendingOpen} onClick={() => select(e.eval_id, null)}>
                   <span className={s.pendingDot} />
                   {e.status === 'running' ? 'Evaluating' : e.status === 'stopped' ? 'Stopped' : 'Failed'}: {e.features.map((f) => f.column).join(', ')}
-                  {Object.keys(e.combinations).length > 0 && ` · ⊕ ${Object.keys(e.combinations).join(', ⊕ ')}`}
+                  {Object.keys(e.combinations).length > 0 && ` · ${Object.entries(e.combinations)
+                    .map(([n, c]) => `⊕ ${n} (${c.columns.join(' + ')})`).join(', ')}`}
                 </button>
                 {e.status !== 'running' && (
                   <button className={s.pendingRemove} title="Remove this evaluation"

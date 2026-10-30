@@ -149,7 +149,8 @@ def list_evaluations(ws: Workspace) -> list[dict[str, Any]]:
 
 def evaluation_status(ws: Workspace) -> dict[str, dict[str, Any]]:
     """Per pool feature, what its evaluations found: the latest of it alone - its
-    verdict and gain, or why it was not trained - and the combinations it was in."""
+    verdict and gain, or why it was not trained - and the combinations it was in,
+    each with its members' names."""
     out: dict[str, dict[str, Any]] = {}
     for r in evaluation_results(ws):                  # newest first
         if r["kind"] == "feature" and r["key"]:
@@ -161,8 +162,8 @@ def evaluation_status(ws: Workspace) -> dict[str, dict[str, Any]]:
         elif r["kind"] == "combination":
             for key in r.get("member_keys") or []:
                 entry = out.setdefault(key, {"single": None, "combinations": []})
-                if r["name"] not in entry["combinations"]:
-                    entry["combinations"].append(r["name"])
+                if r["name"] not in [c["name"] for c in entry["combinations"]]:
+                    entry["combinations"].append({"name": r["name"], "members": r.get("members") or []})
     return out
 
 

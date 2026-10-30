@@ -535,6 +535,11 @@ def create_app(config_path: str, static_dir: str | None = None,
             hub = job_hub(kind, job_id)
             hub.approver.cancelled.set()
             hub.job.cancelled = True
+                       # No thread is left to see the flag - the server stopped under the run - so
+           # end it here, or its log never ends and the page shows it running forever.
+            if not hub.busy and not hub.job.finished:
+               hub.job.end("", stopped_because="stopped by the user - it was no longer "
+                                                "running (the server had stopped under it)")
             return jsonify(ok=True)
 
     job_routes("linkage", "linkage")

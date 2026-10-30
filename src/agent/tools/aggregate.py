@@ -16,7 +16,8 @@ from typing import Any
 
 import pandas as pd
 
-from agent.aggregates import PERIODS, linkage_rule, materialise_aggregate
+from agent._child import _schema
+from agent.aggregates import PERIODS, materialise_aggregate
 from agent.session import Session
 from agent.tools.linkage import _check, engine_of
 
@@ -49,26 +50,44 @@ def define_aggregate(session: Session, name: str, source: str, period: str,
     if period == "transaction" and keys:
         return {"ok": False, "error": "key is for period='day', 'week' or 'month' - by "
                                       "transaction the runner groups by the id"}
-    if period != "transaction" and not keys:
-        return {"ok": False, "error": (f"by {period}, name the key the aggregate groups by "
-                                       "with period_end - the source column(s) the linkage "
-                                       "joins on, e.g. key='customer_id'")}
     if (problem := session.allowed(source)):
         return {"ok": False, "error": problem}
-    linkage_path = ws.linkage_path(source)
-    if not linkage_path.exists():
+    info = ws.linkage_info(source)
+    if info is None:
         return {"ok": False, "error": (f"{source!r} has no confirmed linkage - an aggregate "
                                        "joins through it; call propose_linkage first")}
     raw_path = session.build_paths().get(source)
     if raw_path is None:
         return {"ok": False, "error": f"{source!r} has no data to aggregate"}
-    linkage = linkage_path.read_text()
-    time_column = _time_column(linkage)
+    linkage = ws.linkage_path(source).read_text()
+    # Checked before anything runs, against the source's own columns: by day, week or
+    # month the aggregate reads the source before the linkage - not the columns
+    # link() makes, nor the model's id.
+    columns, time_column = _schema(raw_path), info.get("time_column")
+    if period != "transaction":
+        keys = keys or list(info.get("key") or [])     # the linkage's, unless it names one
+        if not keys:
+            return {"ok": False, "error": (
+                f"by {period}, name the key the aggregate groups by with period_end - the "
+                f"column(s) of {source!r} the linkage joins on (no key was recorded for "
+                f"it). {source!r} has: {columns[:40]}")}
+        if unknown := [k for k in keys if k not in columns]:
+            return {"ok": False, "error": (
+                f"the key {unknown} is not a column of the raw {source!r} - the aggregate "
+                "reads the source before the linkage, so it groups by the source's own "
+                "column(s)" + (f": the linkage joins on {info['key']}, use key="
+                               f"{','.join(info['key'])!r}" if info.get("key") else "")
+                + f". {source!r} has: {columns[:40]}")}
+        if time_column not in columns:
+            return {"ok": False, "error": (
+                f"the linkage's time column {time_column!r} is not a column of the raw "
+                f"{source!r} - link() makes it - so {source!r} cannot be summarised by "
+                f"{period}. Use period='transaction', which reads the linked rows.")}
     if not time_column:
         return {"ok": False, "error": f"the linkage for {source!r} does not record its time column"}
     # The time column goes with it: a linkage recorded in a run has no header to read it from.
     spec = {"source": source, "period": period, "time_column": time_column,
-            "rule": linkage_rule(linkage),
+            "rule": info.get("rule") or "strict",
             "window_days": int(window_days) if window_days else None, "key": keys or None,
             "description": description.strip(), "code": code}
 
@@ -78,11 +97,11 @@ def define_aggregate(session: Session, name: str, source: str, period: str,
     try:
         summary, linked = materialise_aggregate(
             run, name, spec, linkage, raw_path, engine=session.local_engine,
-            linkage_engine=engine_of(linkage))
+            linkage_engine=info.get("engine") or engine_of(linkage))
     except ValueError as error:
         return {"ok": False, "error": str(error)}
     if not summary.ok:
-        return {**summary.for_agent(), "hint": _hint(session, source)}
+        return {**summary.for_agent(), "hint": _hint(source, info, columns)}
     if not linked.ok:
         return {"ok": False, "error": (
             f"the aggregate ran, but the linkage for {source!r} could not join it: "
@@ -128,16 +147,11 @@ def define_aggregate(session: Session, name: str, source: str, period: str,
             "head": checks.get("head"), "next": reads}
 
 
-def _time_column(linkage: str) -> str:
-    from agent.aggregates import linkage_time_column
-
-    return linkage_time_column(linkage) or ""
-
-
-def _hint(session: Session, source: str) -> str:
-    src = session.ws.sources().get(source)
-    columns = list(src.columns) if src else []
-    return (f"by transaction, aggregate(spark, rows) gets each id's {source!r} events, joined "
-            f"by the linkage (id, as_of and {', '.join(columns[:20])}): return one row per id. "
-            "By day, week or month it gets the raw rows with `period_end` added: return one "
-            "row per key and period_end. Group in one pass - no loops")
+def _hint(source: str, info: dict[str, Any], columns: list[str]) -> str:
+    """The two views an aggregate may read, by their actual columns."""
+    linked = info.get("linked_columns") or []
+    return (f"by transaction, aggregate(spark, rows) gets each id's {source!r} events as the "
+            f"linkage joins them - columns {linked[:30] or '(id, as_of and what link() keeps)'}: "
+            f"return one row per id. By day, week or month it gets the raw {source!r} - "
+            f"columns {columns[:30]} - with `period_end` added: return one row per key "
+            f"{info.get('key') or ''} and period_end. Group in one pass - no loops")

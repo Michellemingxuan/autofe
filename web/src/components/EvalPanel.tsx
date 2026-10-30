@@ -61,7 +61,7 @@ export function EvalPanel({ evalId, variant, onSelect, onClose, onDeleted }: {
             {' · '}{when}
           </span>
           <span className={s.title}>
-            {row ? (row.variant.startsWith('combo__') ? `⊕ ${row.variant.slice(7)}` : row.variant.replace(/^loi__/, ''))
+            {row ? (row.variant.startsWith('combo__') ? comboLabel(view, row.variant.slice(7)) : row.variant.replace(/^loi__/, ''))
               : `${view.features.length} feature${view.features.length === 1 ? '' : 's'}`
                 + (Object.keys(view.combinations).length ? ` · ${Object.keys(view.combinations).length} combination(s)` : '')}
           </span>
@@ -93,7 +93,7 @@ export function EvalPanel({ evalId, variant, onSelect, onClose, onDeleted }: {
               {variants.map((r) => (
                 <button key={r.variant} onClick={() => onSelect(r.variant)}
                         className={`${s.variantRow} ${r.variant === variant ? s.variantOn : ''}`}>
-                  <span className={s.mono}>{r.variant.startsWith('combo__') ? `⊕ ${r.variant.slice(7)}` : r.variant.replace(/^loi__/, '')}</span>
+                  <span className={s.mono}>{r.variant.startsWith('combo__') ? comboLabel(view, r.variant.slice(7)) : r.variant.replace(/^loi__/, '')}</span>
                   <span className={`${s.num} ${tone(r.gini_gain_test)}`}>{signed(r.gini_gain_test)}</span>
                 </button>
               ))}
@@ -117,6 +117,12 @@ export function EvalPanel({ evalId, variant, onSelect, onClose, onDeleted }: {
   )
 }
 
+/** A combination by its name and the features in it. */
+function comboLabel(view: EvalView, name: string) {
+  const members = view.combinations[name]?.columns ?? []
+  return `⊕ ${name}` + (members.length ? ` (${members.join(' + ')})` : '')
+}
+
 /** The chosen features and combinations no model was trained for, and why. */
 function untrained(view: EvalView) {
   const have = new Set([...view.rows.map((r) => r.variant), ...view.removed])
@@ -126,7 +132,7 @@ function untrained(view: EvalView) {
       why: view.modelErrors[`loi__${f.column}`] ? `training failed: ${view.modelErrors[`loi__${f.column}`]}`
         : `dropped at ${verdict[f.column]?.failed_at || 'selection'}`
           + (verdict[f.column]?.reason ? ` - ${verdict[f.column].reason}` : '') })),
-    ...Object.entries(view.combinations).map(([name, c]) => ({ variant: `combo__${name}`, name: `⊕ ${name}`,
+    ...Object.entries(view.combinations).map(([name, c]) => ({ variant: `combo__${name}`, name: comboLabel(view, name),
       why: view.modelErrors[`combo__${name}`] ? `training failed: ${view.modelErrors[`combo__${name}`]}`
         : `a member was dropped: ${c.columns.filter((col) => !have.has(`loi__${col}`)).join(', ') || 'unknown'}` })),
   ].filter((u) => !have.has(u.variant))

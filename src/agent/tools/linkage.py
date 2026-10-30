@@ -88,8 +88,21 @@ def propose_linkage(session: Session, source: str, code: str, time_column: str,
     if rule not in ("strict", "inclusive"):
         return {"ok": False, "error": "rule must be strict (event < as_of) or "
                                       "inclusive (event <= as_of)"}
+    columns = session.ws.source_columns(source)
     keys = [k.strip() for k in (key.split(",") if isinstance(key, str) else key or [])
-            if k.strip()] or linkage_key(code)
+            if k.strip()]
+    if unknown := [k for k in keys if k not in columns]:
+        return {"ok": False, "error": (f"key {unknown} is not a column of {source!r} - name "
+                                       f"the source's own column(s) link() joins on. "
+                                       f"{source!r} has: {columns}")}
+    # Not stated: read from the code, and kept only if the source has that column.
+    guessed = not keys
+    keys = keys or [k for k in linkage_key(code) if k in columns]
+    if not keys:
+        return {"ok": False, "error": (
+            f"name the column(s) of {source!r} link() joins on: key=<column>[,<column>] - "
+            f"the code's on=/right_on= names none of the source's columns. Nothing ran. "
+            f"{source!r} has: {columns}")}
     engine = linkage_engine(session)
     extra = _extract_option(session, source, keys) if engine != "spark" else {}
     _, result = session.run(code, "linkage", intent=f"linkage:{source}",
@@ -98,7 +111,14 @@ def propose_linkage(session: Session, source: str, code: str, time_column: str,
     if not result.ok:
         return result.for_agent()
 
-    checks = _check(session, read_linked(result.out_path), time_column, rule)
+    linked = read_linked(result.out_path)
+    # Kept under its own name: aggregates are joined back by it, and discovery's cut
+    # of the source is made by it.
+    if missing := [k for k in keys if k not in linked.columns]:
+        return {"ok": False, "error": (
+            f"link() must return the source's key {missing} under its own name - aggregates "
+            f"of {source!r} are joined back by it. Returned: {list(linked.columns)}")}
+    checks = _check(session, linked, time_column, rule)
     if checks.get("error"):
         return {"ok": False, **checks}
 
@@ -112,11 +132,25 @@ def propose_linkage(session: Session, source: str, code: str, time_column: str,
     path.write_text(f"# linkage for {source}: time_column={time_column}, rule={rule}"
                     + (f", key={','.join(keys)}" if keys else "") + "\n"
                     f"# confirmed in run {session.run_id}\n# engine: {engine}\n{code}")
+    session.ws.save_linkage_info(source, {
+        "source": source, "key": keys, "time_column": time_column, "rule": rule,
+        "engine": engine, "run_id": session.run_id, "source_columns": columns,
+        "linked_columns": list((result.result or {}).get("columns") or [])})
     session.linked[source] = result.out_path
     _keep_extract(session, source, keys, extra, result)
     return {"ok": True, "approved": True, "user_note": decision.note,
-            "saved": str(path), "checks": checks,
+            "saved": str(path), "checks": checks, "recorded": _recorded(keys, guessed, time_column, columns),
             "next": f"features can now use sources[{source!r}]"}
+
+
+def _recorded(keys: list[str], guessed: bool, time_column: str, columns: list[str]) -> str:
+    """What the harness now holds about the source, so the agent can correct it."""
+    key = f"join key {keys}" + (" - read from your code; pass key= if it is another "
+                                "column" if guessed else "")
+    raw_time = ("" if time_column in columns else
+                f"; `{time_column}` is made by link(), not a column of the source - an "
+                "aggregate by day, week or month cannot use it")
+    return key + raw_time
 
 
 def ensure_linked(session: Session, source: str) -> str | None:
@@ -128,7 +162,7 @@ def ensure_linked(session: Session, source: str) -> str | None:
         return (f"{source!r} has no confirmed linkage; call propose_linkage first "
                 f"(confirmed: {session.ws.linked()})")
     code = path.read_text()
-    keys = linkage_key(code)
+    keys = (session.ws.linkage_info(source) or {}).get("key") or []
     extra = _extract_option(session, source, keys) if engine_of(code) != "spark" else {}
     _, result = session.run(code, "linkage", intent=f"linkage:{source}",
                             title=f"reuse confirmed linkage for {source}",

@@ -399,13 +399,12 @@ class Session:
         """What a linkage or an aggregate reads to build for the screen ids: the
         screen customers' rows once a confirmed linkage has cut them
         (agent.extracts) - the same values, read faster - else the source."""
-        from agent.extracts import cached_extract, linkage_key
+        from agent.extracts import cached_extract
 
         out = self.raw_paths()
         for n, path in out.items():
-            linkage = self.ws.linkage_path(n)
-            if linkage.exists():
-                out[n] = cached_extract(self.ws, n, path, linkage_key(linkage.read_text())) or path
+            if info := self.ws.linkage_info(n):
+                out[n] = cached_extract(self.ws, n, path, info.get("key") or []) or path
         return out
 
     def run(self, code: str, mode: str, *, intent: str, level: str | None = None,
