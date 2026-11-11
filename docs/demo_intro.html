@@ -1,0 +1,235 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Demo Title Cards</title>
+<!--
+  Title cards for the demo video: one 1920x1080 card per clip.
+  Record in full screen (browser: View > Enter Full Screen).
+
+  Keys:  -> / space  next      <-  back      R  replay the card      H  hide this hint
+  URL:   demo_intro.html#4  opens card 4;   ?static  shows every card without animation
+
+  Four cards, one per clip: 1 intro, 2 directions, 3 discovery, 4 panels.
+  Set the knowledge-base entry in CONTENT below to the one the run started from.
+-->
+<style>
+  :root {
+    --navy: #00175A; --blue: #006FCF; --mid: #4781B4; --lblue: #66A9E2; --pale: #E6F1FB;
+    --grey: #53565A; --lgrey: #97999B; --line: #E3E6EA; --bg: #FFFFFF; --soft: #F7F8F9;
+    --title: 'Guardian Egyp', 'BentonSans', 'Helvetica Neue', Helvetica, Arial, sans-serif;
+    --body: 'BentonSans', 'Helvetica Neue', Helvetica, Arial, sans-serif;
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  html, body { height: 100%; background: var(--bg); overflow: hidden; }
+  body { font-family: var(--body); color: var(--navy); -webkit-font-smoothing: antialiased; }
+
+  .stage { position: absolute; left: 50%; top: 50%; width: 1920px; height: 1080px;
+           transform-origin: center; background: var(--bg); }
+  .slide { position: absolute; inset: 0; padding: 150px 160px 0; display: none; }
+  .slide.on { display: block; }
+
+  /* entrance: each .a rises in, in order of --d (seconds) */
+  .a { opacity: 0; transform: translateY(28px); }
+  .play .a { animation: up 1s cubic-bezier(.2,.7,.2,1) forwards; animation-delay: calc(var(--d, 0) * 1s); }
+  @keyframes up { to { opacity: 1; transform: none; } }
+  .static .a { opacity: 1; transform: none; animation: none !important; }
+
+  .kicker { display: flex; align-items: center; gap: 18px; font-size: 24px; font-weight: 600;
+            letter-spacing: .16em; text-transform: uppercase; color: var(--blue); }
+  .kicker .box { width: 46px; height: 46px; border-radius: 6px; background: var(--blue); color: #fff;
+                 display: grid; place-items: center; letter-spacing: 0; font-size: 22px; }
+  h1 { font-family: var(--title); font-weight: 600; font-size: 108px; line-height: 1.04;
+       letter-spacing: -.02em; margin-top: 40px; max-width: 1500px; }
+  h1 em { font-style: normal; color: var(--blue); }
+  .sub { font-size: 38px; line-height: 1.35; color: var(--grey); margin-top: 34px; max-width: 1350px; }
+
+  .foot { position: absolute; left: 160px; right: 160px; bottom: 64px; display: flex;
+          justify-content: space-between; align-items: center; font-size: 20px; color: var(--lgrey);
+          letter-spacing: .04em; }
+  .dots { display: flex; gap: 10px; }
+  .dots i { width: 10px; height: 10px; border-radius: 50%; background: var(--line); }
+  .dots i.cur { background: var(--blue); }
+
+  /* tiles */
+  .tiles { position: absolute; left: 160px; right: 160px; bottom: 170px; display: grid; gap: 32px; }
+  .tile { border: 1.5px solid var(--line); border-radius: 22px; padding: 40px 44px; background: #fff; }
+  .tile .ic { width: 64px; height: 64px; border-radius: 16px; background: var(--pale);
+              display: grid; place-items: center; margin-bottom: 26px; }
+  .tile h3 { font-size: 40px; font-weight: 600; letter-spacing: -.01em; }
+  .tile p { font-size: 27px; color: var(--grey); margin-top: 12px; line-height: 1.35; }
+
+  /* batch run flow */
+  .from { position: absolute; left: 160px; top: 500px; display: inline-flex; align-items: center; gap: 16px;
+          font-size: 26px; padding: 14px 26px 14px 16px; border-radius: 99px; background: var(--navy); color: #fff; }
+  .from b { background: var(--blue); border-radius: 99px; padding: 6px 16px; font-size: 18px;
+            letter-spacing: .12em; text-transform: uppercase; font-weight: 600; }
+  .flow { position: absolute; left: 160px; right: 160px; top: 730px; display: grid;
+          grid-template-columns: repeat(5, 1fr); gap: 0; }
+  .phases { position: absolute; left: 160px; right: 160px; top: 618px; display: grid;
+            grid-template-columns: repeat(5, 1fr); }
+  .phase { position: relative; margin-right: 40px; padding-bottom: 16px; border-bottom: 3px solid var(--lblue);
+           font-size: 22px; font-weight: 700; letter-spacing: .14em; text-transform: uppercase; color: var(--blue); }
+  .phase::before, .phase::after { content: ""; position: absolute; bottom: -14px; width: 3px; height: 14px;
+                                  background: var(--lblue); }
+  .phase::before { left: 0; } .phase::after { right: 0; }
+  .phase span { font-weight: 400; letter-spacing: .02em; text-transform: none; color: var(--grey); font-size: 24px; }
+
+  /* opening */
+  .center { text-align: center; }
+  .center h1, .center .sub { margin-left: auto; margin-right: auto; }
+  .pre { font-size: 34px; color: var(--grey); margin-top: 90px; }
+  .hero { font-size: 150px !important; margin-top: 140px !important; }
+  .acts { position: absolute; left: 160px; right: 160px; bottom: 190px; display: grid;
+          grid-template-columns: repeat(3, 1fr); gap: 48px; text-align: left; }
+  .act { border-top: 4px solid var(--blue); padding-top: 28px; }
+  .act small { font-size: 22px; font-weight: 700; letter-spacing: .14em; color: var(--blue); }
+  .act h3 { font-size: 46px; font-weight: 600; margin-top: 10px; letter-spacing: -.01em; }
+  .act p { font-size: 28px; color: var(--grey); margin-top: 10px; line-height: 1.35; }
+  .node { position: relative; padding-right: 30px; }
+  .node .dot { width: 30px; height: 30px; border-radius: 50%; border: 3px solid var(--blue); background: #fff;
+               position: relative; z-index: 1; }
+  .node.end .dot { background: var(--blue); }
+  .node::before { content: ""; position: absolute; left: 30px; right: 0; top: 13.5px; height: 3px;
+                  background: var(--blue); transform-origin: left; transform: scaleX(0); }
+  .play .node::before { animation: grow .7s ease forwards; animation-delay: calc(var(--d) * 1s + .3s); }
+  .static .node::before { transform: none; }
+  .node.end::before { display: none; }
+  @keyframes grow { to { transform: scaleX(1); } }
+  .node h4 { font-size: 36px; font-weight: 600; margin-top: 28px; }
+  .node p { font-size: 25px; color: var(--grey); margin-top: 10px; line-height: 1.35; max-width: 270px; }
+
+  .hint { position: fixed; right: 18px; bottom: 14px; font: 13px var(--body); color: var(--lgrey);
+          background: rgba(255,255,255,.9); padding: 6px 10px; border-radius: 8px; }
+  .hint.off { display: none; }
+</style>
+</head>
+<body>
+<div class="stage" id="stage"></div>
+<div class="hint" id="hint">→ next · ← back · R replay · H hide</div>
+
+<script>
+// ---- Edit the content here -------------------------------------------------
+const CONTENT = {
+  product: "Model Agent · AutoFE",
+  kb: { title: "Weak repayment" },    // the knowledge-base entry the discovery run started from
+};
+// ----------------------------------------------------------------------------
+
+const esc = (s) => String(s).replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
+const K = CONTENT.kb;
+const ic = {
+  book: '<svg width="34" height="34" viewBox="0 0 24 24" fill="none" stroke="#006FCF" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M4 5.5A2.5 2.5 0 0 1 6.5 3H20v15H6.5A2.5 2.5 0 0 0 4 20.5z"/><path d="M4 20.5A2.5 2.5 0 0 0 6.5 23H20v-5"/><path d="M9 8h7M9 11.5h5"/></svg>',
+  person: '<svg width="34" height="34" viewBox="0 0 24 24" fill="none" stroke="#006FCF" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="8" r="4"/><path d="M4 21c1.5-4 4.5-6 8-6s6.5 2 8 6"/></svg>',
+  check: '<svg width="34" height="34" viewBox="0 0 24 24" fill="none" stroke="#006FCF" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2l8 3v6c0 5-3.5 9-8 11-4.5-2-8-6-8-11V5z"/><path d="M8.5 12l2.5 2.5 4.5-5"/></svg>',
+  target: '<svg width="34" height="34" viewBox="0 0 24 24" fill="none" stroke="#006FCF" stroke-width="1.8" stroke-linecap="round"><circle cx="12" cy="12" r="9"/><circle cx="12" cy="12" r="5"/><circle cx="12" cy="12" r="1.4" fill="#006FCF"/></svg>',
+  list: '<svg width="34" height="34" viewBox="0 0 24 24" fill="none" stroke="#006FCF" stroke-width="1.8" stroke-linecap="round"><rect x="3" y="3" width="18" height="18" rx="3"/><path d="M7 8h10M7 12h10M7 16h6"/></svg>',
+};
+const kicker = (n, t) => `<div class="kicker a" style="--d:.1">${n ? `<span class="box">${n}</span>` : ""}${t}</div>`;
+
+const SLIDES = [
+  // 0 · Opening
+  () => `<div class="center"><h1 class="hero a" style="--d:.5">Model Agent.</h1>
+    <p class="sub a" style="--d:1">It finds the signal the model is missing. And proves it.</p></div>
+    <div class="acts">
+      <div class="act a" style="--d:1.5"><small>01</small><h3>Direction</h3><p>The analyst points the way.</p></div>
+      <div class="act a" style="--d:1.75"><small>02</small><h3>Discovery</h3><p>Ideas, features, then a quick test.</p></div>
+      <div class="act a" style="--d:2"><small>03</small><h3>Proof</h3><p>Tested on held-out data and real cases.</p></div>
+    </div>`,
+
+  // 1 · Directions
+  () => `${kicker("01", "Direction")}
+    <h1 class="a" style="--d:.3">Start with<br><em>a direction.</em></h1>
+    <p class="sub a" style="--d:.6">Where to look, in one sentence. The agent takes it from there.</p>
+    <div class="tiles" style="grid-template-columns:1fr 1fr">
+      <div class="tile a" style="--d:1"><div class="ic">${ic.book}</div><h3>Knowledge base</h3>
+        <p>Key learnings from historically reviewed cases.</p></div>
+      <div class="tile a" style="--d:1.2"><div class="ic">${ic.person}</div><h3>Analyst</h3>
+        <p>Insights the analyst gains during the case review.</p></div>
+    </div>`,
+  // 2 · Discovery
+  () => `${kicker("02", "Discovery")}
+    <h1 class="a" style="--d:.3">One direction.<br><em>Wide exploration.</em></h1>
+    <div class="from a" style="--d:.7"><b>From the knowledge base</b>${esc(K.title)}</div>
+    <div class="phases">
+      <div class="phase a" style="--d:1">Discover <span>· ideas</span></div>
+      <div class="phase a" style="--d:1.35">Define <span>· features</span></div>
+      <div class="phase a" style="--d:1.7;grid-column:span 2">Quick test <span>· checks and screen</span></div>
+    </div>
+    <div class="flow">
+      ${[["Ideas", "Why it could signal risk"], ["Features", "Each idea, written as code"],
+         ["Checks", "Seen before? Redundant?"], ["Screen", "Does it lift the model?"],
+         ["Verified", "Ready to evaluate"]]
+        .map(([h, p], i) => `<div class="node a ${i === 4 ? "end" : ""}" style="--d:${1.2 + i * .35}">
+          <div class="dot"></div><h4>${h}</h4><p>${p}</p></div>`).join("")}
+    </div>`,
+
+  // 3 · Proof: the panels
+  () => `${kicker("03", "Proof · the panels")}
+    <h1 class="a" style="--d:.3">Every result,<br><em>open to inspection.</em></h1>
+    <div class="tiles" style="grid-template-columns:1fr 1fr 1fr">
+      <div class="tile a" style="--d:.8"><div class="ic">${ic.check}</div><h3>Evaluation</h3>
+        <p>Proven on data it never saw.</p></div>
+      <div class="tile a" style="--d:1"><div class="ic">${ic.target}</div><h3>Inference</h3>
+        <p>Who it catches, and how much sooner.</p></div>
+      <div class="tile a" style="--d:1.2"><div class="ic">${ic.list}</div><h3>Logging board</h3>
+        <p>Every step, on the record.</p></div>
+    </div>`,
+];
+
+const stage = document.getElementById("stage");
+const isStatic = new URLSearchParams(location.search).has("static");
+if (isStatic) document.body.classList.add("static");
+let cur = 0, typer = null;
+
+SLIDES.forEach((make, i) => {
+  const el = document.createElement("section");
+  el.className = "slide";
+  el.innerHTML = make() + `<div class="foot"><span>${esc(CONTENT.product)}</span>
+    <span class="dots">${SLIDES.map((_, j) => `<i class="${j === i ? "cur" : ""}"></i>`).join("")}</span></div>`;
+  stage.appendChild(el);
+});
+const slides = [...stage.children];
+
+function type(el) {
+  clearInterval(typer);
+  const text = el.dataset.type;
+  if (isStatic) { el.textContent = text; return; }
+  el.textContent = "";
+  let n = 0;
+  setTimeout(() => { typer = setInterval(() => {
+    el.textContent = text.slice(0, ++n);
+    if (n >= text.length) clearInterval(typer);
+  }, 45); }, 1700);
+}
+
+function show(i) {
+  cur = Math.max(0, Math.min(slides.length - 1, i));
+  slides.forEach((s, j) => { s.classList.toggle("on", j === cur); s.classList.remove("play"); });
+  const s = slides[cur];
+  void s.offsetWidth;                       // restart the entrance
+  s.classList.add("play");
+  s.querySelectorAll("[data-type]").forEach(type);
+  history.replaceState(null, "", "#" + (cur + 1));
+}
+
+function fit() {
+  const k = Math.min(innerWidth / 1920, innerHeight / 1080);
+  stage.style.transform = `translate(-50%, -50%) scale(${k})`;
+}
+
+addEventListener("resize", fit);
+addEventListener("keydown", (e) => {
+  if (["ArrowRight", " ", "PageDown"].includes(e.key)) show(cur + 1);
+  else if (["ArrowLeft", "PageUp"].includes(e.key)) show(cur - 1);
+  else if (e.key === "r" || e.key === "R") show(cur);
+  else if (e.key === "h" || e.key === "H") document.getElementById("hint").classList.toggle("off");
+  else if (/^[1-9]$/.test(e.key)) show(+e.key - 1);
+});
+addEventListener("click", () => show(cur + 1));
+fit();
+show((parseInt(location.hash.slice(1), 10) || 1) - 1);
+</script>
+</body>
+</html>
