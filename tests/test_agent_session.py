@@ -2392,3 +2392,94 @@ def test_a_linkage_record_follows_its_code(workspace, tmp_path):
             path.with_suffix(".json").unlink(missing_ok=True)
         else:
             path.write_text(had)
+
+
+def test_a_feature_whose_source_was_renamed_since_its_run_is_refused_by_name(no_history):
+    workspace = no_history
+    from agent.evaluate import Evaluation, feature_pool
+
+    run = _session(workspace, "payments vs spend", params=RunParams(K=1))
+    for source in ("payments", "spends"):
+        assert propose_linkage(run, source, LINK, "event_dt")["ok"]
+    assert screen_feature(run, "pay_to_spend_90d", "d", "L2", PAY_TO_SPEND)["verified"]
+    key = f"{run.run_id}:pay_to_spend_90d"
+
+    # The data folder names it `payment` now; the run recorded `payments`.
+    folder = workspace.extra_dir
+    for path in folder.glob("payments*"):
+        path.rename(folder / path.name.replace("payments", "payment"))
+    entry = next(f for f in feature_pool(workspace) if f["key"] == key)
+    assert entry["missing_source"] == ["payments"]
+    with pytest.raises(ValueError, match=r"'payments'.*renamed or removed.*'payment'"):
+        Evaluation(workspace, [key], {})
+
+
+CSV_LINK = '''
+def link(base_ids, source):
+    ids = base_ids.copy()
+    parts = ids["id"].str.split("_")
+    ids["cust"] = parts.str[0]
+    ids["as_of"] = pd.to_datetime(parts.str[1], format="%Y%m%d")
+    src = source.assign(cust=source["grms_cid"].astype(str))
+    out = ids.merge(src, on="cust")
+    out["Payment Date"] = pd.to_datetime(out["Payment Date"])
+    return out[out["Payment Date"] < out["as_of"]]
+'''
+CSV_PAID = '''
+def build(spark, sources, base):
+    s = sources["card_payments"]
+    out = base[["id"]].copy()
+    out["{name}"] = out["id"].map(s.groupby("id")["Payment Amount"].sum())
+    return out
+'''
+
+
+def test_a_csv_sources_cut_gives_later_runs_the_values_the_source_gave(tmp_path, monkeypatch):
+    # A key read as int in most batches and as float in the one with a missing
+    # value, and a linkage that matches it as text: the run after the cut builds
+    # the very same values from it.
+    import pandas as pd
+
+    import agent.tools.linkage as linkage
+
+    root = generate(tmp_path / "data", n_customers=300, seed=2)
+    extra = root / "additional_data"
+    pay = pd.read_parquet(extra / "payments.parquet")
+    card = pd.DataFrame({"grms_cid": pay["customer_id"].astype(int),
+                         "Payment Date": pay["event_dt"].dt.strftime("%Y-%m-%d"),
+                         "Payment Amount": pay["amount"]})
+    card = card.astype({"grms_cid": object})
+    card.loc[len(card) - 5, "grms_cid"] = None                # in the last batch only
+    card.to_csv(extra / "card_payments.csv", index=False)
+    (extra / "card_payments_data_sample.json").write_text(
+        json.dumps({c: [c, []] for c in card.columns}))
+    ws = _workspace_at(root)
+    ws.cfg.agent.run_dir = str(tmp_path / "runs")
+    monkeypatch.setenv("AUTOFE_BATCH_ROWS", str(len(card) // 4))
+    monkeypatch.setattr(linkage, "CUT_MAX_SHARE", 1.0)
+
+    first = _session(ws, "payments", params=RunParams(K=2, min_gini_gain=-1.0))
+    assert propose_linkage(first, "card_payments", CSV_LINK, "Payment Date", key="grms_cid")["ok"]
+    screened = screen_feature(first, "paid_all", "all payments before as_of", "L2",
+                              CSV_PAID.format(name="paid_all"))
+    assert screened["coverage"] > 0.5, screened
+
+    # The next run reads the cut - and builds the very same values from it.
+    second = _session(ws, "payments again", params=RunParams(K=2, min_gini_gain=-1.0))
+    cut = second.build_paths()["card_payments"]
+    assert "extracts" in cut
+    assert linkage.ensure_linked(second, "card_payments") is None
+    again = screen_feature(second, "paid_again", "all payments before as_of", "L2",
+                           CSV_PAID.format(name="paid_again"))
+    assert not again["ok"] and "paid_all" in again["error"], again
+
+
+def test_an_empty_feature_is_not_scored_and_says_why(no_history):
+    session = _session(no_history, "spend", params=RunParams(K=2, min_gini_gain=-1.0))
+    assert propose_linkage(session, "spends", LINK, "event_dt")["ok"]
+    empty = WINDOW.format(days=90, name="never").replace(
+        'recent = s[s["event_dt"] >= s["as_of"] - pd.Timedelta(days=90)]',
+        'recent = s[s["event_dt"] > s["as_of"]]').replace(".fillna(0.0)", "")
+    out = screen_feature(session, "never", "spend after as_of", "L2", empty)
+    assert not out["verified"] and out["gini_gain"] is None and out["coverage"] == 0
+    assert out["reason"].startswith("no screen row has a value") and "spends" in out["reason"]

@@ -95,9 +95,11 @@ def feature_pool(ws: Workspace) -> list[dict[str, Any]]:
     """Every verified feature of every run, newest run first.
 
     Each carries the linkage code for its sources; ``missing_linkage`` lists
-    sources with none recorded in the run and none confirmed now.
+    sources with none recorded in the run and none confirmed now; ``missing_source``
+    those the data folder no longer has - renamed or removed since the run.
     """
     root = Path(ws.cfg.agent.run_dir)
+    usable = {n for n, s in ws.sources().items() if s.usable}
     pool = []
     for folder in sorted(root.glob("*"), reverse=True):
         ledger = folder / "ledger.json"
@@ -123,7 +125,8 @@ def feature_pool(ws: Workspace) -> list[dict[str, Any]]:
                          "run_id": folder.name, "direction": started.get("direction", ""),
                          # the feature's script reruns on the engine it was written for
                          "engine": started.get("engine") or ws.cfg.agent.engine,
-                         "linkage": codes, "missing_linkage": missing})
+                         "linkage": codes, "missing_linkage": missing,
+                         "missing_source": [s for s in [*codes, *missing] if s not in usable]})
     return pool
 
 
@@ -368,6 +371,11 @@ class Evaluation:
         unlinked = {f["key"]: f["missing_linkage"] for f in self.chosen if f["missing_linkage"]}
         if unlinked:
             raise ValueError(f"no linkage recorded for {unlinked}; confirm it in a run first")
+        gone = {f["key"]: f["missing_source"] for f in self.chosen if f.get("missing_source")}
+        if gone:
+            have = sorted(n for n, s in self.ws.sources().items() if s.usable)
+            raise ValueError(f"no data for the sources {gone} read - renamed or removed since "
+                             f"the run? The data folder has {have}")
         names = [f["name"] for f in self.chosen]
         for f in self.chosen:
             clash = names.count(f["name"]) > 1

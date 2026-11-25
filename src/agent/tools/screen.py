@@ -150,7 +150,9 @@ def screen_feature(session: Session, name: str, description: str, level: str,
         # C1 and C2 - on the built values, before the fit.
         measured, failed = model_checks(ws.screener, values, ws.cfg.agent.checks)
         entry["checks"].update(measured)
-        if failed:
+        if (empty := _empty(values, used + summarised)):
+            entry["reason"] = empty               # a fit on it would say +0.0000, and nothing why
+        elif failed:
             entry["reason"] = failed
         else:
             entry["checks"]["passed"] = True
@@ -192,7 +194,7 @@ def screen_feature(session: Session, name: str, description: str, level: str,
         reply["scale"] = note
     # One failure tends to breed the next - patching the same code on a wrong
     # belief. Two in a row: the next screen waits for a look at the data.
-    session.failed_streak = 0 if run.ok else session.failed_streak + 1
+    session.failed_streak = 0 if run.ok and not _empty_reason(entry) else session.failed_streak + 1
     if session.failed_streak >= FAILED_STREAK:
         reply["next"] = (f"{session.failed_streak} scripts in a row failed. Stop patching: "
                          "run_probe to print the columns and dtypes of the frames you use "
@@ -320,6 +322,30 @@ def _seen_before(session: Session, name: str, description: str, code: str,
         return None, "; ".join(found) + " - differs, as it says"
     return None, (f"new - closest `{near['name']}`, overlap {overlap:.2f}" if near is not None
                   else "new - nothing earlier")
+
+
+_EMPTY = "no screen row has a value"
+
+
+def _empty(values: Any, read: list[str]) -> str:
+    """Why a feature cannot be measured, when it has no value or one value on every
+    screen row: what it read reached no screen id, or the script dropped it."""
+    present = pd.Series(values).dropna()
+    if present.empty:
+        what = _EMPTY
+    elif present.nunique() == 1:
+        what = f"every screen row has the same value ({present.iloc[0]!r})"
+    else:
+        return ""
+    return (f"{what} - nothing to measure. "
+            + (f"Probe what {', '.join(read)} gives the screen ids (rows, keys, dates "
+               "against as_of) and what the script keeps of it." if read else
+               "Probe the columns it reads."))
+
+
+def _empty_reason(entry: dict[str, Any]) -> bool:
+    reason = str(entry.get("reason") or "")
+    return reason.startswith(_EMPTY) or reason.startswith("every screen row has the same value")
 
 
 def lessons(ledger: list[dict[str, Any]]) -> list[str]:

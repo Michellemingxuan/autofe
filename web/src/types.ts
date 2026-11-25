@@ -284,6 +284,7 @@ export type PoolFeature = {
   coverage: number | null
   code: string
   missing_linkage: string[]
+  missing_source?: string[]   // sources the data folder no longer has
   linkage: Record<string, string>
   // What evaluations made of it: the latest alone, and the combinations it was in.
   evaluation?: {

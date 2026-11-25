@@ -57,7 +57,7 @@ export function EvaluatePage({ onStarted }: { onStarted: (id: string) => void })
       .filter((c) => c.keys.length))
   }, [pool])
 
-  const usable = (key: string) => !!byKey[key] && !byKey[key].missing_linkage.length
+  const usable = (key: string) => !!byKey[key] && !blockedBy(byKey[key])
   const toggle = (key: string) =>
     setPicked((p) => (p.includes(key) ? p.filter((k) => k !== key) : [...p, key]))
   /** Into a combination - a new one when `id` is null. */
@@ -144,7 +144,7 @@ export function EvaluatePage({ onStarted }: { onStarted: (id: string) => void })
                 <div className={s.groupHead}>
                   <span className={s.groupDirection}>{g.direction}</span>
                   <button className={s.link} onClick={() => {
-                    const keys = g.features.filter((f) => !f.missing_linkage.length).map((f) => f.key)
+                    const keys = g.features.filter((f) => !blockedBy(f)).map((f) => f.key)
                     const all = keys.every((k) => picked.includes(k))
                     setPicked(all ? picked.filter((k) => !keys.includes(k))
                                   : [...picked, ...keys.filter((k) => !picked.includes(k))])
@@ -279,17 +279,24 @@ export function SearchBox({ value, onChange, shown, total, placeholder }: {
   )
 }
 
+// Why a feature cannot be evaluated now, if it cannot.
+function blockedBy(f: PoolFeature): string {
+  if (f.missing_source?.length) return `no data for ${f.missing_source.join(', ')} - renamed or removed since the run`
+  if (f.missing_linkage.length) return `no linkage recorded for ${f.missing_linkage.join(', ')}`
+  return ''
+}
+
 function PoolRow({ feature: f, picked, open, onPick, onOpen, onRemove }: {
   feature: PoolFeature; picked: boolean; open: boolean
   onPick: () => void; onOpen: () => void; onRemove: () => Promise<void>
 }) {
-  const blocked = f.missing_linkage.length > 0
+  const blocked = blockedBy(f)
   return (
     <div className={`${s.feature} ${picked ? s.on : ''} ${open ? s.featureOpen : ''}`}
          draggable={!blocked} onDragStart={startDrag(f.key)}>
       <div className={s.featureRow}>
-        <input type="checkbox" checked={picked} onChange={onPick} disabled={blocked}
-               title={blocked ? `No linkage recorded for ${f.missing_linkage.join(', ')}` : 'select for evaluation'} />
+        <input type="checkbox" checked={picked} onChange={onPick} disabled={!!blocked}
+               title={blocked || 'select for evaluation'} />
         <button className={s.featureBody} onClick={onOpen}>
           <span className={s.featureTop}>
             <span className={s.chev}>{open ? '▾' : '▸'}</span>
@@ -299,7 +306,7 @@ function PoolRow({ feature: f, picked, open, onPick, onOpen, onRemove }: {
           </span>
           <span className={s.desc}>{f.description}</span>
           {f.sources.length > 0 && <span className={s.sources}>{f.sources.join(' + ')}</span>}
-          {blocked && <span className={s.missing}>no linkage recorded for {f.missing_linkage.join(', ')}</span>}
+          {blocked && <span className={s.missing}>{blocked}</span>}
           <Evaluated status={f.evaluation} />
         </button>
       </div>
