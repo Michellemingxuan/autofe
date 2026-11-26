@@ -1,0 +1,263 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1760 850"
+     font-family="-apple-system, 'SF Pro Display', 'SF Pro Text', ui-sans-serif, 'Segoe UI', system-ui, Helvetica, sans-serif">
+  <defs>
+    <style>
+      .mono { font-family: 'SF Mono', ui-monospace, Menlo, Consolas, monospace; }
+      .flow { stroke-dasharray: 14 9; animation: flow 1.1s linear infinite; }
+      @keyframes flow { to { stroke-dashoffset: -23; } }
+      .halo { animation: pulse 2.4s ease-in-out infinite; }
+      @keyframes pulse { 0%, 100% { opacity: 0.35; } 50% { opacity: 0.9; } }
+    </style>
+    <linearGradient id="agent" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#8E6CC0"/><stop offset="1" stop-color="#5E4290"/>
+    </linearGradient>
+    <filter id="agent-glow" x="-40%" y="-60%" width="180%" height="220%">
+      <feGaussianBlur stdDeviation="16"/>
+    </filter>
+    <pattern id="dots" width="24" height="24" patternUnits="userSpaceOnUse">
+      <circle cx="2" cy="2" r="1.1" fill="#E2DDD0"/>
+    </pattern>
+    <filter id="soft" x="-20%" y="-30%" width="140%" height="170%">
+      <feGaussianBlur in="SourceAlpha" stdDeviation="8"/>
+      <feOffset dy="5"/>
+      <feComponentTransfer><feFuncA type="linear" slope="0.07"/></feComponentTransfer>
+      <feMerge><feMergeNode/><feMergeNode in="SourceGraphic"/></feMerge>
+    </filter>
+    <filter id="glow" x="-50%" y="-50%" width="200%" height="200%">
+      <feGaussianBlur stdDeviation="5"/>
+    </filter>
+    <marker id="m-p" viewBox="0 0 10 10" refX="8" refY="5" markerUnits="userSpaceOnUse" markerWidth="16" markerHeight="16" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" fill="#7A5AA8"/></marker>
+    <marker id="m-g" viewBox="0 0 10 10" refX="8" refY="5" markerUnits="userSpaceOnUse" markerWidth="16" markerHeight="16" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" fill="#3F7D5A"/></marker>
+    <marker id="m-a" viewBox="0 0 10 10" refX="8" refY="5" markerUnits="userSpaceOnUse" markerWidth="16" markerHeight="16" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" fill="#A0782E"/></marker>
+    <marker id="m-b" viewBox="0 0 10 10" refX="8" refY="5" markerUnits="userSpaceOnUse" markerWidth="16" markerHeight="16" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" fill="#3D6BA8"/></marker>
+    <marker id="m-gray" viewBox="0 0 10 10" refX="8" refY="5" markerUnits="userSpaceOnUse" markerWidth="12" markerHeight="12" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" fill="#A9A194"/></marker>
+    <marker id="s-p" viewBox="0 0 10 10" refX="7" refY="5" markerUnits="userSpaceOnUse" markerWidth="8" markerHeight="8" orient="auto"><path d="M0,0 L10,5 L0,10 z" fill="#7A5AA8"/></marker>
+    <marker id="s-b" viewBox="0 0 10 10" refX="7" refY="5" markerUnits="userSpaceOnUse" markerWidth="9" markerHeight="9" orient="auto"><path d="M0,0 L10,5 L0,10 z" fill="#3D6BA8"/></marker>
+  </defs>
+
+  <rect width="1760" height="850" fill="#FAF9F5"/>
+  <rect width="1760" height="850" fill="url(#dots)"/>
+
+  <!-- ============================================================ -->
+  <!-- ZONES: local (the agent) on top, bucket left, workbench right -->
+  <!-- ============================================================ -->
+  <rect x="470" y="30" width="820" height="360" rx="32" fill="#F3EFF9" stroke="#DDD2EC" stroke-width="1.5"/>
+  <g transform="translate(496,44) scale(1.9)" fill="none" stroke="#7A5AA8" stroke-width="2.1" stroke-linejoin="round" stroke-linecap="round">
+    <rect x="3" y="2" width="28" height="19" rx="3"/><path d="M-1,26 H35"/>
+  </g>
+  <text x="582" y="72" font-size="22" font-weight="800" fill="#7A5AA8" letter-spacing="5">LOCAL</text>
+  <text x="582" y="94" class="mono" font-size="14" fill="#9A88B8">localhost · RAM</text>
+
+  <rect x="60" y="500" width="560" height="320" rx="32" fill="#F1EEE6" stroke="#E2DCCD" stroke-width="1.5"/>
+  <g transform="translate(82,506) scale(1.9)" fill="none" stroke="#8A7B5C" stroke-width="2.1" stroke-linejoin="round" stroke-linecap="round">
+    <path d="M8,22 H28 A7,7 0 0 0 27,8 A10,10 0 0 0 8,10 A6,6 0 0 0 8,22 z"/>
+  </g>
+  <text x="166" y="538" font-size="22" font-weight="800" fill="#8A7B5C" letter-spacing="5">BUCKET</text>
+  <text x="166" y="560" class="mono" font-size="13.5" fill="#A0947A">gs://&lt;bucket&gt;/autofe</text>
+
+  <rect x="820" y="500" width="880" height="320" rx="32" fill="#EAF1F8" stroke="#D2DFEE" stroke-width="1.5"/>
+  <g transform="translate(846,512) scale(1.9)" fill="none" stroke="#3D6BA8" stroke-width="2.1" stroke-linejoin="round" stroke-linecap="round">
+    <rect x="2" y="2" width="30" height="24" rx="4"/><path d="M9,11 L14,15 L9,19"/><path d="M17,19 H25"/>
+  </g>
+  <text x="930" y="540" font-size="22" font-weight="800" fill="#3D6BA8" letter-spacing="5">WORKBENCH</text>
+  <text x="930" y="562" class="mono" font-size="14" fill="#6F8DB5">Google Cloud · full data</text>
+
+  <!-- ============================================================ -->
+  <!-- THE FIVE INTERACTIONS: straight, zone to zone                 -->
+  <!-- ============================================================ -->
+  <!-- 1 upload: local -> bucket -->
+  <line x1="650" y1="394" x2="500" y2="494" stroke="#A0782E" stroke-width="14" stroke-opacity="0.12" filter="url(#glow)"/>
+  <line x1="650" y1="394" x2="500" y2="494" stroke="#A0782E" stroke-width="3.6" class="flow" marker-end="url(#m-a)"/>
+  <!-- 5 pull: bucket -> local -->
+  <line x1="420" y1="496" x2="570" y2="396" stroke="#3F7D5A" stroke-width="14" stroke-opacity="0.12" filter="url(#glow)"/>
+  <line x1="420" y1="496" x2="570" y2="396" stroke="#3F7D5A" stroke-width="3.6" class="flow" marker-end="url(#m-g)"/>
+  <!-- 2 run jobs: agent -> workbench -->
+  <line x1="1120" y1="394" x2="1290" y2="494" stroke="#7A5AA8" stroke-width="14" stroke-opacity="0.12" filter="url(#glow)"/>
+  <line x1="1120" y1="394" x2="1290" y2="494" stroke="#7A5AA8" stroke-width="3.6" class="flow" marker-end="url(#m-p)"/>
+  <!-- 3 mount: bucket -> workbench -->
+  <line x1="624" y1="622" x2="814" y2="622" stroke="#A0782E" stroke-width="14" stroke-opacity="0.12" filter="url(#glow)"/>
+  <line x1="624" y1="622" x2="814" y2="622" stroke="#A0782E" stroke-width="3.6" class="flow" marker-end="url(#m-a)"/>
+  <!-- 4 save: workbench -> bucket -->
+  <line x1="816" y1="712" x2="626" y2="712" stroke="#3F7D5A" stroke-width="14" stroke-opacity="0.12" filter="url(#glow)"/>
+  <line x1="816" y1="712" x2="626" y2="712" stroke="#3F7D5A" stroke-width="3.6" class="flow" marker-end="url(#m-g)"/>
+
+  <!-- ============================================================ -->
+  <!-- LOCAL                                                        -->
+  <!-- ============================================================ -->
+  <path d="M1050,180 H1072" stroke="#7A5AA8" stroke-width="2.6" fill="none" marker-start="url(#s-p)" marker-end="url(#s-p)"/>
+  <path d="M900,254 V276" stroke="#7A5AA8" stroke-width="2.6" fill="none" marker-end="url(#s-p)"/>
+  <path d="M684,162 H714" stroke="#A9A194" stroke-width="2.4" fill="none" marker-end="url(#m-gray)"/>
+  <path d="M684,232 H714" stroke="#A9A194" stroke-width="2.4" fill="none" marker-end="url(#m-gray)"/>
+
+  <g filter="url(#soft)"><rect x="500" y="120" width="180" height="84" rx="20" fill="#FFFFFF"/></g>
+  <g transform="translate(518,141) scale(1.25)">
+    <rect width="32" height="32" rx="8" fill="#3F7D5A"/>
+    <rect x="7" y="8" width="18" height="3" rx="1.5" fill="#FFFFFF"/>
+    <rect x="7" y="14.5" width="18" height="3" rx="1.5" fill="#FFFFFF"/>
+    <rect x="7" y="21" width="11" height="3" rx="1.5" fill="#FFFFFF"/>
+  </g>
+  <text x="566" y="161" font-size="15.5" font-weight="700" fill="#1D1D1F" letter-spacing="-0.4">Logging board</text>
+  <g>
+    <circle cx="571" cy="180" r="4" fill="#3F7D5A"/><circle cx="584" cy="180" r="4" fill="#3F7D5A"/><circle cx="597" cy="180" r="4" fill="#B5523B"/><circle cx="610" cy="180" r="4" fill="#3F7D5A"/><circle cx="623" cy="180" r="4" fill="#3F7D5A"/><circle cx="636" cy="180" r="4" fill="#E0DACD"/>
+  </g>
+
+  <g filter="url(#soft)"><rect x="500" y="218" width="180" height="84" rx="20" fill="#FFFFFF"/></g>
+  <g transform="translate(518,239) scale(1.25)">
+    <rect width="32" height="32" rx="8" fill="#3F7D5A"/>
+    <path d="M8,9 Q12,7.5 16,9 V24 Q12,22.5 8,24 z" fill="#FFFFFF"/>
+    <path d="M16,9 Q20,7.5 24,9 V24 Q20,22.5 16,24 z" fill="#FFFFFF" opacity="0.8"/>
+  </g>
+  <text x="566" y="259" font-size="16.5" font-weight="700" fill="#1D1D1F" letter-spacing="-0.4">Wiki</text>
+  <g>
+    <rect x="566" y="272" width="28" height="9" rx="4.5" fill="#E7F0EA"/><rect x="598" y="272" width="20" height="9" rx="4.5" fill="#E7F0EA"/><rect x="622" y="272" width="40" height="9" rx="4.5" fill="#3F7D5A"/>
+  </g>
+
+  <!-- the agent: the apex -->
+  <rect x="720" y="110" width="320" height="140" rx="28" fill="#7A5AA8" opacity="0.45" filter="url(#agent-glow)"/>
+  <rect x="708" y="98" width="344" height="164" rx="36" fill="none" stroke="#7A5AA8" stroke-width="2" stroke-dasharray="4,6" class="halo"/>
+  <rect x="720" y="110" width="320" height="140" rx="28" fill="url(#agent)"/>
+  <g transform="translate(750,146) scale(1.75)">
+    <line x1="16" y1="2" x2="16" y2="9" stroke="#FFFFFF" stroke-width="2.2" stroke-linecap="round"/>
+    <circle cx="16" cy="3" r="3" fill="#FFFFFF"/>
+    <rect x="1" y="9" width="30" height="28" rx="9" fill="#FFFFFF"/>
+    <rect x="-3" y="17" width="4" height="12" rx="2" fill="#FFFFFF"/>
+    <rect x="31" y="17" width="4" height="12" rx="2" fill="#FFFFFF"/>
+    <circle cx="10.5" cy="21" r="3.4" fill="#6A4C9C"/>
+    <circle cx="21.5" cy="21" r="3.4" fill="#6A4C9C"/>
+    <rect x="11" y="28.5" width="10" height="2.6" rx="1.3" fill="#6A4C9C" opacity="0.85"/>
+  </g>
+  <text x="830" y="186" font-size="34" font-weight="800" fill="#FFFFFF" letter-spacing="-0.8">Agent</text>
+  <text x="832" y="214" class="mono" font-size="12.5" fill="#E6DDF4">orchestrates all</text>
+
+  <g filter="url(#soft)"><rect x="1080" y="120" width="180" height="120" rx="24" fill="#FFFFFF"/></g>
+  <g transform="translate(1124,180) scale(1.5) translate(-148,-222)">
+    <path d="M146,206 L151,219 L164,224 L151,229 L146,242 L141,229 L128,224 L141,219 z" fill="#7A5AA8"/>
+    <path d="M166,200 L168,205 L173,207 L168,209 L166,214 L164,209 L159,207 L164,205 z" fill="#B7A3D4"/>
+  </g>
+  <text x="1162" y="190" font-size="28" font-weight="700" fill="#1D1D1F" letter-spacing="-0.5">LLM</text>
+
+  <g filter="url(#soft)"><rect x="720" y="280" width="540" height="92" rx="22" fill="#FFFFFF"/></g>
+  <text x="746" y="334" font-size="23" font-weight="700" fill="#1D1D1F" letter-spacing="-0.5">Discover</text>
+  <g filter="url(#soft)">
+    <rect x="868" y="308" width="84" height="36" rx="9" fill="#FFFFFF" stroke="#D9CFEA"/>
+    <rect x="966" y="308" width="84" height="36" rx="9" fill="#FFFFFF" stroke="#D9CFEA"/>
+    <rect x="1064" y="308" width="84" height="36" rx="9" fill="#FFFFFF" stroke="#D9CFEA"/>
+    <rect x="1162" y="308" width="84" height="36" rx="9" fill="#7A5AA8"/>
+  </g>
+  <g font-size="12.5" font-weight="700" fill="#4A3B69" text-anchor="middle">
+    <text x="910" y="331">Idea</text><text x="1008" y="331">Code</text><text x="1106" y="331">Checks</text>
+    <text x="1204" y="331" fill="#FFFFFF">Screen</text>
+  </g>
+  <g stroke="#7A5AA8" stroke-width="1.6">
+    <line x1="953" y1="326" x2="963" y2="326" marker-end="url(#s-p)"/>
+    <line x1="1051" y1="326" x2="1061" y2="326" marker-end="url(#s-p)"/>
+    <line x1="1149" y1="326" x2="1159" y2="326" marker-end="url(#s-p)"/>
+  </g>
+
+  <!-- ============================================================ -->
+  <!-- BUCKET                                                       -->
+  <!-- ============================================================ -->
+  <g filter="url(#soft)"><rect x="86" y="590" width="250" height="204" rx="24" fill="#FFFFFF"/></g>
+  <g transform="translate(110,612) scale(1.4)">
+    <path d="M0,4 Q0,0 4,0 H11 L14,4 H28 Q32,4 32,8 V24 Q32,28 28,28 H4 Q0,28 0,24 z" fill="#A0782E"/>
+  </g>
+  <text x="164" y="644" font-size="26" font-weight="700" fill="#1D1D1F" letter-spacing="-0.5">jobs/</text>
+  <g class="mono" font-size="13.5" fill="#7A5F2A">
+    <text x="114" y="690">├ linkage.py</text>
+    <text x="114" y="714">├ aggregates.py</text>
+    <text x="114" y="738">├ features.py</text>
+    <text x="114" y="762">└ job.json</text>
+  </g>
+
+  <g filter="url(#soft)"><rect x="350" y="590" width="250" height="204" rx="24" fill="#FFFFFF"/></g>
+  <g transform="translate(374,612) scale(1.4)">
+    <path d="M0,4 Q0,0 4,0 H11 L14,4 H28 Q32,4 32,8 V24 Q32,28 28,28 H4 Q0,28 0,24 z" fill="#3F7D5A"/>
+  </g>
+  <text x="428" y="644" font-size="26" font-weight="700" fill="#1D1D1F" letter-spacing="-0.5">results/</text>
+  <g class="mono" font-size="13.5" fill="#3F7D5A">
+    <text x="378" y="690">├ evaluation/</text>
+    <text x="378" y="714">├ inference/</text>
+    <text x="378" y="738">└ logs/</text>
+  </g>
+
+  <!-- ============================================================ -->
+  <!-- WORKBENCH: three equal steps on the full data                -->
+  <!-- ============================================================ -->
+  <g filter="url(#soft)"><rect x="1330" y="520" width="350" height="54" rx="18" fill="#FFFFFF"/></g>
+  <g fill="none" stroke="#3D6BA8" stroke-width="2" transform="translate(1358,547) scale(1.2) translate(-1294,-192)">
+    <ellipse cx="1294" cy="182" rx="13" ry="5"/>
+    <path d="M1281,182 V202 A13,5 0 0 0 1307,202 V182"/><path d="M1281,192 A13,5 0 0 0 1307,192"/>
+  </g>
+  <text x="1382" y="553" font-size="17" font-weight="700" fill="#1D1D1F" letter-spacing="-0.3">Full data</text>
+  <g font-size="10" font-weight="700" text-anchor="middle">
+    <rect x="1466" y="536" width="46" height="20" rx="6" fill="#3D6BA8"/><text x="1489" y="550" fill="#FFFFFF">train</text>
+    <rect x="1516" y="536" width="46" height="20" rx="6" fill="#3D6BA8" opacity="0.7"/><text x="1539" y="550" fill="#FFFFFF">valid</text>
+    <rect x="1566" y="536" width="38" height="20" rx="6" fill="#D8D2C4"/><text x="1585" y="550" fill="#6E6E73">test</text>
+    <rect x="1608" y="536" width="60" height="20" rx="6" fill="#A0782E" opacity="0.85"/><text x="1638" y="550" fill="#FFFFFF">sources</text>
+  </g>
+
+  <path d="M1114,700 H1130" stroke="#3D6BA8" stroke-width="2.6" fill="none" marker-end="url(#s-b)"/>
+  <path d="M1398,700 H1414" stroke="#3D6BA8" stroke-width="2.6" fill="none" marker-end="url(#s-b)"/>
+
+  <!-- Build -->
+  <g filter="url(#soft)"><rect x="850" y="598" width="262" height="198" rx="24" fill="#FFFFFF"/></g>
+  <g transform="translate(874,620)">
+    <rect width="40" height="40" rx="11" fill="#3D6BA8"/>
+    <rect x="9" y="10" width="22" height="5" rx="2.5" fill="#FFFFFF"/>
+    <rect x="9" y="18" width="22" height="5" rx="2.5" fill="#FFFFFF" opacity="0.85"/>
+    <rect x="9" y="26" width="22" height="5" rx="2.5" fill="#FFFFFF" opacity="0.7"/>
+  </g>
+  <text x="926" y="649" font-size="24" font-weight="700" fill="#1D1D1F" letter-spacing="-0.5">Build</text>
+  <g class="mono" font-size="12.5" fill="#3D5A80">
+    <text x="878" y="702">linkage</text>
+    <text x="878" y="728">aggregates</text>
+    <text x="878" y="754">features</text>
+  </g>
+
+  <!-- Evaluate -->
+  <g filter="url(#soft)"><rect x="1134" y="598" width="262" height="198" rx="24" fill="#FFFFFF"/></g>
+  <g transform="translate(1158,620)">
+    <rect width="40" height="40" rx="11" fill="#3D6BA8"/>
+    <rect x="10" y="20" width="5" height="11" rx="2" fill="#FFFFFF"/>
+    <rect x="18" y="13" width="5" height="18" rx="2" fill="#FFFFFF"/>
+    <rect x="26" y="9" width="5" height="22" rx="2" fill="#FFFFFF"/>
+  </g>
+  <text x="1210" y="649" font-size="24" font-weight="700" fill="#1D1D1F" letter-spacing="-0.5">Evaluate</text>
+  <rect x="1162" y="690" width="96" height="14" rx="4" fill="#D8D2C4"/>
+  <text x="1266" y="701" class="mono" font-size="11.5" fill="#9A9387">base</text>
+  <rect x="1162" y="714" width="150" height="14" rx="4" fill="#3D6BA8" opacity="0.85"/>
+  <text x="1320" y="725" class="mono" font-size="11.5" fill="#3D6BA8">+ new</text>
+  <text x="1162" y="764" class="mono" font-size="11.5" fill="#6F8DB5">gini · capture · shap</text>
+
+  <!-- Infer -->
+  <g filter="url(#soft)"><rect x="1418" y="598" width="262" height="198" rx="24" fill="#FFFFFF"/></g>
+  <g transform="translate(1442,620)">
+    <rect width="40" height="40" rx="11" fill="#3D6BA8"/>
+    <circle cx="20" cy="20" r="10" fill="none" stroke="#FFFFFF" stroke-width="2.6"/>
+    <circle cx="20" cy="20" r="3.6" fill="#FFFFFF"/>
+  </g>
+  <text x="1494" y="649" font-size="24" font-weight="700" fill="#1D1D1F" letter-spacing="-0.5">Infer</text>
+  <g>
+    <circle cx="1452" cy="704" r="7" fill="#E0DACD"/><circle cx="1473" cy="704" r="7" fill="#E0DACD"/><circle cx="1494" cy="704" r="7" fill="#B5523B"/><circle cx="1515" cy="704" r="7" fill="#E0DACD"/><circle cx="1536" cy="704" r="7" fill="#B5523B"/><circle cx="1557" cy="704" r="7" fill="#E0DACD"/>
+  </g>
+  <text x="1446" y="764" class="mono" font-size="11.5" fill="#6F8DB5">target cases · flags</text>
+
+  <!-- ============================================================ -->
+  <!-- INTERACTION PILLS                                            -->
+  <!-- ============================================================ -->
+  <!-- 1 upload -->
+  <g filter="url(#soft)"><rect x="625" y="428" width="77" height="32" rx="16" fill="#FFFFFF" stroke="#A0782E" stroke-width="1.8"/></g>
+  <text x="664" y="449" class="mono" font-size="13.5" font-weight="700" fill="#A0782E" text-anchor="middle">upload</text>
+  <!-- 5 pull -->
+  <g filter="url(#soft)"><rect x="384" y="428" width="61" height="32" rx="16" fill="#FFFFFF" stroke="#3F7D5A" stroke-width="1.8"/></g>
+  <text x="414" y="449" class="mono" font-size="13.5" font-weight="700" fill="#3F7D5A" text-anchor="middle">pull</text>
+  <!-- 2 run jobs -->
+  <g filter="url(#soft)"><rect x="1161" y="428" width="94" height="32" rx="16" fill="#FFFFFF" stroke="#7A5AA8" stroke-width="1.8"/></g>
+  <text x="1208" y="449" class="mono" font-size="13.5" font-weight="700" fill="#7A5AA8" text-anchor="middle">run jobs</text>
+  <!-- 3 mount -->
+  <g filter="url(#soft)"><rect x="682" y="606" width="69" height="32" rx="16" fill="#FFFFFF" stroke="#A0782E" stroke-width="1.8"/></g>
+  <text x="716" y="627" class="mono" font-size="13.5" font-weight="700" fill="#A0782E" text-anchor="middle">mount</text>
+  <!-- 4 save -->
+  <g filter="url(#soft)"><rect x="686" y="696" width="61" height="32" rx="16" fill="#FFFFFF" stroke="#3F7D5A" stroke-width="1.8"/></g>
+  <text x="716" y="717" class="mono" font-size="13.5" font-weight="700" fill="#3F7D5A" text-anchor="middle">save</text>
+</svg>
