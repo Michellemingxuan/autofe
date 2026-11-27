@@ -7,10 +7,16 @@ mechanisms, data that could carry them. The pool is kept in
 ``<agent.run_dir>/themes.json`` with a fingerprint of that context, and made
 again only when the context changes.
 
+The reviewed cases add to it: each pattern a case page of the wiki names under
+**Patterns** (agent.wiki) is a theme, from the cases the model may read - its
+home domain's. They are read from the wiki as it is, so a new case is in the
+pool at once, and each keeps the case it came from.
+
 A run started with no direction is an open exploration. The pool is the
 agent's tool there: each round it draws a theme (``draw_theme``) - one the
-fewest runs have explored, an unexplored one first, at random among equals -
-and builds that round's ideas around it. A run walks across the pool round by
+fewest runs have explored, an unexplored one first; a case's pattern before a
+made theme, then at random among equals - and builds that round's ideas around
+it (a case's pattern with the case to read). A run walks across the pool round by
 round, and successive runs walk on from where the earlier ones stopped.
 """
 
@@ -28,7 +34,8 @@ from pydantic import BaseModel, Field
 
 from agent.workspace import Workspace
 
-__all__ = ["OPEN", "POOL_SIZE", "context_of", "draw_theme", "generate", "pick", "pool", "save"]
+__all__ = ["OPEN", "POOL_SIZE", "case_themes", "context_of", "draw_theme", "generate", "pick",
+           "pool", "save"]
 
 POOL_SIZE = 10
 OPEN = "Open exploration"                 # the direction of a run the user left empty
@@ -60,13 +67,35 @@ def _fingerprint(ws: Workspace) -> str:
     return hashlib.sha256(context_of(ws).encode()).hexdigest()[:16]
 
 
+def case_themes(ws: Workspace) -> list[dict[str, str]]:
+    """The patterns of the wiki's cases this model may read: theme, pattern, case."""
+    from agent import wiki
+
+    try:
+        found = wiki.pages(wiki.WIKI_DIR)
+    except OSError:
+        return []
+    access = wiki.access_for(ws.cfg)
+    out: dict[str, dict[str, str]] = {}
+    for page in found.values():
+        if page.kind == "case" and access.refusal(page) is None:
+            for item in wiki.patterns(page):
+                out.setdefault(item["theme"].lower(), item)
+    return list(out.values())
+
+
 def pool(ws: Workspace) -> dict[str, Any]:
-    """The pool as saved, each theme with how many runs explored it, and whether the
-    task has changed since it was made (``stale``)."""
+    """The pool - the cases' patterns, then the made themes - each theme with how many
+    runs explored it, and whether the task has changed since the themes were made
+    (``stale``)."""
     path = _path(ws)
     saved = json.loads(path.read_text()) if path.exists() else {}
     runs = explored(ws)
-    themes = [{"theme": t, "runs": runs.get(t.lower(), 0)} for t in saved.get("themes", [])]
+    cases = case_themes(ws)
+    taken = {c["theme"].lower() for c in cases}
+    themes = ([{**c, "runs": runs.get(c["theme"].lower(), 0)} for c in cases]
+              + [{"theme": t, "runs": runs.get(t.lower(), 0)} for t in saved.get("themes", [])
+                 if t.lower() not in taken])
     ready = bool(ws.cfg.discovery.task_description.strip())
     return {"themes": themes, "made": saved.get("made"),
             "stale": ready and saved.get("fingerprint") != _fingerprint(ws),
@@ -127,14 +156,16 @@ def generate(ws: Workspace) -> list[str]:
 
 
 def pick(ws: Workspace, rng: random.Random | None = None,
-         skip: set[str] | frozenset[str] = frozenset()) -> str | None:
-    """A theme the fewest runs explored, at random among equals, and not in `skip`
-    - None when none is left."""
+         skip: set[str] | frozenset[str] = frozenset()) -> dict[str, Any] | None:
+    """A theme the fewest runs explored - a case's pattern before a made theme, at
+    random among equals - and not in `skip`; None when none is left."""
     themes = [t for t in pool(ws)["themes"] if t["theme"] not in skip]
     if not themes:
         return None
     least = min(t["runs"] for t in themes)
-    return (rng or random).choice([t["theme"] for t in themes if t["runs"] == least])
+    first = [t for t in themes if t["runs"] == least]
+    first = [t for t in first if t.get("case")] or first
+    return (rng or random).choice(first)
 
 
 def draw_theme(session: Any) -> dict[str, Any]:
@@ -145,13 +176,21 @@ def draw_theme(session: Any) -> dict[str, Any]:
     if upcoming in session.themes_drawn:
         return {"ok": True, "theme": session.themes_drawn[upcoming],
                 "note": "already drawn for this round - give its ideas"}
-    theme = pick(session.ws, skip=set(session.themes_drawn.values()))
-    if theme is None:
+    drawn = pick(session.ws, skip=set(session.themes_drawn.values()))
+    if drawn is None:
         return {"ok": False, "error": "every theme in the pool is drawn in this run - report "
                                       "your findings"}
+    theme, case = drawn["theme"], drawn.get("case")
     before = explored(session.ws).get(theme.lower(), 0)
     session.themes_drawn[upcoming] = theme
-    session.emit("theme_drawn", theme=theme, round=upcoming, explored_before=before)
+    session.emit("theme_drawn", theme=theme, round=upcoming, explored_before=before,
+                 **({"case": case} if case else {}))
+    if case:
+        return {"ok": True, "theme": theme, "round": upcoming, "explored_before": before,
+                "pattern": drawn["pattern"], "case": case,
+                "next": f"a pattern a reviewed case showed: read the case ({case}, wiki_read) "
+                        "for its findings, look at the data the pattern needs, then give this "
+                        "round's ideas - each one about the pattern, through different lenses"}
     return {"ok": True, "theme": theme, "round": upcoming, "explored_before": before,
             "next": "look at the data this theme needs, then give this round's ideas - "
                     "each one about the theme, through different lenses"}

@@ -463,8 +463,9 @@ function ThemePoolPart() {
       <h3 className={s.partTitle}>Themes for open explorations</h3>
       <p className={s.empty}>
         A direction left empty explores: each round the agent draws one of these themes, the least
-        explored first. They are made from the task description, context, columns, sources and
-        scopes - again whenever those change.
+        explored first, a case's pattern before a made theme. The patterns come from the reviewed
+        cases in the wiki (each case's Patterns); the rest are made from the task description,
+        context, columns, sources and scopes - again whenever those change.
       </p>
       {!pool.ready && <p className={s.empty}>Describe the task in the Overview first.</p>}
       {pool.generating && <p className={s.empty}>Making the themes…</p>}
@@ -473,9 +474,10 @@ function ThemePoolPart() {
       {pool.themes.length > 0 && (
         <div className={s.themeChips}>
           {pool.themes.map((t) => (
-            <span key={t.theme} className={`${s.themeChip} ${t.runs ? s.themeUsed : ''}`}
-                  title={t.runs ? `explored by ${t.runs} run${t.runs === 1 ? '' : 's'}` : 'not explored yet'}>
-              {t.theme}{t.runs > 0 && <i>{t.runs}</i>}
+            <span key={t.theme} className={`${s.themeChip} ${t.runs ? s.themeUsed : ''} ${t.case ? s.themeCase : ''}`}
+                  title={(t.case ? `${t.pattern}\nfrom the case ${t.case.split('/').pop()}\n` : '')
+                         + (t.runs ? `explored by ${t.runs} run${t.runs === 1 ? '' : 's'}` : 'not explored yet')}>
+              {t.case && <b>case</b>}{t.theme}{t.runs > 0 && <i>{t.runs}</i>}
             </span>
           ))}
         </div>

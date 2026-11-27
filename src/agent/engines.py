@@ -11,7 +11,8 @@ spreads further than free brainstorming does:
     others         any other route - practitioner knowledge, earlier model
                    generations, the product's rules, the market - named by the idea
 
-Each guide is a markdown file in ``engines/`` - frontmatter (title, core
+Each guide is a cognitive page of the wiki, kept in the code (``wiki_seed/cognitive``)
+and copied into the wiki - frontmatter (title, core
 question, knowledge source, reasoning direction, cognitive basis), then the
 method. The brief lists them in a table; the full guide is the ``engine`` tool's
 answer, read when an idea is made with it.
@@ -30,10 +31,12 @@ from functools import lru_cache
 from pathlib import Path
 from typing import Any
 
+from agent.wiki import SEED_DIR, frontmatter
+
 __all__ = ["ENGINES_DIR", "ENGINES", "FOCUS_ENGINES", "MIN_ENGINES", "engines", "engine_guide",
            "engine_yield", "draw_focus"]
 
-ENGINES_DIR = Path(__file__).parent / "engines"
+ENGINES_DIR = SEED_DIR / "cognitive"
 ORDER = ("mechanism", "contrastive", "analogy", "morphological", "others")
 FOCUS_ENGINES = 2       # engines a round leans on
 MIN_ENGINES = 3         # distinct engines across a round's ideas
@@ -44,14 +47,8 @@ def engines() -> dict[str, dict[str, str]]:
     """Every engine's frontmatter and guide, in the canonical order."""
     out = {}
     for path in ENGINES_DIR.glob("*.md"):
-        text = path.read_text()
-        meta, body = {}, text
-        if text.startswith("---"):
-            head, body = text[3:].split("---", 1)
-            for line in head.strip().splitlines():
-                key, _, value = line.partition(":")
-                meta[key.strip()] = value.strip()
-        out[meta.get("name", path.stem)] = {**meta, "body": body.strip()}
+        meta, body = frontmatter(path.read_text())
+        out[meta.get("name", path.stem)] = {**meta, "body": body}
     return {k: out[k] for k in sorted(out, key=lambda k: (ORDER.index(k) if k in ORDER else 99, k))}
 
 

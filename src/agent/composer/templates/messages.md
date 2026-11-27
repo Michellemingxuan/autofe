@@ -5,7 +5,7 @@ to move it on. Each `## name` below is one message; `{fields}` are filled in.
 Direction: {direction}
 
 ## explore
-No direction was given: this run is an open exploration of the task. Each round has a theme. Your first call is draw_theme - ideas given before it are sent back. Then look at the data the theme needs, and let the round's ideas follow it. The next round draws a new theme - a walk across the task, not one idea circled.
+No direction was given: this run is an open exploration of the task. Each round has a theme. Your first call is draw_theme - ideas given before it are sent back. A theme may be a pattern a reviewed case showed: then read that case first (wiki_read) - its findings say how the pattern looked in one customer. Then look at the data the theme needs, and let the round's ideas follow it. The next round draws a new theme - a walk across the task, not one idea circled.
 
 ## linkage
 Write and propose the linkage for the source '{source}'.

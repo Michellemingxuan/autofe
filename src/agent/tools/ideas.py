@@ -58,6 +58,7 @@ LENSES: dict[str, str] = {
     "peer": "against similar customers - segment, cohort",
     "consistency": "where two sources or two measures disagree",
 }
+MAX_TITLE_WORDS = 8     # an idea's title, in plain words
 MIN_FOCUS = 2           # ideas that must come from the round's focus engines
 MIN_MEASURES, MAX_MEASURES = 2, 5   # ways an idea can be measured: it is not one feature
 # An idea's name names a concept; a window or a version in it is a feature's name.
@@ -265,6 +266,8 @@ def record_ideas(session: Session, ideas: list[dict[str, Any]],
     clean, names, skipped = [], set(), []
     for i, idea in enumerate(ideas or [], 1):
         name = str(idea.get("name", "")).strip()
+        title = " ".join(str(idea.get("title") or "").split())
+        summary = " ".join(str(idea.get("summary") or "").split())
         lens = str(idea.get("lens", "")).strip().lower()
         engine = str(idea.get("engine", "")).strip().lower()
         description = str(idea.get("description") or idea.get("hypothesis") or "").strip()
@@ -286,6 +289,11 @@ def record_ideas(session: Session, ideas: list[dict[str, Any]],
             problem = (f"idea {i}: {name!r} reads like a feature - a window or a version in "
                        "the name. Name the concept (liquidity_buffer_depletion, not "
                        "balance_std_6m); windows and statistics belong in its measures")
+        elif not lenient and (not title or len(title.split()) > MAX_TITLE_WORDS):
+            problem = (f"idea {i} ({name}): give it a title in plain words, up to "
+                       f"{MAX_TITLE_WORDS} words - got {title!r}")
+        elif not lenient and not summary:
+            problem = f"idea {i} ({name}): give it a summary - one plain sentence on who does what, and why it means risk"
         elif engine not in ENGINES:
             problem = f"idea {i}: engine {engine!r} is not one of {list(ENGINES)}"
         elif lens not in LENSES:
@@ -326,6 +334,7 @@ def record_ideas(session: Session, ideas: list[dict[str, Any]],
         names.add(name)
         differs = str(idea.get("differs", "") or "").strip()
         clean.append({"n": first + i, "round": session.round + 1, "name": name,
+                      "title": title or name.replace("_", " ").capitalize(), "summary": summary,
                       "engine": engine, "lens": lens, "level": level,
                       "description": description, "measures": measures, "data": data,
                       "_same_as": str(idea.get("same_as", "") or "").strip(),

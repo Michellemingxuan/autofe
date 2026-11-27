@@ -53,7 +53,7 @@ export const PROPERTIES: Property[] = [
     value: (r) => r.variable_gini ?? null },
   { key: 'gini_gain', label: 'C3 (screen gain)', kind: 'number', value: (r) => r.gini_gain },
   { key: 'p_useful', label: 'P(useful)', kind: 'number', value: (r) => r.p_useful },
-  { key: 'idea', label: 'Idea', kind: 'text', value: (r) => `${r.idea} ${r.idea_description}` },
+  { key: 'idea', label: 'Idea', kind: 'text', value: (r) => `${r.idea} ${r.idea_title ?? ''} ${r.idea_summary ?? ''} ${r.idea_description}` },
   { key: 'feature', label: 'Feature', kind: 'text', value: (r) => `${r.name} ${r.description}` },
 ]
 const BY_KEY = Object.fromEntries(PROPERTIES.map((p) => [p.key, p]))

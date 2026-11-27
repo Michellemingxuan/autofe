@@ -20,6 +20,11 @@ Write each idea with:
 * `name` - the concept, in snake_case. No window, statistic or version in it
   (`_6m`, `_90d`, `_std`, `_v2` belong to features). A feature-like name is
   sent back.
+* `title` - the idea in plain words, up to 8, for someone who has not seen
+  it: "Savings run down before the first missed payment". No snake_case, no
+  jargon or abbreviations.
+* `summary` - one plain sentence: who does what, and why it means risk. It
+  is what a reviewer reads first on the board.
 * `description` - the hypothesis: who, doing what, and why it signals default
   risk the model misses; and where it came from, as the engine's guide asks.
   Not a formula.
@@ -31,6 +36,9 @@ Write each idea with:
 For example, an idea from `mechanism` (Minsky's fragility stages):
 
 * name: `minsky_stage_shift`
+* title: Paying less of the bill, month after month
+* summary: Customers who step down from paying in full to paying the minimum
+  are sliding towards borrowing to pay.
 * description: customers slide from paying in full, to paying the minimum, to
   borrowing to pay - each step down shows months before arrears, which the
   model's late-stage columns cannot see.
@@ -61,6 +69,16 @@ method with `engine` before you use it for the first time in a run.
 * `others` is there to be creative beyond the four. Practitioner knowledge -
   what collections, underwriting and fraud teams notice first - is one route;
   any route you can name is welcome.
+
+## Draw on the wiki
+
+The wiki holds what is known beyond the data: the model's home subdomain - its
+pages and reviewed cases - what holds across its domain, and other domains
+(underwriting, customer_management, fraud, marketing) to borrow from.
+Search it (`wiki_search`) for the direction's words, read the pages that fit
+(`wiki_read`) and follow their links. A case is a pattern seen in customers,
+a starting point for `contrastive` and `mechanism`; another domain's page is
+a source for `analogy`. Name the page an idea draws on in its description.
 
 ## Practical: every idea must be buildable
 

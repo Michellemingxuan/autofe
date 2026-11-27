@@ -521,6 +521,20 @@ class ChecksConfig:
 
 
 @dataclass
+class WikiConfig:
+    """The idea engines' wiki (agent.wiki, wiki/ at the repo's root): which domain the
+    model belongs to, and how much it reads of the others."""
+    # The model's home: a subdomain of wiki/domains - <domain>/<subdomain>, e.g.
+    # customer_management/cdss_us_sbs (the domains: underwriting,
+    # customer_management, fraud, marketing). Every other subdomain is a
+    # cross-domain. None: every one is.
+    domain: Optional[str] = None
+    # A cross-domain's single cases: summary - closed, its cases/summary.md says
+    # what they teach together; open - readable like the home domain's.
+    cross_domain_cases: str = "summary"
+
+
+@dataclass
 class AgentConfig:
     """The model agent: what only it uses - how its code runs, what a direction
     aims for, its screen gates, its model and its time limits.
@@ -571,8 +585,14 @@ class AgentConfig:
     llm: LLMConfig = field(default_factory=LLMConfig)
     # Models offered as a per-run choice, besides llm.model (the default).
     models: List[str] = field(default_factory=list)
+    wiki: WikiConfig = field(default_factory=WikiConfig)
 
     def __post_init__(self):
+        if isinstance(self.wiki, dict):
+            self.wiki = _subset(WikiConfig, self.wiki)
+        if self.wiki.cross_domain_cases not in ("summary", "open"):
+            raise ValueError("agent.wiki.cross_domain_cases must be summary|open, "
+                             f"got {self.wiki.cross_domain_cases!r}")
         if isinstance(self.llm, dict):
             self.llm = _subset(LLMConfig, self.llm)
         if isinstance(self.timeouts, dict):

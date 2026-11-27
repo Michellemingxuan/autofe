@@ -278,10 +278,10 @@ of generating it - and looks through one **lens** - the kind of signal. A round
 uses at least {min(MIN_ENGINES, n)} different engines and {min(MIN_LENSES, n)} different lenses, and at least
 {min(MIN_FOCUS, n)} ideas come from the round's focus engines, named in the round's message
 (drawn by how well each engine's ideas have done). An idea is a hypothesis, not a
-feature: a concept name, a level, an engine, a lens, a description (the
-behaviour or mechanism, why it should carry risk, and - as the engine's guide
-asks - where it came from), 2 to 4 measures (different ways to measure it) and
-its data. The ideas skill is binding.
+feature: a concept name, a plain title and a one-sentence summary for a reader,
+a level, an engine, a lens, a description (the behaviour or mechanism, why it
+should carry risk, and - as the engine's guide asks - where it came from), 2 to
+4 measures (different ways to measure it) and its data. The ideas skill is binding.
 
 The engines - call `engine` with a name for its full method (the theory
 library, the axes, the shapes worth borrowing, examples):
@@ -292,11 +292,38 @@ library, the axes, the shapes worth borrowing, examples):
 
 The lenses:
 {lenses}
-
+{_wiki(session)}
 Then propose them, by their names, in the order the round's message gives.
 When a round's ideas are used and the target is not reached, the next round
 asks for new ideas - with the board of what worked and what failed in front of you.
 {_l3_idea_rule(session)}
+"""
+
+
+def _wiki(session: Session) -> str:
+    """What the wiki holds that this model may read, and how to use it."""
+    from agent.wiki import access_for, brief_index, ensure_wiki
+
+    try:
+        ensure_wiki()                         # made from the seed on first use
+    except (OSError, RuntimeError):           # no git: the pages are read all the same
+        pass
+    access = access_for(session.ws.cfg)
+    listed = brief_index(access)
+    if not listed:
+        return ""
+    closed = ("" if access.cross_domain_cases == "open" else
+              " Other subdomains' single cases are closed to it; their `cases/summary` "
+              "says what those cases teach.")
+    return f"""
+The wiki - what is known beyond the data: four domains (underwriting,
+customer_management, fraud, marketing), each with subdomains - one use case each,
+with its pages and reviewed cases. This model's home is `{access.home or 'not set'}`.{closed}
+`wiki_search` finds pages by their words, `wiki_read` gives one in full with the
+pages it links to. Read what fits the direction before you write a round; an idea
+drawn from a page names it in its description (`domains/customer_management/cdss_us_sbs/bust_out`).
+Pages you may read:
+{listed}
 """
 
 

@@ -216,6 +216,7 @@ export type DataRequest = {
 
 /** One idea of the brainstorm. Older runs carry a hypothesis and no name. */
 export type Idea = { n: number; name?: string; level?: string; lens: string
+                     title?: string; summary?: string                  // plain words, for a reader
                      engine?: string                                   // the idea engine that made it
                      measures?: string[]                               // ways to measure it
                      description?: string; hypothesis?: string; data: string
@@ -269,7 +270,7 @@ export type RunView = {
   stoppedBecause: string | null
   codeCount: number
   explore: boolean                    // no direction: the agent draws a theme per round
-  themes: { round: number; theme: string; exploredBefore: number }[]
+  themes: { round: number; theme: string; exploredBefore: number; case?: string }[]   // case: the wiki case it came from
 }
 
 export type PoolFeature = {
@@ -307,6 +308,8 @@ export type BoardRow = {
   lens: string
   idea_status: '' | 'explore' | 'active' | 'low' | 'retired'
   p_useful: number | null
+  idea_title?: string       // the idea in plain words - older ideas have none
+  idea_summary?: string     // one plain sentence
   idea_description: string
   idea_measures: string[]   // the ways the idea can be measured, as the agent gave them
   idea_same_as?: string     // <run_id>:<idea> it is linked to - its standing pools that family's evidence
@@ -554,9 +557,10 @@ export function scopeOf(raw: Record<string, any>): string {
   return !v || v === 'cas' ? 'CAS' : v
 }
 
-/** The theme pool an open exploration draws from - made from the task description. */
+/** The theme pool an open exploration draws from - the wiki cases' patterns, then the
+ *  themes made from the task description. */
 export type ThemePool = {
-  themes: { theme: string; runs: number }[]
+  themes: { theme: string; runs: number; case?: string; pattern?: string }[]
   made: number | null
   stale: boolean                      // made for another task description
   ready: boolean                      // the task is described

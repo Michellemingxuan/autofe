@@ -73,7 +73,7 @@ export function deriveRun(events: Ev[]): RunView {
         break
 
       case 'theme_drawn':                    // an open exploration's theme for a round
-        view.themes.push({ round: e.round, theme: e.theme, exploredBefore: e.explored_before ?? 0 })
+        view.themes.push({ round: e.round, theme: e.theme, exploredBefore: e.explored_before ?? 0, case: e.case })
         break
 
       case 'agent_message': {
@@ -511,7 +511,7 @@ export function deriveL3(events: Ev[]): RunView {
         break
 
       case 'theme_drawn':                    // an open exploration's theme for a round
-        view.themes.push({ round: e.round, theme: e.theme, exploredBefore: e.explored_before ?? 0 })
+        view.themes.push({ round: e.round, theme: e.theme, exploredBefore: e.explored_before ?? 0, case: e.case })
         break
 
       case 'agent_message':

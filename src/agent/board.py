@@ -439,6 +439,7 @@ def board_rows(ws: "Workspace") -> list[dict[str, Any]]:
             i = standings.get(name, {})
             return {"idea": name if i else "", "round": i.get("round"), "engine": i.get("engine") or "",
                 "idea_measures": i.get("measures") or [],
+                    "idea_title": i.get("title") or "", "idea_summary": i.get("summary") or "",
                     "lens": i.get("lens") or "", "idea_status": i.get("status") or "",
                     "p_useful": i.get("p_useful"), "idea_description": i.get("description") or "",
                     "idea_same_as": i.get("same_as") or ""}

@@ -367,6 +367,7 @@ function Item({ item, job }: { item: TraceItem; job: Job }) {
                 <span className={s.ideaN}>idea_{i.n}</span>
                 <div className={s.ideaBody}>
                   <div className={s.ideaHead}>
+                    {i.title && <span className={s.ideaTitle}>{i.title}</span>}
                     {i.name && <span className={s.ideaName}>{i.name}</span>}
                     {i.level && <span className={s.ideaLevel}>{i.level}</span>}
                     {(i.beyond_scope || i.beyond_cas) && <span className={s.ideaLevel}>beyond scope</span>}
@@ -377,6 +378,7 @@ function Item({ item, job }: { item: TraceItem; job: Job }) {
                     <code className={s.lens} title="lens - the kind of signal">{i.lens}</code>
                     {proposed && <span className={s.ideaProposed}>→ {proposed}</span>}
                   </div>
+                  {i.summary && <div className={s.ideaSummary}>{i.summary}</div>}
                   <div>{i.description ?? i.hypothesis}</div>
                   {i.measures && i.measures.length > 0 && (
                     <ul className={s.ideaMeasures}>{i.measures.map((m) => <li key={m}>{m}</li>)}</ul>

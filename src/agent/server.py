@@ -249,9 +249,10 @@ def _run_summary(folder: Path) -> dict[str, Any] | None:
 
 def create_app(config_path: str, static_dir: str | None = None,
                run_session: Callable[[Session], Any] | None = None,
-               make_themes: Callable[[Any], list[str]] | None = None) -> Flask:
-    """``run_session`` runs an agent job and ``make_themes`` the theme pool; the
-    defaults drive the LLM. Tests pass their own, so the whole API can be
+               make_themes: Callable[[Any], list[str]] | None = None,
+               ingest_wiki: Callable[[Any], Any] | None = None) -> Flask:
+    """``run_session`` runs an agent job, ``make_themes`` the theme pool and
+    ``ingest_wiki`` the wiki's raw files (agent.wiki_ingest); the defaults drive the LLM. Tests pass their own, so the whole API can be
     exercised without a model."""
     setup = Setup(config_path)
     cfg, ws = setup.load()
@@ -291,6 +292,33 @@ def create_app(config_path: str, static_dir: str | None = None,
                 state["error"] = f"{type(exc).__name__}: {exc}"
             finally:
                 state["generating"] = False
+
+        threading.Thread(target=work, daemon=True).start()
+
+    def _default_ingest(cfg: Any) -> Any:
+        from agent.wiki_ingest import ingest
+
+        return ingest(cfg)
+
+    wiki_ingest = ingest_wiki or _default_ingest
+    ctx["wiki"] = {"ingesting": False, "error": None}
+
+    def refresh_wiki() -> None:
+        """Ingest the wiki's new raw files in the background, when there are any."""
+        from agent.wiki_ingest import pending
+
+        state = ctx["wiki"]
+        if state["ingesting"] or not pending():
+            return
+        state.update(ingesting=True, error=None)
+
+        def work() -> None:
+            try:
+                wiki_ingest(ctx["cfg"])
+            except Exception as exc:  # noqa: BLE001 - kept for the status
+                state["error"] = f"{type(exc).__name__}: {exc}"
+            finally:
+                state["ingesting"] = False
 
         threading.Thread(target=work, daemon=True).start()
 
@@ -348,6 +376,7 @@ def create_app(config_path: str, static_dir: str | None = None,
 
     threading.Thread(target=watch_sources, daemon=True).start()
     refresh_themes()                           # missing, or made for another task
+    refresh_wiki()                             # raw files added while the server was down
 
     def error(message: str, status: int = 400):
         return jsonify(error=message), status
@@ -561,6 +590,7 @@ def create_app(config_path: str, static_dir: str | None = None,
 
     @app.post("/api/runs")
     def start_run():
+        refresh_wiki()                         # raw files added since
         body = request.get_json(force=True)
         direction = (body.get("direction") or "").strip()
         explore = not direction

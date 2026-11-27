@@ -8,10 +8,13 @@
     data_pull  screen_request · propose_new_data        L3: data within a scope (SQL) or beyond scope
     challenge  challenge_request                        L3: record a verdict, run its construction
     report     report_findings                          end the run with a summary
+    wiki_tools search · read · edit · versions            the wiki keeper's (agent.wiki_ingest)
 
 The ideas are not a tool: the run's first stage (agent.agent) answers with them
 as structured output (:class:`Ideas`), checked by agent.tools.ideas. That stage
-reads an idea engine's method with ``engine`` (agent.engines).
+reads an idea engine's method with ``engine`` (agent.engines), and the wiki - the
+domains, their cases, the engines - with ``wiki_search`` and ``wiki_read``
+(agent.wiki), within what the model's access allows.
 
 Each function owns its logic and its checks; :func:`for_agent` wraps them for
 the agents SDK, binding the session, so the model only sees the arguments it
@@ -51,7 +54,7 @@ TOOLSETS = {
     "l3": ("catalog", "scope", "sample_rows", "shots", "run_probe", "screen_request",
            "propose_new_data", "challenge_request", "report_findings"),
     # Before any of them: the ideas stage, which looks and answers with ideas.
-    "ideas": ("draw_theme", "engine", "catalog", "scope", "sample_rows", "shots", "run_probe"),
+    "ideas": ("draw_theme", "engine", "wiki_search", "wiki_read", "catalog", "scope", "sample_rows", "shots", "run_probe"),
 }
 END_TOOL = "report_findings"
 
@@ -61,6 +64,11 @@ class Idea(BaseModel):
     name: str = Field(description="snake_case name of the IDEA - a concept, not a feature: "
                                   "liquidity_buffer_depletion, not balance_std_6m. No window, "
                                   "statistic or version in it")
+    title: str = Field(description="the idea in plain words, for a reader who has not seen "
+                                   "it: up to 8 words, no jargon or abbreviations - "
+                                   "'Savings run down before the first missed payment'")
+    summary: str = Field(description="one plain sentence: who does what, and why it means "
+                                     "risk - what a reviewer reads first")
     level: str = Field(description="L1, L2 or L3 - one of the levels this run allows")
     engine: str = Field(description="the engine that made it: mechanism, contrastive, analogy, "
                                     "morphological, or others for any other route")
@@ -286,7 +294,8 @@ def for_agent(session: Session, toolset: str | None = None) -> list[Any]:
     @function_tool(name_override="draw_theme")
     def _draw_theme() -> str:
         """An open exploration - no direction from the user: draw this round's theme from
-        the pool, the one earlier runs explored least. Give the round's ideas about it."""
+        the pool, the one earlier runs explored least - a pattern a reviewed case showed
+        before a made theme, with the case to read. Give the round's ideas about it."""
         from agent.themes import draw_theme
 
         return _dump(draw_theme(session))
@@ -304,7 +313,38 @@ def for_agent(session: Session, toolset: str | None = None) -> list[Any]:
 
         return _dump(engine_guide(name))
 
-    tools = {"draw_theme": _draw_theme, "engine": _engine, "catalog": _catalog, "scope": _scope, "sample_rows": _sample_rows, "shots": _shots,
+    @function_tool(name_override="wiki_search")
+    def _wiki_search(query: str, domain: str = "", kind: str = "") -> str:
+        """Search the wiki - the domains, their pages and cases, the engines - by words;
+        returns the best pages with their summary and the lines that match.
+
+        Args:
+            query: words, e.g. "bust out spend before default".
+            domain: a domain or a subdomain, e.g. fraud or customer_management/cdss_us_sbs.
+                Empty = all you may read.
+            kind: domain, subdomain, page, case, cases_summary, cognitive or experiment.
+                Empty = all.
+        """
+        from agent.wiki import access_for, search
+
+        return _dump(search(query, access_for(session.ws.cfg), domain, kind))
+
+    @function_tool(name_override="wiki_read")
+    def _wiki_read(page: str) -> str:
+        """Read one wiki page in full, with the pages it links to - follow them with
+        wiki_read again.
+
+        Args:
+            page: its id, as the index or a search gives it, e.g.
+                domains/customer_management/cdss_us_sbs/bust_out; a domain's or
+                subdomain's name reads its index.
+        """
+        from agent.wiki import access_for, read
+
+        return _dump(read(page, access_for(session.ws.cfg)))
+
+    tools = {"draw_theme": _draw_theme, "engine": _engine, "wiki_search": _wiki_search,
+             "wiki_read": _wiki_read, "catalog": _catalog, "scope": _scope, "sample_rows": _sample_rows, "shots": _shots,
              "run_probe": _run_probe,
              "propose_linkage": _propose_linkage, "define_aggregate": _define_aggregate,
              "screen_feature": _screen_feature,

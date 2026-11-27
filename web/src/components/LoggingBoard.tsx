@@ -75,7 +75,7 @@ function compare(a: BoardRow, b: BoardRow, key: Key, dir: 1 | -1): number {
 // ── Download ────────────────────────────────────────────────────────────
 // The columns of the download, in order - every field the board holds, code included.
 const CSV_COLUMNS: (keyof BoardRow)[] = [
-  'feature_id', 'run_id', 'direction', 'round', 'engine', 'lens', 'idea', 'idea_status', 'p_useful',
+  'feature_id', 'run_id', 'direction', 'round', 'engine', 'lens', 'idea', 'idea_title', 'idea_summary', 'idea_status', 'p_useful',
   'idea_description', 'idea_measures', 'kind', 'name', 'level', 'description', 'differs', 'attempt',
   'seen_before', 'max_model_rho', 'nearest', 'nearest_rho', 'residual_rho', 'variable_gini', 'note', 'gini_gain', 'capture_gain',
   'status', 'reason', 'evidence', 'sent', 'code',
@@ -101,7 +101,7 @@ function download(rows: BoardRow[]) {
 }
 
 const searchText = (r: BoardRow) => [
-  r.direction, r.run_id, r.engine, r.lens, r.idea, r.idea_description, ...(r.idea_measures ?? []), r.idea_status, r.name,
+  r.direction, r.run_id, r.engine, r.lens, r.idea, r.idea_title, r.idea_summary, r.idea_description, ...(r.idea_measures ?? []), r.idea_status, r.name,
   r.description, r.differs, r.nearest, r.status, r.reason, r.sent,
 ].join(' ').toLowerCase()
 
@@ -290,8 +290,12 @@ export function LoggingBoard({ onClose }: Props) {
                                     : <span className={s.none} title="The idea was recorded before ideas named their engine">not recorded</span>}
                                 </td>
                                 <td rowSpan={span} className={s.ideaCell}>
-                                  <div className={s.ideaName}>{r.idea || '(no recorded idea)'}</div>
+                                  {r.idea_title
+                                    ? <div className={s.ideaTitle}>{r.idea_title}</div>
+                                    : <div className={s.ideaName}>{r.idea || '(no recorded idea)'}</div>}
+                                  {r.idea_summary && <div className={s.ideaSummary}>{r.idea_summary}</div>}
                                   <div className={s.ideaMeta}>
+                                    {r.idea_title && <code>{r.idea}</code>}
                                     {r.lens && <span>{r.lens}</span>}
                                     {r.round !== null && r.round !== undefined && <span>round {r.round}</span>}
                                   </div>

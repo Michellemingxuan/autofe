@@ -250,8 +250,8 @@ def test_an_earlier_rounds_idea_stays_in_the_order(workspace):
     from agent.board import round_board
 
     session = _session(workspace, "x", params=RunParams(K=3))
-    session.ideas = [{"name": "pay_gap", "engine": "analogy", "round": 1},
-                     {"name": "tenure_curve", "engine": "mechanism", "round": 2}]
+    session.ideas = [{"name": "pay_gap", "title": "A plain title", "summary": "Who does what, and why it means risk.", "engine": "analogy", "round": 1},
+                     {"name": "tenure_curve", "title": "A plain title", "summary": "Who does what, and why it means risk.", "engine": "mechanism", "round": 2}]
     session.round_ideas, session.round = session.ideas[1:], 2
     assert set(_work_order(session)) == {"pay_gap", "tenure_curve"}
     assert {i["name"]: i["round"] for i in round_board(session)} == {"pay_gap": 1, "tenure_curve": 2}
@@ -280,7 +280,7 @@ def test_an_idea_or_request_name_of_an_earlier_run_is_taken(no_history):
     (first.run_dir / "data_requests.json").write_text(json.dumps(
         [{"intent": "R1", "source_name": "cas_declines", "status": "dropped"}]))
     second = _session(no_history, "y", params=RunParams(K=2, levels=["L3"]))
-    reply = record_ideas(second, [{"name": "decline_streaks", "engine": "mechanism", "lens": "trend",
+    reply = record_ideas(second, [{"name": "decline_streaks", "title": "A plain title", "summary": "Who does what, and why it means risk.", "engine": "mechanism", "lens": "trend",
                                    "level": "L3", "beyond_scope": True, "description": "runs of declines",
                                    "measures": ["a b", "c d"], "data": "declines from the auth system monthly"}])
     assert not reply["ok"] and f"idea of run {first.run_id}" in reply["error"]
@@ -296,8 +296,8 @@ def test_an_idea_whose_features_carry_no_signal_is_worked_later_not_refused(work
     assert idea_of("pay_gap_v3", []) == idea_of("pay_gap_final", []) == "pay_gap"
     assert idea_of("pay_gap_60d_fixed", [{"name": "pay_gap_60d"}]) == "pay_gap_60d"
     session = _session(workspace, "x", params=RunParams(K=3))
-    session.ideas = session.round_ideas = [{"name": "pay_gap", "engine": "analogy"},
-                                           {"name": "tenure_curve", "engine": "mechanism"}]
+    session.ideas = session.round_ideas = [{"name": "pay_gap", "title": "A plain title", "summary": "Who does what, and why it means risk.", "engine": "analogy"},
+                                           {"name": "tenure_curve", "title": "A plain title", "summary": "Who does what, and why it means risk.", "engine": "mechanism"}]
     copy = "def build(spark, sources, base):\n    out = base[['id']].copy()\n    out['{n}'] = base['{c}'] * 2\n    return out"
     # A failed script says nothing about the idea: it does not count against it.
     broken = "def build(spark, sources, base):\n    return base[['id', 'as_of']]"
@@ -784,7 +784,7 @@ def _ideas(lenses, engines=None):
     from agent.engines import ENGINES
 
     engines = engines or [ENGINES[i % len(ENGINES)] for i in range(len(lenses))]
-    return [{"name": f"idea_{'abcdefghijklmnop'[i]}_{lens}", "engine": engine, "lens": lens,
+    return [{"name": f"idea_{'abcdefghijklmnop'[i]}_{lens}", "title": "A plain title", "summary": "Who does what, and why it means risk.", "engine": engine, "lens": lens,
              "measures": ["first way to measure it", "second way to measure it"],
              "description": f"an idea through {lens}",
              "data": "auth_decline_cnt_30d from the CAS"}
@@ -820,12 +820,12 @@ def test_proposals_wait_for_ideas_with_a_spread(no_history):
     assert not one_engine["ok"] and "[MISSING] at least 3 different engines" in one_engine["error"]
     unfocused = record_ideas(session, _ideas(lenses, others + others[:1]))    # misses the focus
     assert not unfocused["ok"] and "focus engines" in unfocused["error"]
-    assert not record_ideas(session, [{"name": "x", "engine": "mechanism", "lens": "vibes",
+    assert not record_ideas(session, [{"name": "x", "title": "A plain title", "summary": "Who does what, and why it means risk.", "engine": "mechanism", "lens": "vibes",
                                        "description": "x"}])["ok"]
-    vague = record_ideas(session, [{"name": "x", "engine": "brainstorm", "lens": "trend",
+    vague = record_ideas(session, [{"name": "x", "title": "A plain title", "summary": "Who does what, and why it means risk.", "engine": "brainstorm", "lens": "trend",
                                     "description": "x"}])
     assert not vague["ok"] and "engine 'brainstorm'" in vague["error"]
-    unnamed = record_ideas(session, [{"name": "Not A Name", "engine": "mechanism", "lens": "trend",
+    unnamed = record_ideas(session, [{"name": "Not A Name", "title": "A plain title", "summary": "Who does what, and why it means risk.", "engine": "mechanism", "lens": "trend",
                                       "description": "x"}])
     assert not unnamed["ok"] and "snake_case name" in unnamed["error"]
     spread = record_ideas(session, _ideas(lenses, focus + others[:2]))
@@ -843,7 +843,7 @@ def test_proposals_wait_for_ideas_with_a_spread(no_history):
     assert "brainstorm" not in [t.name for t in tools.for_agent(session)]
     stage = build_agent(session, "ideas")
     assert stage.output_type.output_type is tools.Ideas          # read leniently: FirstAnswer
-    assert {t.name for t in stage.tools} == {"engine", "catalog", "scope", "sample_rows", "shots",
+    assert {t.name for t in stage.tools} == {"engine", "wiki_search", "wiki_read", "catalog", "scope", "sample_rows", "shots",
                                              "run_probe"}
 
 
@@ -872,7 +872,7 @@ def test_ideas_that_say_the_same_thing_are_sent_back_and_a_retired_one_refused(n
         focus = focus_engines(session)
         engines = [*focus, *[e for e in ("analogy", "others", "contrastive", "morphological")
                              if e not in focus]][:4]
-        return [{"name": name, "engine": engine, "lens": lens, "level": "L1", "description": text,
+        return [{"name": name, "title": "A plain title", "summary": "Who does what, and why it means risk.", "engine": engine, "lens": lens, "level": "L1", "description": text,
                  "measures": ["first way to measure it", "second way to measure it"],
                  "data": "x"} for (name, text), engine, lens
                 in zip(descriptions, engines, list(LENSES)[:4])]
@@ -942,7 +942,7 @@ def test_an_idea_keeps_one_record_across_runs_and_earlier_ideas_join_the_draw(no
         focus = focus_engines(session)
         engines = [*focus, *[e for e in ("analogy", "others", "contrastive", "morphological")
                              if e not in focus]][:4]
-        return [{"name": name, "engine": engine, "lens": lens, "level": "L1", "description": text,
+        return [{"name": name, "title": "A plain title", "summary": "Who does what, and why it means risk.", "engine": engine, "lens": lens, "level": "L1", "description": text,
                  "measures": ["first way to measure it", "second way to measure it"],
                  "data": "x"} for (name, text), engine, lens
                 in zip(descriptions, engines, list(LENSES)[:4])]
@@ -1062,7 +1062,7 @@ def test_an_l3_idea_must_name_cas_data(no_history):
     from agent.tools.ideas import record_ideas
 
     session = _session(no_history, "x", params=RunParams(K=2, levels=["L3"]))
-    from_sources = record_ideas(session, [{"name": "spend_trend", "engine": "mechanism", "measures": ["first way to measure it", "second way to measure it"], 
+    from_sources = record_ideas(session, [{"name": "spend_trend", "title": "A plain title", "summary": "Who does what, and why it means risk.", "engine": "mechanism", "measures": ["first way to measure it", "second way to measure it"], 
                                          "lens": "trend", "level": "L3",
                                          "description": "spend trend over 3 months",
                                          "data": "spends source"}])
@@ -1076,7 +1076,7 @@ def test_an_l3_idea_on_variables_requested_already_is_sent_back(no_history):
     session.data_requests = [{"intent": "R1", "source_name": "cas_declines", "status": "kept",
                               "tables": ["wwcas_synthetic"],
                               "columns": ["customer_id", "trans_dt", "auth_decline_cnt_30d"]}]
-    again = record_ideas(session, [{"name": "decline_streaks", "engine": "mechanism", "lens": "trend",
+    again = record_ideas(session, [{"name": "decline_streaks", "title": "A plain title", "summary": "Who does what, and why it means risk.", "engine": "mechanism", "lens": "trend",
                                     "level": "L3", "measures": ["streak of months with declines",
                                                                 "longest run of declines"],
                                     "description": "runs of months with declines",
@@ -1162,7 +1162,7 @@ def test_a_request_beyond_the_cas_scope_is_an_idea_with_no_sql_and_is_challenged
         (session.run_dir / "data_requests.md").read_text()
 
     # An L3 idea names scope variables, or is marked beyond scope and says what it needs.
-    base = {"engine": "mechanism", "lens": "trend", "level": "L3", "description": "d",
+    base = {"title": "A plain title", "summary": "Who does what.", "engine": "mechanism", "lens": "trend", "level": "L3", "description": "d",
             "measures": ["first way to measure it", "second way to measure it"]}
     named = record_ideas(session, [{**base, "name": "a", "data": "rla"}])
     assert not named["ok"] and "Within a scope (CAS)" in named["error"]
@@ -1415,7 +1415,7 @@ def test_an_exploration_draws_a_new_theme_each_round(no_history):
     assert not themes.draw_theme(directed)["ok"]                 # a direction is followed
 
     session = _session(no_history, themes.OPEN, explore=True, params=RunParams(K=2, levels=["L1"]))
-    ideas = [{"name": f"i{n}", "engine": "analogy", "lens": lens, "level": "L1", "description": "d", "measures": ["first way to measure it", "second way to measure it"], 
+    ideas = [{"name": f"i{n}", "title": "A plain title", "summary": "Who does what, and why it means risk.", "engine": "analogy", "lens": lens, "level": "L1", "description": "d", "measures": ["first way to measure it", "second way to measure it"], 
               "data": "x"}
              for n, lens in enumerate(["trend", "ratio", "volatility", "recency"])]
     refused = record_ideas(session, ideas)
@@ -1537,7 +1537,7 @@ def test_a_round_that_keeps_missing_the_spread_still_keeps_its_ideas(no_history)
     session = _session(no_history, "x", params=RunParams(K=10, levels=["L1", "L2"], ideas_per_round=3))
     session.quota = {"L2": 6, "L1": 4}
     focus = focus_engines(session)
-    narrow = [{"name": f"i{n}", "engine": focus[n % 2], "lens": lens, "level": "L1", "measures": ["first way to measure it", "second way to measure it"], 
+    narrow = [{"name": f"i{n}", "title": "A plain title", "summary": "Who does what, and why it means risk.", "engine": focus[n % 2], "lens": lens, "level": "L1", "measures": ["first way to measure it", "second way to measure it"], 
                "description": f"idea {n}", "data": "x"}
               for n, lens in enumerate(["calendar", "recency", "trend"])]
     sent_back = record_ideas(session, narrow)
@@ -1546,7 +1546,7 @@ def test_a_round_that_keeps_missing_the_spread_still_keeps_its_ideas(no_history)
     assert "To fix: change the engine of 1 idea(s) to one not used yet" in sent_back["error"]
     assert "make one idea level L2" in sent_back["error"]
     # The last resort: recorded anyway, with the rules it missed - never lost.
-    kept = record_ideas(session, narrow + [{"name": "Bad Name", "engine": "x", "lens": "trend"}],
+    kept = record_ideas(session, narrow + [{"name": "Bad Name", "title": "A plain title", "summary": "Who does what, and why it means risk.", "engine": "x", "lens": "trend"}],
                         lenient=True)
     assert kept["ok"] and [i["name"] for i in session.ideas] == ["i0", "i1", "i2"]
     recorded = next(e for e in session.events if e["event"] == "ideas_recorded")
@@ -1562,7 +1562,7 @@ def test_an_idea_is_a_hypothesis_its_features_name_it(workspace):
     session = _session(workspace, "x", params=RunParams(K=2, levels=["L1"]))
     focus = focus_engines(session)
     engines = [*focus, *[e for e in ("analogy", "others", "contrastive", "mechanism") if e not in focus]][:4]
-    good = [{"name": n, "engine": e, "lens": l, "level": "L1", "description": f"the {n} hypothesis",
+    good = [{"name": n, "title": "A plain title", "summary": "Who does what, and why it means risk.", "engine": e, "lens": l, "level": "L1", "description": f"the {n} hypothesis",
              "measures": [f"{n} measured one way", f"{n} measured another way"], "data": "base"}
             for n, e, l in zip(["capacity_strain", "limit_dependence", "tenure_maturity", "income_mismatch"],
                                engines, ["capacity", "level", "trend", "peer"])]
@@ -1589,7 +1589,7 @@ def test_the_proposal_message_carries_each_idea_in_the_order_to_work_it(no_histo
     session = _session(no_history, "x", params=RunParams(K=2, levels=["L1"]))
     focus = focus_engines(session)
     engines = [*focus, *[e for e in ("analogy", "others", "contrastive", "mechanism") if e not in focus]][:4]
-    ideas = [{"name": n, "engine": e, "lens": l, "level": "L1", "description": f"the {n} hypothesis",
+    ideas = [{"name": n, "title": "A plain title", "summary": "Who does what, and why it means risk.", "engine": e, "lens": l, "level": "L1", "description": f"the {n} hypothesis",
               "measures": [f"{n} measured one way", f"{n} measured another way"], "data": "base columns"}
              for n, e, l in zip(["capacity_stress", "limit_reliance", "tenure_seasoning", "income_gap"],
                                 engines, ["capacity", "level", "trend", "peer"])]
@@ -2483,3 +2483,343 @@ def test_an_empty_feature_is_not_scored_and_says_why(no_history):
     out = screen_feature(session, "never", "spend after as_of", "L2", empty)
     assert not out["verified"] and out["gini_gain"] is None and out["coverage"] == 0
     assert out["reason"].startswith("no screen row has a value") and "spends" in out["reason"]
+
+
+def _case(title, pattern):
+    """A case page's body: its key points, findings and patterns."""
+    return (f"# {title}\n\n## Key points\n\nThe case in brief.\n\n## Findings\n\nWhat was "
+            f"reviewed.\n\n## Patterns\n\n* **{pattern}** - how it shows in the domain.")
+
+
+def _wiki(root):
+    """A small wiki: a home domain with a case, and another domain with one."""
+    def page(path, title, summary, body):
+        (root / path).parent.mkdir(parents=True, exist_ok=True)
+        (root / path).write_text(f"---\ntitle: {title}\nsummary: {summary}\n---\n# {title}\n\n{body}\n")
+
+    page("domains/customer_management/cards/index.md", "Credit and risk", "Why customers stop paying.",
+         "See [[bust_out]] and [[fraud]] and [[nowhere]].")
+    page("domains/customer_management/cards/bust_out.md", "Credit bust-out", "Draw the line, then leave.",
+         "Spend bursts after a line increase.")
+    page("domains/customer_management/cards/cases/one.md", "Burst after a line increase", "A case.",
+         "Spend reached the limit after the line increase.")
+    page("domains/fraud/index.md", "Fraud", "Who takes what is not theirs.", "Account takeover.")
+    page("domains/fraud/takeover/cases/summary.md", "What fraud cases teach", "Patterns.", "Takeover then spend.")
+    page("domains/fraud/takeover/cases/takeover.md", "A takeover", "A case.", "Password reset, then spend.")
+    page("experiments/other_model/notes.md", "Notes", "Another model's.", "spend")
+    (root / "raw").mkdir()
+    (root / "raw" / "dropped.md").write_text("# not a page yet\n\nspend")
+
+
+def test_the_wiki_opens_the_home_domain_and_only_the_summary_of_other_domains_cases(tmp_path):
+    from agent.wiki import Access, brief_index, index, read, search
+
+    _wiki(tmp_path)
+    home = Access(home="customer_management/cards", model="this_model")
+    assert read("domains/customer_management/cards/cases/one", home, tmp_path)["ok"]
+    closed = read("domains/fraud/takeover/cases/takeover", home, tmp_path)
+    assert not closed["ok"] and "domains/fraud/takeover/cases/summary" in closed["error"]
+    assert read("domains/fraud/takeover/cases/summary", home, tmp_path)["ok"]
+    assert read("domains/fraud/takeover/cases/takeover", Access("customer_management/cards", "m", "open"), tmp_path)["ok"]
+    assert not read("experiments/other_model/notes", home, tmp_path)["ok"]
+    # Search ranks what the model may read, by its words; raw files are not pages.
+    found = search("spend line increase", home, root=tmp_path)["results"]
+    pages = [r["page"] for r in found]
+    assert pages[0] in ("domains/customer_management/cards/cases/one", "domains/customer_management/cards/bust_out")
+    assert "domains/fraud/takeover/cases/takeover" not in pages and not any("raw" in p for p in pages)
+    assert "experiments/other_model/notes" not in pages
+    assert [r["page"] for r in search("takeover", home, kind="cases_summary", root=tmp_path)["results"]] \
+        == ["domains/fraud/takeover/cases/summary"]
+    # A page's links resolve by id, by a domain's name or by a unique page name.
+    links = read("customer_management/cards", home, tmp_path)["links"]
+    assert [l["page"] for l in links] == ["domains/customer_management/cards/bust_out", "domains/fraud/index", None]
+    assert "domains/fraud/takeover/cases/takeover" not in brief_index(home, tmp_path)
+    assert {e["id"] for e in index(tmp_path)} >= {"domains/fraud/takeover/cases/takeover"}
+    assert (tmp_path / "index.json").exists()
+
+
+def test_the_ideas_stage_reads_the_engines_from_the_wiki_and_ideas_carry_a_plain_title(no_history):
+    from agent.engines import ENGINES, engine_guide
+    from agent.tools.ideas import record_ideas
+
+    assert ENGINES == ("mechanism", "contrastive", "analogy", "morphological", "others")
+    assert engine_guide("mechanism")["ok"]
+    session = _session(no_history, "x")
+    idea = {"name": "minsky_stage_shift", "engine": "mechanism", "lens": "trend", "level": "L1",
+            "description": "d", "measures": ["first way to measure it", "second way to measure it"],
+            "data": "base"}
+    untitled = record_ideas(session, [idea])
+    assert not untitled["ok"] and "title in plain words" in untitled["error"]
+    long = record_ideas(session, [{**idea, "title": "one two three four five six seven eight nine",
+                                   "summary": "s"}])
+    assert not long["ok"] and "up to 8 words" in long["error"]
+
+
+def test_a_short_link_prefers_the_page_of_its_own_domain(tmp_path):
+    from agent.wiki import Access, read
+
+    _wiki(tmp_path)
+    (tmp_path / "domains/fraud/bust_out.md").write_text("# Fraud's bust-out\n\nSee [[bust_out]].")
+    (tmp_path / "domains/fraud/index.md").write_text("# Fraud\n\n[[bust_out]] [[one]] [[customer_management/cards/bust_out]]")
+    links = read("fraud", Access("customer_management/cards"), tmp_path)["links"]
+    assert [l["page"] for l in links] == ["domains/fraud/bust_out", "domains/customer_management/cards/cases/one",
+                                          "domains/customer_management/cards/bust_out"]
+    home = read("customer_management/cards", Access("customer_management/cards"), tmp_path)["links"]
+    assert home[0]["page"] == "domains/customer_management/cards/bust_out"
+
+
+def test_the_wiki_is_its_own_repository_made_from_the_seed_with_the_engines(tmp_path):
+    from agent.wiki import SEED_DIR, ensure_wiki, git
+
+    _wiki(tmp_path)
+    ensure_wiki(tmp_path)
+    assert "Seed the wiki" in git(tmp_path, "log", "--format=%s")
+    assert (tmp_path / "cognitive" / "mechanism.md").read_text() == (SEED_DIR / "cognitive" / "mechanism.md").read_text()
+    assert (tmp_path / "domains/customer_management/cards/index.md").exists()          # pages already there kept
+    (tmp_path / "cognitive" / "mechanism.md").write_text("an older engine")
+    git(tmp_path, "commit", "-qam", "an older engine")
+    ensure_wiki(tmp_path)                                                # the engines follow the code
+    assert "Update from the seed" in git(tmp_path, "log", "-1", "--format=%s")
+    assert (tmp_path / "cognitive" / "mechanism.md").read_text() == (SEED_DIR / "cognitive" / "mechanism.md").read_text()
+    assert git(tmp_path, "status", "--porcelain") == ""
+
+
+def test_the_keeper_adds_changes_and_deletes_parts_of_pages(tmp_path):
+    from agent.wiki import ensure_wiki, pages, read, search, Access
+    from agent.tools.wiki_tools import Keeper
+    from agent.tools.wiki_tools import (add_to_page, change_in_page, create_page, delete_from_page,
+                                         delete_page, finish, move_page, wiki_diff, wiki_history,
+                                         wiki_restore, wiki_revert)
+
+    _wiki(tmp_path)
+    ensure_wiki(tmp_path)
+    k = Keeper(tmp_path, "x.md")
+    page = "domains/customer_management/cards/bust_out"
+    assert add_to_page(k, page, "* Cash advances repeated.", after="Spend bursts after a line increase.")["ok"]
+    assert change_in_page(k, page, "summary: Draw the line, then leave.", "summary: Draw it out, then go.")["ok"]
+    assert delete_from_page(k, page, "Spend bursts after a line increase.\n")["ok"]
+    text = (tmp_path / f"{page}.md").read_text()
+    assert "Cash advances repeated" in text and "Spend bursts" not in text
+    assert pages(tmp_path)[page].summary == "Draw it out, then go."
+    assert "not in" in change_in_page(k, page, "no such passage", "x")["error"]
+    assert "lose its title" in delete_from_page(k, page, "title: Credit bust-out\n")["error"]
+    # Not the keeper's to write: the cases summary, the engines, anything outside domains.
+    assert "made from the subdomain's cases" in add_to_page(k, "domains/fraud/takeover/cases/summary", "x")["error"]
+    assert "not a domain page" in create_page(k, "cognitive/new", "t", "s", "# t")["error"]
+    # A case page is named by its case id - searchable, and linked by it.
+    assert "named by its case id" in create_page(k, "domains/customer_management/cards/cases/two cases", "Two", "s", "# Two")["error"]
+    # It has its key points, findings and patterns - the patterns as named bullets.
+    no_sections = create_page(k, "domains/customer_management/cards/cases/C-2231", "Two", "A case.", "# Two\n\nCash daily.")
+    assert "three sections" in no_sections["error"] and "## Key points" in no_sections["error"]
+    prose = _case("Two", "x").replace("* **x** - how it shows in the domain.", "Cash daily.")
+    assert "as bullets" in create_page(k, "domains/customer_management/cards/cases/C-2231", "Two", "A case.", prose)["error"]
+    assert create_page(k, "domains/customer_management/cards/cases/C-2231", "Two", "A case.", _case("Two", "Cash every day"))["ok"]
+    assert "three sections" in delete_from_page(k, "domains/customer_management/cards/cases/C-2231", "## Findings\n")["error"]
+    assert pages(tmp_path)["domains/customer_management/cards/cases/C-2231"].case_id == "C-2231"
+    assert search("C-2231", Access("customer_management/cards"), root=tmp_path)["results"][0]["page"] == "domains/customer_management/cards/cases/C-2231"
+    assert read("C-2231", Access("customer_management/cards"), tmp_path)["case_id"] == "C-2231"
+    gone = delete_page(k, page, "folded into another page")
+    assert gone["ok"] and gone["linked_from"] == ["domains/customer_management/cards/index"]
+    assert "indexes pages" in delete_page(k, "domains/customer_management/cards/index", "x")["error"]
+    assert [e["op"] for e in k.edits] == ["added", "changed", "deleted", "created", "removed"]
+
+
+def test_each_raw_file_is_one_commit_and_the_keeper_restores_and_reverts_from_history(tmp_path):
+    from agent.wiki import git, pages
+    from agent.wiki_ingest import CasesSummary, ingest, pending
+    from agent.tools.wiki_tools import (add_to_page, change_in_page, create_page, delete_from_page,
+                                         delete_page, finish, move_page, wiki_diff, wiki_history,
+                                         wiki_restore, wiki_revert)
+
+    _wiki(tmp_path)
+    (tmp_path / "raw" / "dropped.md").write_text("# Cash advances\n\nCustomer C77 drew cash daily before a bust-out.")
+    prompts, summarised = [], []
+
+    def first(keeper, prompt):
+        prompts.append(prompt)
+        create_page(keeper, "domains/customer_management/cards/cash_extraction", "Cash extraction",
+                           "Cash drawn out before a stop.", "# Cash extraction\n\nSee [[bust_out]].")
+        add_to_page(keeper, "domains/customer_management/cards/index", "* [[cash_extraction]] - cash drawn out")
+        create_page(keeper, "domains/customer_management/cards/cases/C77", "Daily cash", "A case.",
+                    _case("Daily cash", "Cash every day"))
+        finish(keeper, "Add cash extraction and its case")
+
+    def summarise(domain, current, cases):
+        summarised.append((domain, current))
+        return CasesSummary(summary="Bursts then a stop.", body="# What the cases teach\n\n* bursts")
+
+    done = ingest(None, tmp_path, first, summarise)
+    assert "domains/customer_management/cards/bust_out" in prompts[0] and "drew cash daily" in prompts[0]
+    assert done[0]["commit"] and summarised == [("customer_management/cards", "(none yet)")]
+    assert git(tmp_path, "log", "-1", "--format=%s").strip() == "Add cash extraction and its case"
+    assert git(tmp_path, "status", "--porcelain") == "" and pending(tmp_path) == []
+    summary = pages(tmp_path)["domains/customer_management/cards/cases/summary"]
+    assert "C77" not in summary.body and "Drawn from 2 cases of [[customer_management/cards]]." in summary.body
+    assert "created `domains/customer_management/cards/cash_extraction`" in (tmp_path / "log.md").read_text()
+    commit = done[0]["commit"]
+    # A later file says the earlier one was wrong: the keeper reads the history and undoes it.
+    (tmp_path / "raw" / "correction.md").write_text("The cash notes were about another product - drop them.")
+
+    def second(keeper, prompt):
+        history = wiki_history(keeper, "domains/customer_management/cards/cash_extraction")["commits"]
+        assert history[0].startswith(commit)
+        assert "Cash extraction" in wiki_diff(keeper, commit, "domains/customer_management/cards/cash_extraction")["diff"]
+        assert wiki_revert(keeper, commit)["ok"]
+        finish(keeper, "Undo the cash notes: another product")
+
+    ingest(None, tmp_path, second, summarise)
+    wiki = pages(tmp_path)
+    assert "domains/customer_management/cards/cash_extraction" not in wiki and "domains/customer_management/cards/cases/C77" not in wiki
+    assert "domains/customer_management/cards/cases/summary" in wiki                    # its other case stays
+    assert (tmp_path / "raw" / "dropped.md").exists()                     # raw files are not undone
+    # And a page can be put back as of any commit.
+    (tmp_path / "raw" / "again.md").write_text("Bring the cash page back.")
+    ingest(None, tmp_path, lambda k, p: (wiki_restore(k, "domains/customer_management/cards/cash_extraction", commit),
+                                         finish(k, "Restore the cash page")), summarise)
+    assert "domains/customer_management/cards/cash_extraction" in pages(tmp_path)
+    assert len(git(tmp_path, "log", "--format=%h").split()) == 4         # seed + three files
+
+
+def test_a_failed_ingest_keeps_no_edits_and_hand_edits_are_committed_as_such(tmp_path):
+    from agent.wiki import ensure_wiki, git
+    from agent.wiki_ingest import ingest, pending
+    from agent.tools.wiki_tools import (add_to_page, change_in_page, create_page, delete_from_page,
+                                         delete_page, finish, move_page, wiki_diff, wiki_history,
+                                         wiki_restore, wiki_revert)
+
+    _wiki(tmp_path)
+    ensure_wiki(tmp_path)
+    (tmp_path / "domains/customer_management/cards/bust_out.md").write_text("# Edited by hand\n\nx")
+
+    def broken(keeper, prompt):
+        create_page(keeper, "domains/customer_management/cards/half", "Half", "s", "# Half")
+        raise RuntimeError("model down")
+
+    done = ingest(None, tmp_path, broken, None)
+    log = git(tmp_path, "log", "--format=%s").splitlines()
+    assert log[:2] == ["Could not ingest raw/dropped.md", "Edits by hand outside raw/ - kept as they were made"]
+    assert "model down" in done[0]["error"] and not (tmp_path / "domains/customer_management/cards/half.md").exists()
+    assert pending(tmp_path) == []                                       # until the file changes
+    (tmp_path / "raw" / "dropped.md").write_text("# changed\n\nspend")
+    assert ingest(None, tmp_path, lambda k, p: finish(k, "nothing new"), None)[0]["edits"] == []
+
+
+def test_a_case_is_on_one_page_and_moves_to_its_domain_with_its_links(tmp_path):
+    from agent.wiki import pages
+    from agent.wiki_ingest import CasesSummary, ingest
+    from agent.tools.wiki_tools import (add_to_page, change_in_page, create_page, delete_from_page,
+                                         delete_page, finish, move_page, wiki_diff, wiki_history,
+                                         wiki_restore, wiki_revert)
+
+    _wiki(tmp_path)
+    (tmp_path / "domains/fraud/takeover/cases/summary.md").write_text(
+        "---\ntitle: What fraud cases teach\nsummary: x\n---\n# What fraud cases teach\n\n"
+        "* an old point\n\nDrawn from 1 case of [[fraud]].\n")
+    seen, out = [], {}
+
+    def summarise(domain, current, cases):
+        seen.append((domain, current))
+        return CasesSummary(summary="s", body=f"# What the {domain} cases teach\n\n* kept")
+
+    def first(k, prompt):
+        assert create_page(k, "domains/fraud/takeover/cases/CR-1", "A takeover?", "A case.",
+                           _case("A takeover?", "Reset then spend"))["ok"]
+        add_to_page(k, "domains/fraud/index", "See [[CR-1]] and [[fraud/takeover/cases/CR-1]].")
+        out["twice"] = create_page(k, "domains/customer_management/cards/cases/cr-1", "B", "A case.", "# B")
+        finish(k, "a fraud case")
+
+    ingest(None, tmp_path, first, summarise)
+    assert "its page already: domains/fraud/takeover/cases/CR-1" in out["twice"]["error"]
+    # The current summary is what an update starts from.
+    assert seen == [("fraud/takeover", "# What fraud cases teach\n\n* an old point")]
+    (tmp_path / "raw" / "later.md").write_text("CR-1 was a bust-out.")
+
+    def second(k, prompt):
+        out["wrong"] = move_page(k, "domains/fraud/takeover/cases/CR-1", "domains/customer_management/cards/cr_1")
+        out["moved"] = move_page(k, "domains/fraud/takeover/cases/CR-1", "domains/customer_management/cards/cases/CR-1")
+        finish(k, "CR-1 is a bust-out: moved to credit_risk")
+
+    seen.clear()
+    ingest(None, tmp_path, second, summarise)
+    assert "only a case" in out["wrong"]["error"]
+    assert out["moved"]["ok"] and "domains/fraud/index" in out["moved"]["relinked"]
+    assert (tmp_path / "domains/fraud/index.md").read_text().count("[[customer_management/cards/cases/CR-1]]") == 2
+    assert sorted(d for d, _ in seen) == ["customer_management/cards", "fraud/takeover"]       # both domains' cases changed
+    assert "Drawn from 2 cases" in pages(tmp_path)["domains/customer_management/cards/cases/summary"].body
+    assert "Drawn from 1 case " in pages(tmp_path)["domains/fraud/takeover/cases/summary"].body   # its takeover
+
+
+def test_the_keepers_tools_are_bound_to_one_keeper_for_the_sdk(tmp_path):
+    import asyncio
+    import json
+
+    from agent.tools.wiki_tools import TOOLS, Keeper, for_keeper
+
+    _wiki(tmp_path)
+    keeper = Keeper(tmp_path, "x.md")
+    tools = for_keeper(keeper)
+    assert [t.name for t in tools] == list(TOOLS)
+    read = next(t for t in tools if t.name == "wiki_read")
+    out = json.loads(asyncio.run(read.on_invoke_tool(None, json.dumps({"page": "customer_management/cards"}))))
+    assert out["ok"] and out["page"] == "domains/customer_management/cards/index"
+
+
+def test_an_exploration_draws_the_patterns_of_the_home_domains_cases_first(no_history, tmp_path,
+                                                                           monkeypatch):
+    from agent import themes, wiki
+
+    root = tmp_path / "wiki"
+    for pid, pattern in [("customer_management/cards/cases/CR-7", "Minimum pay slide"),
+                         ("fraud/takeover/cases/F-2", "Takeover then spend")]:
+        path = root / "domains" / f"{pid}.md"
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text(f"---\ntitle: A case\nsummary: s\n---\n" + _case("A case", pattern)
+                        + "\n* Unnamed: a second pattern, in plain words.\n")
+    monkeypatch.setattr(wiki, "WIKI_DIR", root)
+    monkeypatch.setattr(no_history.cfg.agent.wiki, "domain", "customer_management/cards")
+    themes.save(no_history, ["payment counts", "minimum pay slide"])
+    # The home domain's patterns, named or by their first words; another domain's cases are closed.
+    pool = themes.pool(no_history)["themes"]
+    assert [t["theme"] for t in pool] == ["Minimum pay slide", "Unnamed: a second pattern, in plain words",
+                                          "payment counts"]                 # a made theme said once
+    assert pool[0]["case"] == "domains/customer_management/cards/cases/CR-7"
+    session = _session(no_history, themes.OPEN, explore=True, params=RunParams(K=2, levels=["L1"]))
+    first = themes.draw_theme(session)
+    assert first["case"] == "domains/customer_management/cards/cases/CR-7" and "wiki_read" in first["next"]
+    assert "how it shows" in first["pattern"]
+    assert session.events[-1]["case"] == first["case"]
+    session.round = 1
+    assert themes.draw_theme(session)["case"]                               # a case's pattern again
+    session.round = 2
+    third = themes.draw_theme(session)
+    assert third["theme"] == "payment counts" and "case" not in third
+
+
+def test_four_domains_with_subdomains_and_the_home_is_a_subdomain(tmp_path):
+    from agent.tools.wiki_tools import Keeper, create_page, delete_page
+    from agent.wiki import DOMAINS, Access, ensure_wiki, pages, read
+
+    ensure_wiki(tmp_path)
+    assert {p.id for p in pages(tmp_path).values() if p.kind == "domain"} \
+        == {f"domains/{d}/index" for d in DOMAINS}                       # seeded
+    k = Keeper(tmp_path, "x.md")
+    assert "the domains are" in create_page(k, "domains/credit_risk/index", "t", "s", "# t")["error"]
+    assert create_page(k, "domains/customer_management/cards/index", "Cards", "A use case.",
+                       "# Cards\n\nSee [[bust_out]] and [[spend_shape]].")["ok"]
+    assert create_page(k, "domains/customer_management/cards/bust_out", "Bust-out", "s", "# Bust-out\n\nx")["ok"]
+    assert create_page(k, "domains/customer_management/spend_shape", "Spend shape",
+                       "Across the domain.", "# Spend shape\n\nx")["ok"]           # a domain's own page
+    assert create_page(k, "domains/customer_management/loans/cases/L-1", "A case", "s", _case("A case", "p"))["ok"]
+    assert create_page(k, "domains/customer_management/cards/cases/C-1", "A case", "s", _case("A case", "q"))["ok"]
+    wiki = pages(tmp_path)
+    assert wiki["domains/customer_management/cards/bust_out"].domain == "customer_management/cards"
+    assert wiki["domains/customer_management/cards/index"].kind == "subdomain"
+    # A subdomain's name links its index; a page name, its subdomain's page, then its domain's.
+    home = Access("customer_management/cards")
+    assert read("cards", home, tmp_path)["page"] == "domains/customer_management/cards/index"
+    assert [l["page"] for l in read("cards", home, tmp_path)["links"]] \
+        == ["domains/customer_management/cards/bust_out", "domains/customer_management/spend_shape"]
+    # The home subdomain's cases are open; a sibling subdomain's are not, unless opened.
+    assert read("C-1", home, tmp_path)["ok"] and not read("L-1", home, tmp_path)["ok"]
+    assert read("L-1", Access("customer_management"), tmp_path)["ok"]     # a domain holds its subdomains
+    assert "indexes pages" in delete_page(k, "domains/customer_management/index", "x")["error"]

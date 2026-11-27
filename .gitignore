@@ -30,3 +30,6 @@ data/synthetic_agent/
 web/node_modules/
 web/dist/
 web/*.tsbuildinfo
+# The idea engines' wiki: its own git repository, kept by the agent (agent.wiki).
+# Its first pages come from src/agent/wiki_seed; users add material in wiki/raw.
+/wiki/

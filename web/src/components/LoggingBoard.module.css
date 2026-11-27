@@ -39,11 +39,14 @@
 .ideaCell { background: var(--j-surface-soft); border-right: 1px solid var(--j-border-soft); max-width: 300px; }
 .firstOfIdea td { border-top: 1px solid var(--j-border); }
 .ideaMeta { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; margin-top: 4px; font-size: var(--j-fs-meta); color: var(--j-ink-4); }
+.ideaMeta code { font-family: var(--j-font-mono); }
 .download { margin-left: auto; background: var(--j-accent); color: white; border: none; border-radius: var(--j-radius-ctl); padding: 5px 12px; font-weight: 600; font-size: var(--j-fs-sm); }
 .download:hover:not(:disabled) { background: var(--j-accent-deep); }
 .download:disabled { opacity: 0.5; }
 .idea { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
 .ideaName { font-family: var(--j-font-mono); font-weight: 600; color: var(--j-ink); }
+.ideaTitle { font-weight: 600; color: var(--j-ink); line-height: 1.35; }
+.ideaSummary { color: var(--j-ink-2); margin-top: 3px; line-height: 1.4; }
 .ideaDesc { color: var(--j-ink-3); margin-top: 4px; line-height: 1.4; font-size: var(--j-fs-meta); }
 .lens { font-size: var(--j-fs-meta); color: var(--j-ink-4); }
 

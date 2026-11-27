@@ -60,8 +60,8 @@ export function RunPage({ runId, onChange, onDeleted, onRerun }: {
             <div className={s.themes} title="An open exploration: the agent draws a theme per round, the least explored first">
               {view.themes.length
                 ? view.themes.map((t) => (
-                    <span key={t.round} className={s.theme}>
-                      <i>round {t.round}</i>{t.theme}
+                    <span key={t.round} className={s.theme} title={t.case ? `a pattern of the case ${t.case.split('/').pop()}` : undefined}>
+                      <i>round {t.round}</i>{t.theme}{t.case && <i> · case {t.case.split('/').pop()}</i>}
                       {t.exploredBefore > 0 && <i> · explored {t.exploredBefore}× before</i>}
                     </span>))
                 : <span className={s.themeWait}>drawing the first theme…</span>}
